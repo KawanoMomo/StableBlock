@@ -4,12 +4,15 @@ function activate(context) {
   let currentPanel = undefined;
   let isUpdatingFromWebview = false;
 
-  // Shortcut commands forwarded to webview (only for keys VSCode intercepts: Ctrl+Z/Y/A)
+  // Shortcut commands forwarded to webview (VSCode intercepts these before they reach the webview)
   const fwd = (action) => { if (currentPanel) currentPanel.webview.postMessage({ type: action }); };
   context.subscriptions.push(
     vscode.commands.registerCommand("stableblock.undo", () => fwd("undo")),
     vscode.commands.registerCommand("stableblock.redo", () => fwd("redo")),
-    vscode.commands.registerCommand("stableblock.selectAll", () => fwd("selectAll"))
+    vscode.commands.registerCommand("stableblock.selectAll", () => fwd("selectAll")),
+    vscode.commands.registerCommand("stableblock.copy", () => fwd("copy")),
+    vscode.commands.registerCommand("stableblock.cut", () => fwd("cut")),
+    vscode.commands.registerCommand("stableblock.paste", () => fwd("paste"))
   );
 
   const cmd = vscode.commands.registerCommand("stableblock.preview", () => {
@@ -297,6 +300,13 @@ function bDel(){pushH();delItems(sel);sel=[];go();notify();}
 
 function delItems(items){items.forEach(function(si){var lines=dsl.split("\\n"),re=new RegExp("^\\\\s*"+si.type+"\\\\s+"+si.id+"\\\\s+"),c1=new RegExp("(^|\\\\s)"+si.id+"(\\\\s+(-->|->)\\\\s+|$)"),c2=new RegExp("\\\\s+(-->|->)\\\\s+"+si.id+"(\\\\s|$)");dsl=lines.filter(function(l){return !re.test(l)&&!c1.test(l)&&!c2.test(l)}).join("\\n");});}
 
+// Copy / Cut / Paste
+var clipboard=null;
+function getLine(tp,id){var lines=dsl.split("\\n"),re=new RegExp("^\\\\s*"+tp+"\\\\s+"+id+"\\\\s+");for(var i=0;i<lines.length;i++){if(re.test(lines[i]))return lines[i].trim();}return null;}
+function copySel(){if(!sel.length)return;clipboard=sel.map(function(si){var ln=getLine(si.type,si.id);return ln?{type:si.type,id:si.id,line:ln}:null;}).filter(Boolean);}
+function cutSel(){if(!sel.length)return;copySel();pushH();delItems(sel);sel=[];go();notify();}
+function pasteSel(){if(!clipboard||!clipboard.length)return;pushH();var ns=[];clipboard.forEach(function(ci){var nid=ci.id+"_"+(addC++);var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+2)+","+(+y+2)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});sel=ns;go();notify();}
+
 // Add
 function addBlock(){pushH();var id="block_"+(addC++);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="group_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
@@ -320,16 +330,17 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();}
 });
 
-// Messages from extension (forwarded Ctrl+Z/Y/A that VSCode intercepts)
+// Messages from extension (forwarded shortcuts that VSCode intercepts)
 window.addEventListener('message',function(event){
   var msg=event.data;
   if(msg.type==='undo'){undo();return;}
   if(msg.type==='redo'){redo();return;}
-  if(msg.type==='selectAll'){
-    var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
-    if(inInput)return;
-    sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();return;
-  }
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;
+  if(msg.type==='selectAll'){sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();return;}
+  if(msg.type==='copy'){copySel();return;}
+  if(msg.type==='cut'){cutSel();return;}
+  if(msg.type==='paste'){pasteSel();return;}
 });
 
 parsed=parseDSL(dsl);go();
