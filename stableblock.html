@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StableBlock - Deterministic Block Diagrams</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #0F172A; --bg2: #1E293B; --border: #334155;
+  --text: #E2E8F0; --muted: #64748B; --dim: #475569;
+  --accent: #6366F1; --accent2: #818CF8; --accent-bg: #312E81;
+  --green: #22C55E; --amber: #F59E0B; --red: #EF4444;
+}
+body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','Noto Sans JP',sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Header */
+#header { display:flex; align-items:center; justify-content:space-between; padding:6px 12px; border-bottom:1px solid var(--bg2); flex-shrink:0; }
+#header .logo { display:flex; align-items:center; gap:8px; }
+#header .logo-icon { width:24px; height:24px; border-radius:5px; background:linear-gradient(135deg,#6366F1,#8B5CF6); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; }
+#header .logo-text { font-weight:700; font-size:14px; }
+#header .badge { font-size:9px; color:#A5B4FC; font-weight:600; background:var(--accent-bg); padding:2px 7px; border-radius:10px; }
+.toolbar { display:flex; gap:4px; align-items:center; }
+.tb { padding:4px 10px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; font-family:inherit; }
+.tb:hover { background:#334155; }
+.tb-accent { border-color:var(--accent); color:#A5B4FC; }
+.tb-green { border-color:var(--green); color:#86EFAC; }
+.sep { width:1px; height:14px; background:var(--border); margin:0 4px; }
+
+/* Body */
+#body { flex:1; display:flex; overflow:hidden; }
+
+/* Editor Panel */
+#editor-panel { width:30%; min-width:240px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
+.panel-label { padding:4px 10px; font-size:10px; font-weight:600; color:var(--muted); border-bottom:1px solid var(--bg2); display:flex; align-items:center; gap:4px; }
+.panel-label .dot { font-size:10px; }
+#error-bar { padding:4px 10px; background:#7F1D1D; color:#FCA5A5; font-size:10px; display:none; }
+#editor-wrap { flex:1; display:flex; overflow:hidden; background:var(--bg); }
+#line-nums { width:40px; padding:12px 4px 12px 0; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; color:var(--dim); user-select:none; overflow:hidden; flex-shrink:0; }
+#editor { flex:1; background:transparent; color:var(--text); border:none; outline:none; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; padding:12px 12px 12px 4px; resize:none; white-space:pre; overflow-x:auto; tab-size:2; }
+
+/* Preview Panel */
+#preview-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
+#svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
+#svg-wrap svg { cursor:default; }
+
+/* Property Panel */
+#prop-panel { width:220px; min-width:220px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
+#prop-content { flex:1; overflow-y:auto; padding:12px; }
+.prop-section { margin-bottom:12px; }
+.prop-label { font-size:10px; color:var(--muted); font-weight:600; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em; }
+.prop-row { display:flex; gap:6px; margin-bottom:6px; }
+.prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
+.prop-input:focus { border-color:var(--accent); }
+.prop-sub { font-size:9px; color:var(--dim); }
+.prop-btn { padding:6px 12px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; width:100%; font-family:inherit; }
+.prop-btn:hover { background:#334155; }
+.prop-btn-accent { border-color:var(--accent); color:#A5B4FC; }
+.prop-btn-red { border-color:var(--red); color:#FCA5A5; background:#1C1017; }
+.color-grid { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+.color-dot { width:20px; height:20px; border-radius:4px; cursor:pointer; border:2px solid transparent; }
+.color-dot.active { border-color:#fff; box-shadow:0 0 0 1px var(--accent); }
+.style-btn { padding:3px 10px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; font-family:inherit; }
+.style-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.stepper { display:flex; align-items:stretch; }
+.stepper input { flex:1; min-width:0; text-align:center; border-radius:4px 0 0 4px; border-right:none; }
+.step-col { display:flex; flex-direction:column; width:20px; flex-shrink:0; }
+.step-btn { flex:1; border:1px solid var(--border); background:var(--bg2); color:#94A3B8; cursor:pointer; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center; font-family:inherit; padding:0; line-height:1; }
+.step-btn:hover { background:#334155; color:#E2E8F0; }
+.step-btn:active { background:var(--accent); color:#fff; }
+.step-btn.up { border-radius:0 4px 0 0; border-bottom:none; }
+.step-btn.dn { border-radius:0 0 4px 0; }
+
+/* Status */
+#status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
+
+input[type=number] { -moz-appearance:textfield; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">
+    <div class="logo-icon">◆</div>
+    <span class="logo-text">StableBlock</span>
+    <span class="badge">v0.4 Multi-Select + Resize</span>
+  </div>
+  <div class="toolbar">
+    <button class="tb" onclick="setZoom(-1)">−</button>
+    <span id="zoom-label" style="font-size:11px;color:#94A3B8;min-width:36px;text-align:center">100%</span>
+    <button class="tb" onclick="setZoom(1)">+</button>
+    <div class="sep"></div>
+    <button class="tb" onclick="undo()" title="Ctrl+Z">↩</button>
+    <button class="tb" onclick="redo()" title="Ctrl+Y">↪</button>
+    <div class="sep"></div>
+    <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
+    <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
+    <div class="sep"></div>
+    <button class="tb tb-green" onclick="exportSB()">.sb 保存</button>
+    <button class="tb tb-green" onclick="document.getElementById('file-input').click()">.sb 読込</button>
+    <input type="file" id="file-input" accept=".sb,.stableblock,.txt" style="display:none" onchange="importSB(this)">
+  </div>
+</div>
+
+<div id="body">
+  <div id="editor-panel">
+    <div class="panel-label"><span class="dot" style="color:var(--accent)">●</span> DSL</div>
+    <div id="error-bar"></div>
+    <div id="editor-wrap">
+      <div id="line-nums"></div>
+      <textarea id="editor" spellcheck="false"></textarea>
+    </div>
+  </div>
+  <div id="preview-panel">
+    <div class="panel-label">
+      <span class="dot" style="color:var(--green)">●</span> PREVIEW
+      <span style="margin-left:auto;color:var(--dim);font-weight:400">ドラッグで移動（親グループは子も連動）</span>
+    </div>
+    <div id="preview-area"><div id="svg-wrap"></div></div>
+  </div>
+  <div id="prop-panel">
+    <div class="panel-label"><span class="dot" style="color:var(--amber)">●</span> <span id="prop-title">ツール</span></div>
+    <div id="prop-content"></div>
+  </div>
+</div>
+
+<div id="status"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════
+let dsl = `# StableBlock v0.4
+@canvas width=960 height=520 grid=20
+
+# Application
+group app "Application" at 1,1 size 46x6 color=#EEF2FF border=#818CF8
+
+block ui    "UI"        at 2,3 size 9x3 color=#6366F1 text=#FFFFFF round=6
+block logic "Logic"     at 13,3 size 9x3 color=#6366F1 text=#FFFFFF round=6
+block data  "Data Mgr"  at 24,3 size 9x3 color=#6366F1 text=#FFFFFF round=6
+
+# Middleware
+group mw "Middleware" at 1,8 size 46x6 color=#FEF3C7 border=#F59E0B
+
+block comm "Comm"     at 2,10 size 9x3 color=#D97706 text=#FFFFFF round=4
+block diag "Diag"     at 13,10 size 9x3 color=#D97706 text=#FFFFFF round=4
+block log  "Logger"   at 24,10 size 9x3 color=#D97706 text=#FFFFFF round=4
+
+# Platform
+group pf "Platform" at 1,15 size 46x6 color=#DCFCE7 border=#22C55E
+
+block os   "OS"       at 2,17 size 13x3 color=#16A34A text=#FFFFFF round=4
+block drv  "Drivers"  at 17,17 size 13x3 color=#16A34A text=#FFFFFF round=4
+block hal  "HAL"      at 32,17 size 13x3 color=#16A34A text=#FFFFFF round=4
+
+# Connections
+ui    -> comm
+logic -> diag
+data  -> log
+comm  -> os
+diag  -> drv
+log   -> hal
+`;
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false;
+// Undo/Redo
+const history=[], future=[]; const MAX_HIST=80;
+function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
+function undo(){if(!history.length)return;future.push(dsl);dsl=history.pop();sel=[];refresh();}
+function redo(){if(!future.length)return;history.push(dsl);dsl=future.pop();sel=[];refresh();}
+// Clipboard
+let clipboard=null; // [{type,dslLine}]
+const COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626","#1E293B","#0F172A","#334155","#475569"];
+const BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
+function isSel(id){return sel.some(s=>s.id===id)}
+function getItem(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]}
+
+// ═══════════════════════════════════════════════
+// Parser
+// ═══════════════════════════════════════════════
+function parseDSL(text){
+  const lines=text.split("\n"),canvas={width:960,height:640,grid:20};
+  const blocks=[],groups=[],connections=[],errors=[],blockMap={},groupMap={};
+  for(let i=0;i<lines.length;i++){
+    const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
+    try{
+      if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];continue;}
+      let m=raw.match(/^block\s+(\S+)\s+"([^"]+)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,label,x,y,w,h,rest]=m;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
+      m=raw.match(/^group\s+(\S+)\s+"([^"]+)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,label,x,y,w,h,rest]=m;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
+      m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
+      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",bidir:arrow==="-->",line:ln});continue;}
+      errors.push({line:ln,msg:raw.substring(0,40)});
+    }catch(e){errors.push({line:ln,msg:e.message});}
+  }
+  return{canvas,blocks,groups,connections,errors,blockMap,groupMap};
+}
+
+// ═══════════════════════════════════════════════
+// DSL Updaters
+// ═══════════════════════════════════════════════
+function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"[^"]+"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
+function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"[^"]+?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
+function updateProp(type,id,prop,val){const lines=dsl.split("\n"),lr=new RegExp(`^\\s*${type}\\s+${id}\\s+`),pr=new RegExp(`${prop}=\\S+`);for(let i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}dsl=lines.join("\n");}
+function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"[^"]+"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,`$1"${label}"$2`);}
+function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
+function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
+
+// ═══════════════════════════════════════════════
+// SVG Rendering
+// ═══════════════════════════════════════════════
+function getConn(fb,tb,g){const fcx=fb.x*g+fb.w*g/2,fcy=fb.y*g+fb.h*g/2,tcx=tb.x*g+tb.w*g/2,tcy=tb.y*g+tb.h*g/2,dx=tcx-fcx,dy=tcy-fcy;let fp,tp;if(Math.abs(dy)>Math.abs(dx)){if(dy>0){fp={x:fcx,y:fb.y*g+fb.h*g};tp={x:tcx,y:tb.y*g};}else{fp={x:fcx,y:fb.y*g};tp={x:tcx,y:tb.y*g+tb.h*g};}}else{if(dx>0){fp={x:fb.x*g+fb.w*g,y:fcy};tp={x:tb.x*g,y:tcy};}else{fp={x:fb.x*g,y:fcy};tp={x:tb.x*g+tb.w*g,y:tcy};}}return{fp,tp};}
+function bpath(fp,tp){const mx=(fp.x+tp.x)/2,my=(fp.y+tp.y)/2;return Math.abs(tp.y-fp.y)>Math.abs(tp.x-fp.x)?`M${fp.x},${fp.y} C${fp.x},${my} ${tp.x},${my} ${tp.x},${tp.y}`:`M${fp.x},${fp.y} C${mx},${fp.y} ${mx},${tp.y} ${tp.x},${tp.y}`;}
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function renderSVG(){
+  if(!parsed)return;
+  const{canvas,blocks,groups,connections,blockMap}=parsed, g=canvas.grid;
+  let s=`<svg width="${canvas.width*zoom}" height="${canvas.height*zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:'IBM Plex Sans','Noto Sans JP',sans-serif">`;
+  s+=`<defs><pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g/2}" cy="${g/2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
+  connections.forEach((c,i)=>{s+=`<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`;});
+  s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
+
+  // Groups
+  groups.forEach(gr=>{const sl=isSel(gr.id);
+    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"><rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
+    s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
+  });
+  // Connections
+  connections.forEach((c,i)=>{const fb=blockMap[c.from],tb=blockMap[c.to];if(!fb||!tb)return;const{fp,tp}=getConn(fb,tb,g);const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';
+    s+=`<path d="${bpath(fp,tp)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${i})"${c.bidir?` marker-start="url(#a${i})"`:''}/>`;
+    if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;});
+  // Blocks
+  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";
+    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"><rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
+    b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
+    s+=`</g>`;});
+
+  // Resize handles for selected items
+  sel.forEach(si=>{
+    const it=getItem(si); if(!it)return;
+    const x=it.x*g, y=it.y*g, w=it.w*g, h=it.h*g;
+    const hs=10, hitS=20; // visible handle size, invisible hit area
+    const handles=[
+      {cx:x,    cy:y,    cur:'nw-resize',edge:'nw'},
+      {cx:x+w,  cy:y,    cur:'ne-resize',edge:'ne'},
+      {cx:x,    cy:y+h,  cur:'sw-resize',edge:'sw'},
+      {cx:x+w,  cy:y+h,  cur:'se-resize',edge:'se'},
+      {cx:x+w/2,cy:y,    cur:'n-resize', edge:'n'},
+      {cx:x+w/2,cy:y+h,  cur:'s-resize', edge:'s'},
+      {cx:x,    cy:y+h/2,cur:'w-resize', edge:'w'},
+      {cx:x+w,  cy:y+h/2,cur:'e-resize', edge:'e'},
+    ];
+    handles.forEach(hd=>{
+      // Invisible larger hit area
+      s+=`<rect data-resize="${hd.edge}" data-rid="${si.id}" data-rtype="${si.type}" x="${hd.cx-hitS/2}" y="${hd.cy-hitS/2}" width="${hitS}" height="${hitS}" fill="transparent" style="cursor:${hd.cur}" />`;
+      // Visible handle
+      s+=`<rect x="${hd.cx-hs/2}" y="${hd.cy-hs/2}" width="${hs}" height="${hs}" fill="#6366F1" stroke="#fff" stroke-width="1.5" rx="2" style="pointer-events:none" />`;
+    });
+  });
+
+  s+=`</svg>`;
+  document.getElementById('svg-wrap').innerHTML=s;
+  setupInteractions();
+}
+
+// ═══════════════════════════════════════════════
+// Interactions: Drag, Resize, Select
+// ═══════════════════════════════════════════════
+function getSvgScale(){
+  const svg=document.querySelector('#svg-wrap svg');
+  if(!svg)return{sx:1,sy:1};
+  const r=svg.getBoundingClientRect();
+  return{sx:parsed.canvas.width/r.width, sy:parsed.canvas.height/r.height};
+}
+
+function setupInteractions(){
+  const g=parsed.canvas.grid;
+
+  // Resize handles
+  document.querySelectorAll('[data-resize]').forEach(el=>{
+    el.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();
+      const edge=el.dataset.resize, id=el.dataset.rid, type=el.dataset.rtype;
+      const item=type==="block"?parsed.blockMap[id]:parsed.groupMap[id];
+      if(!item)return;
+      pushHistory();
+      const{sx,sy}=getSvgScale();
+      const mx0=e.clientX, my0=e.clientY;
+      const ox=item.x, oy=item.y, ow=item.w, oh=item.h;
+
+      function onMove(ev){
+        const dxg=Math.round((ev.clientX-mx0)*sx/g), dyg=Math.round((ev.clientY-my0)*sy/g);
+        let nx=ox, ny=oy, nw=ow, nh=oh;
+        if(edge.includes('e')){nw=Math.max(1,ow+dxg);}
+        if(edge.includes('w')){nw=Math.max(1,ow-dxg);nx=ox+ow-nw;}
+        if(edge.includes('s')){nh=Math.max(1,oh+dyg);}
+        if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
+        updatePos(type,id,Math.max(0,nx),Math.max(0,ny));
+        updateSize(type,id,nw,nh);
+        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+      }
+      function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);refresh();}
+      window.addEventListener('mousemove',onMove);
+      window.addEventListener('mouseup',onUp);
+    });
+  });
+
+  // Drag items
+  document.querySelectorAll('#svg-wrap g[data-id]').forEach(el=>{
+    el.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();
+      const type=el.dataset.type, id=el.dataset.id;
+
+      // Selection logic: Shift adds, otherwise replaces
+      if(e.shiftKey){
+        if(isSel(id)) sel=sel.filter(s=>s.id!==id); else sel.push({type,id});
+      } else {
+        if(!isSel(id)) sel=[{type,id}];
+        // if already selected, keep current multi-sel for drag
+      }
+      renderProps(); renderSVG();
+
+      // Now drag ALL selected items
+      const{sx,sy}=getSvgScale();
+      const mx0=e.clientX, my0=e.clientY;
+      // Collect all items to move (including children of selected groups)
+      const dragSet=new Map();
+      sel.forEach(si=>{
+        const it=getItem(si); if(!it)return;
+        dragSet.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y});
+        if(si.type==="group"){
+          const ch=findChildren(it);
+          ch.childBlocks.forEach(b=>{if(!dragSet.has(b.id))dragSet.set(b.id,{type:"block",id:b.id,sx:b.x,sy:b.y});});
+          ch.childGroups.forEach(cg=>{if(!dragSet.has(cg.id))dragSet.set(cg.id,{type:"group",id:cg.id,sx:cg.x,sy:cg.y});});
+        }
+      });
+      const items=[...dragSet.values()];
+      let moved=false, histPushed=false;
+
+      function onMove(ev){
+        if(!histPushed){pushHistory();histPushed=true;}
+        moved=true;
+        const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
+        items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
+        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+      }
+      function onUp(ev){
+        window.removeEventListener('mousemove',onMove);
+        window.removeEventListener('mouseup',onUp);
+        if(!moved)return; refresh();
+      }
+      window.addEventListener('mousemove',onMove);
+      window.addEventListener('mouseup',onUp);
+    });
+  });
+
+  // Click blank to deselect
+  const svg=document.querySelector('#svg-wrap svg');
+  if(svg)svg.addEventListener('mousedown',e=>{
+    if(e.target.tagName==='svg'||(e.target.tagName==='rect'&&!e.target.closest('g[data-id]')&&!e.target.dataset.resize)){
+      sel=[]; renderProps(); renderSVG();
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
+// Property Panel
+// ═══════════════════════════════════════════════
+function renderProps(){
+  const el=document.getElementById('prop-content'), title=document.getElementById('prop-title');
+
+  if(sel.length===0){
+    title.textContent='ツール';
+    el.innerHTML=`<div class="prop-section">
+      <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
+      <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
+    </div>
+    <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
+    <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
+    <button class="prop-btn" onclick="addConn()">接続追加</button>
+    <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
+        クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
+        <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
+        <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
+        <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
+        <span style="color:var(--muted)">Delete</span> 削除
+      </div>`;
+    return;
+  }
+
+  // Multi-select
+  if(sel.length>1){
+    title.textContent=`${sel.length}個選択中`;
+    const hasBlocks=sel.some(s=>parsed.blockMap[s.id]);
+    const colorDots=COLORS.map(c=>`<div class="color-dot" style="background:${c}" onclick="batchProp('color','${c}')"></div>`).join('');
+    let html=`<div style="font-size:12px;font-weight:700;color:#A5B4FC;margin-bottom:10px">${sel.length}個のアイテムを選択中</div>`;
+    html+=`<div class="prop-section"><div class="prop-label">一括 位置調整</div>
+      <div class="prop-row">
+        <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudge('x',-1)">▲</button><button class="step-btn dn" onclick="batchNudge('x',1)">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudge('y',-1)">▲</button><button class="step-btn dn" onclick="batchNudge('y',1)">▼</button></div></div></div>
+      </div></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">一括 サイズ調整</div>
+      <div class="prop-row">
+        <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudgeSz('w',1)">▲</button><button class="step-btn dn" onclick="batchNudgeSz('w',-1)">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudgeSz('h',1)">▲</button><button class="step-btn dn" onclick="batchNudgeSz('h',-1)">▼</button></div></div></div>
+      </div></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">一括 色変更</div><div class="color-grid">${colorDots}</div></div>`;
+    if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${st}</button>`).join('')}</div></div>`;
+    html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="batchDelete()">選択を全削除</button></div>`;
+    el.innerHTML=html; return;
+  }
+
+  // Single select
+  const si=sel[0], item=getItem(si);
+  if(!item){sel=[];renderProps();return;}
+  const isBlock=item.type==="block";
+  title.textContent='プロパティ';
+  const colors=isBlock?COLORS:BG_COLORS;
+  const colorDots=colors.map(c=>`<div class="color-dot ${item.color===c?'active':''}" style="background:${c}" onclick="setProp('color','${c}')"></div>`).join('');
+
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span style="font-size:12px;font-weight:700;color:${isBlock?'#6366F1':'#818CF8'}">${isBlock?'BLOCK':'GROUP'}: ${item.id}</span>
+    <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
+    <div class="prop-section"><div class="prop-label">ラベル</div><input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
+    <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
+      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('y',-1)">▲</button><button class="step-btn dn" onclick="nudge('y',1)">▼</button></div></div></div>
+    </div></div>
+    <div class="prop-section"><div class="prop-label">サイズ (grid)</div><div class="prop-row">
+      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" oninput="setSz('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeSz('w',1)">▲</button><button class="step-btn dn" onclick="nudgeSz('w',-1)">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" oninput="setSz('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeSz('h',1)">▲</button><button class="step-btn dn" onclick="nudgeSz('h',-1)">▼</button></div></div></div>
+    </div></div>
+    <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" oninput="setProp('color',this.value)" placeholder="#RRGGBB"></div>`;
+
+  if(isBlock){
+    html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
+  } else {
+    html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
+  }
+  if(isBlock){
+    html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn ${item.style===st?'active':''}" onclick="setProp('style','${st}')">${st}</button>`).join('')}</div></div>`;
+  }
+  html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="deleteItem()">削除</button></div>`;
+  el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════
+// Actions: single
+// ═══════════════════════════════════════════════
+function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);refresh();}
+function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
+function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
+function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;
+  if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
+  updatePos(s.type,s.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));refresh();}
+function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);refresh();}
+function nudgeRound(delta){if(!sel.length)return;pushHistory();const it=parsed.blockMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}
+function deleteItem(){if(!sel.length)return;pushHistory();const{type,id}=sel[0];const lines=dsl.split("\n"),re=new RegExp(`^\\s*${type}\\s+${id}\\s+`),c1=new RegExp(`(^|\\s)${id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${id}(\\s|$)`);dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");sel=[];refresh();}
+
+// ═══════════════════════════════════════════════
+// Actions: batch (multi-select)
+// ═══════════════════════════════════════════════
+function batchNudge(axis,delta){
+  pushHistory();
+  sel.forEach(si=>{
+    const it=getItem(si);if(!it)return;
+    if(si.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,Math.max(0,b.x+(axis==='x'?delta:0)),Math.max(0,b.y+(axis==='y'?delta:0))));ch.childGroups.forEach(g=>updatePos('group',g.id,Math.max(0,g.x+(axis==='x'?delta:0)),Math.max(0,g.y+(axis==='y'?delta:0))));}
+    updatePos(si.type,si.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));
+  }); refresh();
+}
+function batchNudgeSz(axis,delta){
+  pushHistory();
+  sel.forEach(si=>{const it=getItem(si);if(!it)return;updateSize(si.type,si.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);});refresh();
+}
+function batchProp(prop,val){pushHistory();sel.forEach(si=>updateProp(si.type,si.id,prop,val));refresh();}
+function batchDelete(){
+  pushHistory();
+  sel.forEach(si=>{const{type,id}=si;const lines=dsl.split("\n"),re=new RegExp(`^\\s*${type}\\s+${id}\\s+`),c1=new RegExp(`(^|\\s)${id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${id}(\\s|$)`);dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");});
+  sel=[];refresh();
+}
+
+// ═══════════════════════════════════════════════
+// Add items
+// ═══════════════════════════════════════════════
+function addBlock(){pushHistory();const id=`block_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
+function addGroup(){pushHistory();const id=`group_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
+
+// ═══════════════════════════════════════════════
+// Editor / Refresh
+// ═══════════════════════════════════════════════
+function syncEditor(){suppressSync=true;document.getElementById('editor').value=dsl;suppressSync=false;renderLineNums();}
+function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
+function refresh(){parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
+function renderErrors(){const el=document.getElementById('error-bar');if(parsed.errors.length){el.style.display='block';el.innerHTML=parsed.errors.map(e=>`L${e.line}: ${esc(e.msg)}`).join('<br>');}else{el.style.display='none';}}
+function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
+
+// ═══════════════════════════════════════════════
+// Export / Import
+// ═══════════════════════════════════════════════
+function download(name,data){const a=document.createElement('a');a.href=data;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
+function exportSB(){download('diagram.sb','data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));}
+function exportSVG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.outerHTML));}
+function exportPNG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;const data=new XMLSerializer().serializeToString(svg);const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=parsed.canvas.width*zoom*2;c.height=parsed.canvas.height*zoom*2;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);download('diagram.png',c.toDataURL('image/png'));};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));}
+function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh();};reader.readAsText(file);input.value='';}
+function setZoom(dir){zoom=Math.max(0.25,Math.min(3,zoom+dir*0.25));document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
+
+// ═══════════════════════════════════════════════
+// Copy / Cut / Paste
+// ═══════════════════════════════════════════════
+function getItemDSLLine(type,id){
+  const lines=dsl.split("\n");
+  const re=new RegExp(`^\\s*${type}\\s+${id}\\s+`);
+  return lines.find(l=>re.test(l))||null;
+}
+function copySelection(){
+  if(!sel.length)return;
+  clipboard=sel.map(si=>{const line=getItemDSLLine(si.type,si.id);return line?{type:si.type,id:si.id,line:line.trim()}:null;}).filter(Boolean);
+}
+function cutSelection(){
+  if(!sel.length)return;
+  copySelection();
+  pushHistory();
+  sel.forEach(si=>{
+    const lines=dsl.split("\n"),re=new RegExp(`^\\s*${si.type}\\s+${si.id}\\s+`),c1=new RegExp(`(^|\\s)${si.id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${si.id}(\\s|$)`);
+    dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");
+  });
+  sel=[];refresh();
+}
+function pasteClipboard(){
+  if(!clipboard||!clipboard.length)return;
+  pushHistory();
+  const newSel=[];
+  clipboard.forEach(ci=>{
+    // Generate unique ID for paste
+    const newId=`${ci.id}_${addCounter++}`;
+    // Offset pasted items by 2 grid units
+    let line=ci.line.replace(new RegExp(`^(${ci.type}\\s+)${ci.id}`),`$1${newId}`);
+    line=line.replace(/at\s+([\d.]+),([\d.]+)/,(m,x,y)=>`at ${+x+2},${+y+2}`);
+    dsl=dsl.trimEnd()+"\n"+line+"\n";
+    newSel.push({type:ci.type,id:newId});
+  });
+  sel=newSel;
+  refresh();
+}
+
+// ═══════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════
+const editor=document.getElementById('editor');
+editor.value=dsl;
+let editorHistTimer=null;
+editor.addEventListener('input',()=>{
+  if(suppressSync)return;
+  // Debounced history push for typing
+  if(!editorHistTimer){pushHistory();}
+  clearTimeout(editorHistTimer);
+  editorHistTimer=setTimeout(()=>{editorHistTimer=null;},1000);
+  dsl=editor.value;parsed=parseDSL(dsl);renderSVG();renderErrors();renderStatus();renderLineNums();
+});
+editor.addEventListener('scroll',()=>{document.getElementById('line-nums').scrollTop=editor.scrollTop;});
+
+// Keyboard shortcuts
+document.addEventListener('keydown',e=>{
+  const inEditor=document.activeElement===editor || document.activeElement?.closest('#prop-content');
+  // Ctrl+Z: Undo (always works)
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return;}
+  // Ctrl+Y or Ctrl+Shift+Z: Redo
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();return;}
+  // Below only when not editing text
+  if(inEditor)return;
+  // Ctrl+C: Copy
+  if((e.ctrlKey||e.metaKey)&&e.key==='c'){e.preventDefault();copySelection();return;}
+  // Ctrl+X: Cut
+  if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSelection();return;}
+  // Ctrl+V: Paste
+  if((e.ctrlKey||e.metaKey)&&e.key==='v'){e.preventDefault();pasteClipboard();return;}
+  // Delete / Backspace: delete selected
+  if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
+  // Ctrl+A: select all
+  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
+});
+
+parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();
+</script>
+</body>
+</html>

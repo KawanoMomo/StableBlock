@@ -1,0 +1,66 @@
+{
+  "name": "stableblock",
+  "displayName": "StableBlock - Deterministic Block Diagrams",
+  "description": "Syntax highlighting and live preview for StableBlock (.sb) diagram files",
+  "version": "0.4.2",
+  "license": "GPL-3.0-only",
+  "publisher": "stableblock",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KawanoMomo/StableBlock"
+  },
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages", "Visualization"],
+  "activationEvents": [
+    "onLanguage:stableblock",
+    "onCommand:stableblock.preview"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "stableblock",
+        "aliases": ["StableBlock", "stableblock"],
+        "extensions": [".sb", ".stableblock"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "stableblock",
+        "scopeName": "source.stableblock",
+        "path": "./syntaxes/stableblock.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "stableblock.preview",
+        "title": "StableBlock: Open Preview",
+        "icon": "$(open-preview)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "editorLangId == stableblock",
+          "command": "stableblock.preview",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "stableblock.preview",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorLangId == stableblock"
+      }
+    ]
+  },
+  "scripts": {
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^2.22.0"
+  }
+}

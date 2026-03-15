@@ -1,0 +1,75 @@
+{
+  "scopeName": "source.stableblock",
+  "name": "StableBlock",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#canvas" },
+    { "include": "#block" },
+    { "include": "#group" },
+    { "include": "#connection" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.stableblock"
+    },
+    "canvas": {
+      "match": "(@canvas)\\s+(.*)",
+      "captures": {
+        "1": { "name": "keyword.control.canvas.stableblock" },
+        "2": { "patterns": [{ "include": "#keyvalue" }] }
+      }
+    },
+    "block": {
+      "match": "(block)\\s+(\\S+)\\s+(\"[^\"]*\")\\s+(at)\\s+(\\d+(?:\\.\\d+)?),(\\d+(?:\\.\\d+)?)\\s+(size)\\s+(\\d+(?:\\.\\d+)?)x(\\d+(?:\\.\\d+)?)(.*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.block.stableblock" },
+        "2": { "name": "entity.name.tag.block-id.stableblock" },
+        "3": { "name": "string.quoted.double.label.stableblock" },
+        "4": { "name": "keyword.operator.at.stableblock" },
+        "5": { "name": "constant.numeric.coordinate.stableblock" },
+        "6": { "name": "constant.numeric.coordinate.stableblock" },
+        "7": { "name": "keyword.operator.size.stableblock" },
+        "8": { "name": "constant.numeric.dimension.stableblock" },
+        "9": { "name": "constant.numeric.dimension.stableblock" },
+        "10": { "patterns": [{ "include": "#keyvalue" }] }
+      }
+    },
+    "group": {
+      "match": "(group)\\s+(\\S+)\\s+(\"[^\"]*\")\\s+(at)\\s+(\\d+(?:\\.\\d+)?),(\\d+(?:\\.\\d+)?)\\s+(size)\\s+(\\d+(?:\\.\\d+)?)x(\\d+(?:\\.\\d+)?)(.*)",
+      "captures": {
+        "1": { "name": "keyword.declaration.group.stableblock" },
+        "2": { "name": "entity.name.type.group-id.stableblock" },
+        "3": { "name": "string.quoted.double.label.stableblock" },
+        "4": { "name": "keyword.operator.at.stableblock" },
+        "5": { "name": "constant.numeric.coordinate.stableblock" },
+        "6": { "name": "constant.numeric.coordinate.stableblock" },
+        "7": { "name": "keyword.operator.size.stableblock" },
+        "8": { "name": "constant.numeric.dimension.stableblock" },
+        "9": { "name": "constant.numeric.dimension.stableblock" },
+        "10": { "patterns": [{ "include": "#keyvalue" }] }
+      }
+    },
+    "connection": {
+      "match": "(\\S+)\\s+(-->|->)\\s+(\\S+)\\s*(?:(\"[^\"]*\"))?\\s*(.*)",
+      "captures": {
+        "1": { "name": "variable.other.from.stableblock" },
+        "2": { "name": "keyword.operator.arrow.stableblock" },
+        "3": { "name": "variable.other.to.stableblock" },
+        "4": { "name": "string.quoted.double.label.stableblock" },
+        "5": { "patterns": [{ "include": "#keyvalue" }] }
+      }
+    },
+    "keyvalue": {
+      "patterns": [
+        {
+          "match": "(color|text|border|round|style|width|height|grid)=(#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{3}|\\S+)",
+          "captures": {
+            "1": { "name": "support.type.property-name.stableblock" },
+            "2": { "name": "constant.other.color.stableblock" }
+          }
+        }
+      ]
+    }
+  }
+}
