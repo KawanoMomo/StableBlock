@@ -454,7 +454,7 @@ function renderProps(){
 // Actions: single
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
-function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);refresh();}
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;
