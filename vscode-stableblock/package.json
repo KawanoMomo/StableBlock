@@ -37,7 +37,11 @@
         "command": "stableblock.preview",
         "title": "StableBlock: Open Preview",
         "icon": "$(open-preview)"
-      }
+      },
+      { "command": "stableblock.undo", "title": "StableBlock: Undo" },
+      { "command": "stableblock.redo", "title": "StableBlock: Redo" },
+      { "command": "stableblock.deleteSelected", "title": "StableBlock: Delete Selected" },
+      { "command": "stableblock.selectAll", "title": "StableBlock: Select All" }
     ],
     "menus": {
       "editor/title": [
@@ -54,6 +58,40 @@
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
         "when": "editorLangId == stableblock"
+      },
+      {
+        "command": "stableblock.undo",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
+      },
+      {
+        "command": "stableblock.redo",
+        "key": "ctrl+y",
+        "mac": "cmd+y",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
+      },
+      {
+        "command": "stableblock.redo",
+        "key": "ctrl+shift+z",
+        "mac": "cmd+shift+z",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
+      },
+      {
+        "command": "stableblock.deleteSelected",
+        "key": "delete",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
+      },
+      {
+        "command": "stableblock.deleteSelected",
+        "key": "backspace",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
+      },
+      {
+        "command": "stableblock.selectAll",
+        "key": "ctrl+a",
+        "mac": "cmd+a",
+        "when": "activeWebviewPanelId == 'stableblockPreview'"
       }
     ]
   },

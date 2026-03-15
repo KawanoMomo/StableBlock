@@ -188,9 +188,9 @@ function parseDSL(text){
     const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
     try{
       if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];continue;}
-      let m=raw.match(/^block\s+(\S+)\s+"([^"]+)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      let m=raw.match(/^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
-      m=raw.match(/^group\s+(\S+)\s+"([^"]+)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      m=raw.match(/^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
       if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",bidir:arrow==="-->",line:ln});continue;}
@@ -203,10 +203,10 @@ function parseDSL(text){
 // ═══════════════════════════════════════════════
 // DSL Updaters
 // ═══════════════════════════════════════════════
-function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"[^"]+"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
-function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"[^"]+?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
+function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"[^"]*"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
+function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"[^"]*?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
 function updateProp(type,id,prop,val){const lines=dsl.split("\n"),lr=new RegExp(`^\\s*${type}\\s+${id}\\s+`),pr=new RegExp(`${prop}=\\S+`);for(let i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}dsl=lines.join("\n");}
-function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"[^"]+"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,`$1"${label}"$2`);}
+function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"[^"]*"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,`$1"${label}"$2`);}
 function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
 function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
 
