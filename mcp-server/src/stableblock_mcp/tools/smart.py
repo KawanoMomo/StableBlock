@@ -25,6 +25,7 @@ def sb_from_template(
     Returns:
         Structured summary of the generated diagram.
     """
+    template = template.strip().strip('"').strip("'")
     diagram = apply_template(template, data)
     state.set_diagram(diagram)
     summary = state.summarize()
