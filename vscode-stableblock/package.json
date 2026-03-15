@@ -2,7 +2,7 @@
   "name": "stableblock",
   "displayName": "StableBlock - Deterministic Block Diagrams",
   "description": "Syntax highlighting and live preview for StableBlock (.sb) diagram files",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "license": "GPL-3.0-only",
   "publisher": "stableblock",
   "repository": {
@@ -67,13 +67,7 @@
       { "command": "stableblock.selectAll", "key": "ctrl+a", "mac": "cmd+a", "when": "activeWebviewPanelId == 'stableblockPreview'" },
       { "command": "stableblock.copy", "key": "ctrl+c", "mac": "cmd+c", "when": "activeWebviewPanelId == 'stableblockPreview'" },
       { "command": "stableblock.cut", "key": "ctrl+x", "mac": "cmd+x", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "stableblock.paste", "key": "ctrl+v", "mac": "cmd+v", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.undo", "key": "ctrl+z", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.redo", "key": "ctrl+y", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.clipboardCopyAction", "key": "ctrl+c", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.clipboardCutAction", "key": "ctrl+x", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.clipboardPasteAction", "key": "ctrl+v", "when": "activeWebviewPanelId == 'stableblockPreview'" },
-      { "command": "-editor.action.selectAll", "key": "ctrl+a", "when": "activeWebviewPanelId == 'stableblockPreview'" }
+      { "command": "stableblock.paste", "key": "ctrl+v", "mac": "cmd+v", "when": "activeWebviewPanelId == 'stableblockPreview'" }
     ]
   },
   "scripts": {

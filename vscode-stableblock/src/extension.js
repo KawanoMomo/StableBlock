@@ -323,11 +323,27 @@ function exportSVG(){var svg=document.querySelector('#wrap svg');if(!svg)return;
 function exportPNG(){var svg=document.querySelector('#wrap svg');if(!svg)return;var d=new XMLSerializer().serializeToString(svg),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=parsed.canvas.width*zm*2;c.height=parsed.canvas.height*zm*2;var ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('zl').textContent=Math.round(zm*100)+'%';render();}
 
-// Keyboard: only Delete/Backspace here (Ctrl+Z/Y/A are forwarded from extension to avoid VSCode interception)
+// Keyboard
 document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(inInput)return;
-  if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();}
+  if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='c'){e.preventDefault();copySel();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSel();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='v'){e.preventDefault();pasteSel();return;}
+});
+// Clipboard events (fallback if keydown is intercepted by VSCode)
+document.addEventListener('copy',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();copySel();
+});
+document.addEventListener('cut',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();cutSel();
+});
+document.addEventListener('paste',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();pasteSel();
 });
 
 // Messages from extension (forwarded shortcuts that VSCode intercepts)
