@@ -4,12 +4,11 @@ function activate(context) {
   let currentPanel = undefined;
   let isUpdatingFromWebview = false;
 
-  // Shortcut commands that forward to webview
+  // Shortcut commands forwarded to webview (only for keys VSCode intercepts: Ctrl+Z/Y/A)
   const fwd = (action) => { if (currentPanel) currentPanel.webview.postMessage({ type: action }); };
   context.subscriptions.push(
     vscode.commands.registerCommand("stableblock.undo", () => fwd("undo")),
     vscode.commands.registerCommand("stableblock.redo", () => fwd("redo")),
-    vscode.commands.registerCommand("stableblock.deleteSelected", () => fwd("deleteSelected")),
     vscode.commands.registerCommand("stableblock.selectAll", () => fwd("selectAll"))
   );
 
@@ -314,29 +313,21 @@ function exportSVG(){var svg=document.querySelector('#wrap svg');if(!svg)return;
 function exportPNG(){var svg=document.querySelector('#wrap svg');if(!svg)return;var d=new XMLSerializer().serializeToString(svg),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=parsed.canvas.width*zm*2;c.height=parsed.canvas.height*zm*2;var ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('zl').textContent=Math.round(zm*100)+'%';render();}
 
-// Keyboard (fallback for direct keydown events)
+// Keyboard: only Delete/Backspace here (Ctrl+Z/Y/A are forwarded from extension to avoid VSCode interception)
 document.addEventListener('keydown',function(e){
-  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return;}
-  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();return;}
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(inInput)return;
   if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();}
-  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();}
 });
 
-// Messages from extension (forwarded keyboard shortcuts)
+// Messages from extension (forwarded Ctrl+Z/Y/A that VSCode intercepts)
 window.addEventListener('message',function(event){
   var msg=event.data;
   if(msg.type==='undo'){undo();return;}
   if(msg.type==='redo'){redo();return;}
-  if(msg.type==='deleteSelected'){
-    var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
-    if(inInput||!sel.length)return;
-    pushH();delItems(sel);sel=[];go();notify();return;
-  }
   if(msg.type==='selectAll'){
-    var inInput2=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
-    if(inInput2)return;
+    var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+    if(inInput)return;
     sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();return;
   }
 });

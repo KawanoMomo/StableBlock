@@ -40,7 +40,6 @@
       },
       { "command": "stableblock.undo", "title": "StableBlock: Undo" },
       { "command": "stableblock.redo", "title": "StableBlock: Redo" },
-      { "command": "stableblock.deleteSelected", "title": "StableBlock: Delete Selected" },
       { "command": "stableblock.selectAll", "title": "StableBlock: Select All" }
     ],
     "menus": {
@@ -75,16 +74,6 @@
         "command": "stableblock.redo",
         "key": "ctrl+shift+z",
         "mac": "cmd+shift+z",
-        "when": "activeWebviewPanelId == 'stableblockPreview'"
-      },
-      {
-        "command": "stableblock.deleteSelected",
-        "key": "delete",
-        "when": "activeWebviewPanelId == 'stableblockPreview'"
-      },
-      {
-        "command": "stableblock.deleteSelected",
-        "key": "backspace",
         "when": "activeWebviewPanelId == 'stableblockPreview'"
       },
       {
