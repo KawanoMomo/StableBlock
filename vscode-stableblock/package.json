@@ -2,7 +2,7 @@
   "name": "stableblock",
   "displayName": "StableBlock - Deterministic Block Diagrams",
   "description": "Syntax highlighting and live preview for StableBlock (.sb) diagram files",
-  "version": "0.4.2",
+  "version": "0.4.6",
   "license": "GPL-3.0-only",
   "publisher": "stableblock",
   "repository": {
@@ -37,7 +37,13 @@
         "command": "stableblock.preview",
         "title": "StableBlock: Open Preview",
         "icon": "$(open-preview)"
-      }
+      },
+      { "command": "stableblock.undo", "title": "StableBlock: Undo" },
+      { "command": "stableblock.redo", "title": "StableBlock: Redo" },
+      { "command": "stableblock.selectAll", "title": "StableBlock: Select All" },
+      { "command": "stableblock.copy", "title": "StableBlock: Copy" },
+      { "command": "stableblock.cut", "title": "StableBlock: Cut" },
+      { "command": "stableblock.paste", "title": "StableBlock: Paste" }
     ],
     "menus": {
       "editor/title": [
@@ -54,7 +60,14 @@
         "key": "ctrl+shift+v",
         "mac": "cmd+shift+v",
         "when": "editorLangId == stableblock"
-      }
+      },
+      { "command": "stableblock.undo", "key": "ctrl+z", "mac": "cmd+z", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.redo", "key": "ctrl+y", "mac": "cmd+y", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.redo", "key": "ctrl+shift+z", "mac": "cmd+shift+z", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.selectAll", "key": "ctrl+a", "mac": "cmd+a", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.copy", "key": "ctrl+c", "mac": "cmd+c", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.cut", "key": "ctrl+x", "mac": "cmd+x", "when": "activeWebviewPanelId == 'stableblockPreview'" },
+      { "command": "stableblock.paste", "key": "ctrl+v", "mac": "cmd+v", "when": "activeWebviewPanelId == 'stableblockPreview'" }
     ]
   },
   "scripts": {

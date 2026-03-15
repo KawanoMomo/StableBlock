@@ -4,6 +4,17 @@ function activate(context) {
   let currentPanel = undefined;
   let isUpdatingFromWebview = false;
 
+  // Shortcut commands forwarded to webview (VSCode intercepts these before they reach the webview)
+  const fwd = (action) => { if (currentPanel) currentPanel.webview.postMessage({ type: action }); };
+  context.subscriptions.push(
+    vscode.commands.registerCommand("stableblock.undo", () => fwd("undo")),
+    vscode.commands.registerCommand("stableblock.redo", () => fwd("redo")),
+    vscode.commands.registerCommand("stableblock.selectAll", () => fwd("selectAll")),
+    vscode.commands.registerCommand("stableblock.copy", () => fwd("copy")),
+    vscode.commands.registerCommand("stableblock.cut", () => fwd("cut")),
+    vscode.commands.registerCommand("stableblock.paste", () => fwd("paste"))
+  );
+
   const cmd = vscode.commands.registerCommand("stableblock.preview", () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) return;
@@ -130,9 +141,9 @@ function parseDSL(t){
     var r=ls[i].trim();if(!r||r.startsWith("#"))continue;var ln=i+1;
     try{
       if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];continue;}
-      var m=r.match(/^block\\s+(\\S+)\\s+"([^"]+)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+      var m=r.match(/^block\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
       if(m){var b={type:"block",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};bl.push(b);bm[b.id]=b;continue;}
-      m=r.match(/^group\\s+(\\S+)\\s+"([^"]+)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+      m=r.match(/^group\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
       if(m){var g2={type:"group",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF",line:ln};gr.push(g2);gm[g2.id]=g2;continue;}
       m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)\\s*(?:"([^"]*)")?\\s*(.*)/);
       if(m){cn.push({from:m[1],to:m[3],label:m[4]||"",color:(m[5].match(/color=(\\S+)/)||[])[1]||"#64748B",style:(m[5].match(/style=(\\S+)/)||[])[1]||"solid",bidir:m[2]==="-->",line:ln});continue;}
@@ -142,10 +153,10 @@ function parseDSL(t){
   return{canvas:cv,blocks:bl,groups:gr,connections:cn,errors:er,blockMap:bm,groupMap:gm};
 }
 
-function upP(tp,id,nx,ny){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+)("+id+")(\\\\s+\\"[^\\"]+\\"\\\\s+at\\\\s+)[\\\\d.]+,[\\\\d.]+(\\\\s+size\\\\s+.*)$","m");dsl=dsl.replace(re,"$1$2$3"+nx+","+ny+"$4");}
-function upS(tp,id,nw,nh){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+\\"[^\\"]+?\\"\\\\s+at\\\\s+[\\\\d.]+,[\\\\d.]+\\\\s+size\\\\s+)[\\\\d.]+x[\\\\d.]+","m");dsl=dsl.replace(re,"$1"+nw+"x"+nh);}
+function upP(tp,id,nx,ny){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+)("+id+")(\\\\s+\\"[^\\"]*\\"\\\\s+at\\\\s+)[\\\\d.]+,[\\\\d.]+(\\\\s+size\\\\s+.*)$","m");dsl=dsl.replace(re,"$1$2$3"+nx+","+ny+"$4");}
+function upS(tp,id,nw,nh){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+\\"[^\\"]*?\\"\\\\s+at\\\\s+[\\\\d.]+,[\\\\d.]+\\\\s+size\\\\s+)[\\\\d.]+x[\\\\d.]+","m");dsl=dsl.replace(re,"$1"+nw+"x"+nh);}
 function upPr(tp,id,prop,val){var lines=dsl.split("\\n"),lr=new RegExp("^\\\\s*"+tp+"\\\\s+"+id+"\\\\s+"),pr=new RegExp(prop+"=\\\\S+");for(var i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,prop+"="+val):lines[i].trimEnd()+" "+prop+"="+val;break;}dsl=lines.join("\\n");}
-function upLb(tp,id,lb){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+)\\"[^\\"]+\\"(\\\\s+at\\\\s+.*)$","m");dsl=dsl.replace(re,'$1"'+lb+'"$2');}
+function upLb(tp,id,lb){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+)\\"[^\\"]*\\"(\\\\s+at\\\\s+.*)$","m");dsl=dsl.replace(re,'$1"'+lb+'"$2');}
 function isIn(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
 function fCh(gr){return{cb:parsed.blocks.filter(function(b){return isIn(b,gr)}),cg:parsed.groups.filter(function(x){return x.id!==gr.id&&isIn(x,gr)})};}
 
@@ -265,7 +276,10 @@ function stepper2(label,xd,xi,yd,yi){
 
 // Single-item actions
 function sPr(p,v){if(!sel.length)return;pushH();upPr(sel[0].type,sel[0].id,p,v);go();notify();}
-function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);go();notify();}
+function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);parsed=parseDSL(dsl);render();
+  document.getElementById('err').innerHTML=parsed.errors.length?'<div class="error">'+parsed.errors.map(function(e){return 'L'+e.line+': '+esc(e.msg)}).join('<br>')+'</div>':'';
+  document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
+  document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
 function sField(f,v){if(!sel.length)return;var n=parseInt(v);if(isNaN(n))return;pushH();var it=getIt(sel[0]);if(!it)return;
   if(f==='x'||f==='y')upP(sel[0].type,sel[0].id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
   else if(f==='w'||f==='h')upS(sel[0].type,sel[0].id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
@@ -286,6 +300,13 @@ function bDel(){pushH();delItems(sel);sel=[];go();notify();}
 
 function delItems(items){items.forEach(function(si){var lines=dsl.split("\\n"),re=new RegExp("^\\\\s*"+si.type+"\\\\s+"+si.id+"\\\\s+"),c1=new RegExp("(^|\\\\s)"+si.id+"(\\\\s+(-->|->)\\\\s+|$)"),c2=new RegExp("\\\\s+(-->|->)\\\\s+"+si.id+"(\\\\s|$)");dsl=lines.filter(function(l){return !re.test(l)&&!c1.test(l)&&!c2.test(l)}).join("\\n");});}
 
+// Copy / Cut / Paste
+var clipboard=null;
+function getLine(tp,id){var lines=dsl.split("\\n"),re=new RegExp("^\\\\s*"+tp+"\\\\s+"+id+"\\\\s+");for(var i=0;i<lines.length;i++){if(re.test(lines[i]))return lines[i].trim();}return null;}
+function copySel(){if(!sel.length)return;clipboard=sel.map(function(si){var ln=getLine(si.type,si.id);return ln?{type:si.type,id:si.id,line:ln}:null;}).filter(Boolean);}
+function cutSel(){if(!sel.length)return;copySel();pushH();delItems(sel);sel=[];go();notify();}
+function pasteSel(){if(!clipboard||!clipboard.length)return;pushH();var ns=[];clipboard.forEach(function(ci){var nid=ci.id+"_"+(addC++);var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+2)+","+(+y+2)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});sel=ns;go();notify();}
+
 // Add
 function addBlock(){pushH();var id="block_"+(addC++);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="group_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
@@ -304,12 +325,38 @@ function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('
 
 // Keyboard
 document.addEventListener('keydown',function(e){
-  if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return;}
-  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();return;}
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(inInput)return;
-  if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();}
-  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();}
+  if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='c'){e.preventDefault();copySel();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSel();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='v'){e.preventDefault();pasteSel();return;}
+});
+// Clipboard events (fallback if keydown is intercepted by VSCode)
+document.addEventListener('copy',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();copySel();
+});
+document.addEventListener('cut',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();cutSel();
+});
+document.addEventListener('paste',function(e){
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;e.preventDefault();pasteSel();
+});
+
+// Messages from extension (forwarded shortcuts that VSCode intercepts)
+window.addEventListener('message',function(event){
+  var msg=event.data;
+  if(msg.type==='undo'){undo();return;}
+  if(msg.type==='redo'){redo();return;}
+  var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(inInput)return;
+  if(msg.type==='selectAll'){sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}}));render();props();return;}
+  if(msg.type==='copy'){copySel();return;}
+  if(msg.type==='cut'){cutSel();return;}
+  if(msg.type==='paste'){pasteSel();return;}
 });
 
 parsed=parseDSL(dsl);go();
