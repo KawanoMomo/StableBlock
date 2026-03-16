@@ -453,6 +453,21 @@ function renderProps(){
       </div></div>`;
     html+=`<div class="prop-section"><div class="prop-label">一括 色変更</div><div class="color-grid">${colorDots}</div></div>`;
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${st}</button>`).join('')}</div></div>`;
+    if(sel.length===2){
+      const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
+      html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
+      if(conns.length===0){
+        html+=`<div style="display:flex;gap:4px"><button class="prop-btn" onclick="connectTwo('${a}','${b}')" style="flex:1;background:#6366F1;color:#fff">${a} → ${b}</button><button class="prop-btn" onclick="connectTwo('${b}','${a}')" style="flex:1;background:#6366F1;color:#fff">${b} → ${a}</button></div>`;
+      } else {
+        const c=conns[0],fa=c.from,ta=c.to;
+        html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
+        html+=`<div style="display:flex;gap:4px;flex-wrap:wrap">`;
+        html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
+        html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
+        html+=`</div><div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
+      }
+      html+=`</div>`;
+    }
     html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="batchDelete()">選択を全削除</button></div>`;
     el.innerHTML=html; return;
   }
@@ -483,6 +498,7 @@ function renderProps(){
     html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
   } else {
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
+    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup('${item.id}')" style="background:#6366F1;color:#fff;width:100%">＋ ブロック追加</button></div>`;
   }
   if(isBlock){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
@@ -529,9 +545,19 @@ function batchDelete(){
 }
 
 // ═══════════════════════════════════════════════
+// Connection management (two-select)
+// ═══════════════════════════════════════════════
+function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
+function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;refresh();}
+function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
+function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
+function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
+
+// ═══════════════════════════════════════════════
 // Add items
 // ═══════════════════════════════════════════════
 function addBlock(){pushHistory();const id=`block_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
+function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`block_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`group_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
 
@@ -628,6 +654,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
   // Ctrl+A: select all
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
+  // Arrow keys: move selected
+  if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
   // H: toggle highlight
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
 });
