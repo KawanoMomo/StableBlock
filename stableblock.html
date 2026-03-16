@@ -26,6 +26,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .tb:hover { background:#334155; }
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
+.tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .sep { width:1px; height:14px; background:var(--border); margin:0 4px; }
 
 /* Body */
@@ -86,7 +87,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
   <div class="logo">
     <div class="logo-icon">◆</div>
     <span class="logo-text">StableBlock</span>
-    <span class="badge">v0.4 Multi-Select + Resize</span>
+    <span class="badge">v0.5 Highlight</span>
   </div>
   <div class="toolbar">
     <button class="tb" onclick="setZoom(-1)">−</button>
@@ -95,6 +96,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb" onclick="undo()" title="Ctrl+Z">↩</button>
     <button class="tb" onclick="redo()" title="Ctrl+Y">↪</button>
+    <div class="sep"></div>
+    <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
     <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
@@ -165,7 +168,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false;
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false;
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -211,6 +214,36 @@ function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y
 function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
 
 // ═══════════════════════════════════════════════
+// Highlight
+// ═══════════════════════════════════════════════
+function getConnectedIds(){
+  // Returns set of all block IDs that participate in any connection
+  if(!parsed)return null;
+  const ids=new Set();
+  parsed.connections.forEach(c=>{ids.add(c.from);ids.add(c.to);});
+  return ids;
+}
+function getHighlightedGroups(connectedIds){
+  // Returns set of group IDs that contain at least one connected block
+  const groups=new Set();
+  parsed.blocks.forEach(b=>{
+    if(connectedIds.has(b.id)){
+      // Find which group contains this block
+      parsed.groups.forEach(gr=>{if(isInside(b,gr))groups.add(gr.id);});
+    }
+  });
+  return groups;
+}
+function isHighlightedConn(c,connectedIds){
+  return connectedIds.has(c.from)&&connectedIds.has(c.to);
+}
+function toggleHighlight(){
+  highlight=!highlight;
+  document.getElementById('hl-btn').classList.toggle('tb-hl-active',highlight);
+  renderSVG();
+}
+
+// ═══════════════════════════════════════════════
 // SVG Rendering
 // ═══════════════════════════════════════════════
 function getConn(fb,tb,g){const fcx=fb.x*g+fb.w*g/2,fcy=fb.y*g+fb.h*g/2,tcx=tb.x*g+tb.w*g/2,tcy=tb.y*g+tb.h*g/2,dx=tcx-fcx,dy=tcy-fcy;let fp,tp;if(Math.abs(dy)>Math.abs(dx)){if(dy>0){fp={x:fcx,y:fb.y*g+fb.h*g};tp={x:tcx,y:tb.y*g};}else{fp={x:fcx,y:fb.y*g};tp={x:tcx,y:tb.y*g+tb.h*g};}}else{if(dx>0){fp={x:fb.x*g+fb.w*g,y:fcy};tp={x:tb.x*g,y:tcy};}else{fp={x:fb.x*g,y:fcy};tp={x:tb.x*g+tb.w*g,y:tcy};}}return{fp,tp};}
@@ -220,23 +253,31 @@ function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 function renderSVG(){
   if(!parsed)return;
   const{canvas,blocks,groups,connections,blockMap}=parsed, g=canvas.grid;
+  // Highlight: compute connected set
+  const hlIds=highlight?getConnectedIds():null;
+  const hlGroups=hlIds?getHighlightedGroups(hlIds):null;
+  const dim=0.15; // opacity for dimmed elements
   let s=`<svg width="${canvas.width*zoom}" height="${canvas.height*zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:'IBM Plex Sans','Noto Sans JP',sans-serif">`;
   s+=`<defs><pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g/2}" cy="${g/2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
   connections.forEach((c,i)=>{s+=`<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`;});
   s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
 
   // Groups
-  groups.forEach(gr=>{const sl=isSel(gr.id);
-    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"><rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
+  groups.forEach(gr=>{const sl=isSel(gr.id);const dimmed=hlIds&&!hlGroups.has(gr.id);
+    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"${dimmed?` opacity="${dim}"`:''}>`;
+    s+=`<rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
     s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
   });
   // Connections
-  connections.forEach((c,i)=>{const fb=blockMap[c.from],tb=blockMap[c.to];if(!fb||!tb)return;const{fp,tp}=getConn(fb,tb,g);const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';
+  connections.forEach((c,i)=>{const fb=blockMap[c.from],tb=blockMap[c.to];if(!fb||!tb)return;const{fp,tp}=getConn(fb,tb,g);const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=hlIds&&!isHighlightedConn(c,hlIds);
+    s+=`<g${cDimmed?` opacity="${dim}"`:''}>`;
     s+=`<path d="${bpath(fp,tp)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${i})"${c.bidir?` marker-start="url(#a${i})"`:''}/>`;
-    if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;});
+    if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
+    s+=`</g>`;});
   // Blocks
-  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";
-    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"><rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
+  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bDimmed=hlIds&&!hlIds.has(b.id);
+    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"${bDimmed?` opacity="${dim}"`:''}>`;
+    s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
     b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
     s+=`</g>`;});
 
@@ -388,7 +429,8 @@ function renderProps(){
         <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
         <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
         <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
-        <span style="color:var(--muted)">Delete</span> 削除
+        <span style="color:var(--muted)">Delete</span> 削除<br>
+        <span style="color:var(--muted)">H</span> ハイライト
       </div>`;
     return;
   }
@@ -586,6 +628,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
   // Ctrl+A: select all
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
+  // H: toggle highlight
+  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
 });
 
 parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();

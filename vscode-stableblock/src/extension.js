@@ -109,10 +109,12 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .pbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
 .sbtn{padding:2px 8px;font-size:10px;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#999;font-family:inherit}
 .sbtn.act{background:#6366F1;color:#fff;border-color:#6366F1}
+.hl-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
 </style></head><body>
 <div class="toolbar">
   <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button>
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
+  <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
   <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
 </div>
@@ -123,7 +125,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>
 var vscodeApi = acquireVsCodeApi();
 var dsl = ${dslJson};
-var zm=1,parsed=null,sel=[],hist=[],fut=[],addC=1;
+var zm=1,parsed=null,sel=[],hist=[],fut=[],addC=1,highlight=false;
 var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
 var BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
 
@@ -163,19 +165,25 @@ function fCh(gr){return{cb:parsed.blocks.filter(function(b){return isIn(b,gr)}),
 function gC(a,b,g){var fx=a.x*g+a.w*g/2,fy=a.y*g+a.h*g/2,tx=b.x*g+b.w*g/2,ty=b.y*g+b.h*g/2,dx=tx-fx,dy=ty-fy,fp,tp;if(Math.abs(dy)>Math.abs(dx)){if(dy>0){fp={x:fx,y:a.y*g+a.h*g};tp={x:tx,y:b.y*g}}else{fp={x:fx,y:a.y*g};tp={x:tx,y:b.y*g+b.h*g}}}else{if(dx>0){fp={x:a.x*g+a.w*g,y:fy};tp={x:b.x*g,y:ty}}else{fp={x:a.x*g,y:fy};tp={x:b.x*g+b.w*g,y:ty}}}return{fp:fp,tp:tp};}
 function bP(f,t){var mx=(f.x+t.x)/2,my=(f.y+t.y)/2;return Math.abs(t.y-f.y)>Math.abs(t.x-f.x)?"M"+f.x+","+f.y+" C"+f.x+","+my+" "+t.x+","+my+" "+t.x+","+t.y:"M"+f.x+","+f.y+" C"+mx+","+f.y+" "+mx+","+t.y+" "+t.x+","+t.y;}
 
+function getHlIds(){if(!parsed)return null;var ids=new Set();parsed.connections.forEach(function(c){ids.add(c.from);ids.add(c.to);});return ids;}
+function getHlGroups(ids){var gs=new Set();parsed.blocks.forEach(function(b){if(ids.has(b.id)){parsed.groups.forEach(function(gr){if(isIn(b,gr))gs.add(gr.id);});}});return gs;}
+function isHlConn(c,ids){return ids.has(c.from)&&ids.has(c.to);}
+function toggleHL(){highlight=!highlight;var btn=document.getElementById('hl-btn');if(btn)btn.classList.toggle('hl-act',highlight);render();}
+
 function render(){
   if(!parsed)return;var cv=parsed.canvas,bl=parsed.blocks,gr=parsed.groups,cn=parsed.connections,bm=parsed.blockMap,g=cv.grid;
+  var hlIds=highlight?getHlIds():null;var hlGr=hlIds?getHlGroups(hlIds):null;var dim=0.15;
   var s='<svg width="'+(cv.width*zm)+'" height="'+(cv.height*zm)+'" viewBox="0 0 '+cv.width+' '+cv.height+'" xmlns="http://www.w3.org/2000/svg" style="font-family:sans-serif">';
   s+='<defs><pattern id="gd" width="'+g+'" height="'+g+'" patternUnits="userSpaceOnUse"><circle cx="'+(g/2)+'" cy="'+(g/2)+'" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>';
   cn.forEach(function(c,i){s+='<marker id="a'+i+'" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="'+c.color+'"/></marker>';});
   s+='</defs><rect width="100%" height="100%" fill="url(#gd)"/>';
 
-  gr.forEach(function(x){var sl=isSel(x.id);s+='<g data-type="group" data-id="'+x.id+'" style="cursor:grab"><rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+(sl?'#6366F1':x.borderColor)+'" stroke-width="'+(sl?3:1.5)+'" rx="8" opacity="0.85"'+(sl?' stroke-dasharray="8,4"':'')+'/><text x="'+(x.x*g+8)+'" y="'+(x.y*g+14)+'" font-size="11" font-weight="600" fill="'+x.borderColor+'" opacity="0.9" style="pointer-events:none">'+esc(x.label)+'</text></g>';});
+  gr.forEach(function(x){var sl=isSel(x.id);var gDim=hlIds&&!hlGr.has(x.id);s+='<g data-type="group" data-id="'+x.id+'" style="cursor:grab"'+(gDim?' opacity="'+dim+'"':'')+'><rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+(sl?'#6366F1':x.borderColor)+'" stroke-width="'+(sl?3:1.5)+'" rx="8" opacity="0.85"'+(sl?' stroke-dasharray="8,4"':'')+'/><text x="'+(x.x*g+8)+'" y="'+(x.y*g+14)+'" font-size="11" font-weight="600" fill="'+x.borderColor+'" opacity="0.9" style="pointer-events:none">'+esc(x.label)+'</text></g>';});
 
-  cn.forEach(function(c,i){var fb=bm[c.from],tb=bm[c.to];if(!fb||!tb)return;var p=gC(fb,tb,g),d=c.style==="dashed"?' stroke-dasharray="6,3"':'';s+='<path d="'+bP(p.fp,p.tp)+'" fill="none" stroke="'+c.color+'" stroke-width="1.5"'+d+' marker-end="url(#a'+i+')"'+(c.bidir?' marker-start="url(#a'+i+')"':'')+'/>';if(c.label)s+='<text x="'+((p.fp.x+p.tp.x)/2)+'" y="'+((p.fp.y+p.tp.y)/2-5)+'" font-size="10" fill="'+c.color+'" text-anchor="middle" font-weight="500">'+esc(c.label)+'</text>';});
+  cn.forEach(function(c,i){var fb=bm[c.from],tb=bm[c.to];if(!fb||!tb)return;var p=gC(fb,tb,g),d=c.style==="dashed"?' stroke-dasharray="6,3"':'';var cDim=hlIds&&!isHlConn(c,hlIds);s+='<g'+(cDim?' opacity="'+dim+'"':'')+'><path d="'+bP(p.fp,p.tp)+'" fill="none" stroke="'+c.color+'" stroke-width="1.5"'+d+' marker-end="url(#a'+i+')"'+(c.bidir?' marker-start="url(#a'+i+')"':'')+'/>';if(c.label)s+='<text x="'+((p.fp.x+p.tp.x)/2)+'" y="'+((p.fp.y+p.tp.y)/2-5)+'" font-size="10" fill="'+c.color+'" text-anchor="middle" font-weight="500">'+esc(c.label)+'</text>';s+='</g>';});
 
-  bl.forEach(function(b){var sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,ds=b.style==="dashed"?' stroke-dasharray="6,3"':'',ft=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";
-    s+='<g data-type="block" data-id="'+b.id+'" style="cursor:grab"><rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" stroke="'+(sl?'#FFFFFF':(b.borderColor||b.color))+'" stroke-width="'+sw+'"'+ds+' rx="'+b.round+'" style="filter:'+ft+'"/>';
+  bl.forEach(function(b){var sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,ds=b.style==="dashed"?' stroke-dasharray="6,3"':'',ft=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";var bDim=hlIds&&!hlIds.has(b.id);
+    s+='<g data-type="block" data-id="'+b.id+'" style="cursor:grab"'+(bDim?' opacity="'+dim+'"':'')+'><rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" stroke="'+(sl?'#FFFFFF':(b.borderColor||b.color))+'" stroke-width="'+sw+'"'+ds+' rx="'+b.round+'" style="filter:'+ft+'"/>';
     // Split label on literal backslash-n
     b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*14;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="11" font-weight="600" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">'+esc(ln)+'</text>';});
     s+='</g>';});
@@ -327,6 +335,7 @@ function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('
 document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(inInput)return;
+  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
   if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='c'){e.preventDefault();copySel();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSel();return;}
