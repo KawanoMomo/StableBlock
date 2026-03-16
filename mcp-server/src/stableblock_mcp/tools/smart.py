@@ -1,10 +1,11 @@
-"""Smart tools: sb_from_template, sb_auto_layout."""
+"""Smart tools: sb_from_template, sb_auto_layout, sb_validate_layout."""
 
 from __future__ import annotations
 
 from stableblock_mcp import state
 from stableblock_mcp.core.layout import auto_layout
 from stableblock_mcp.core.templates import TEMPLATES, apply_template
+from stableblock_mcp.core.validate_layout import validate_layout
 
 
 def sb_from_template(
@@ -49,3 +50,33 @@ def sb_auto_layout(direction: str = "top-down") -> dict:
     auto_layout(diagram, direction)
     summary = state.summarize()
     return summary.model_dump()
+
+
+def sb_validate_layout() -> dict:
+    """Check the current diagram for layout problems.
+
+    Detects:
+        - Block-block overlaps
+        - Group-group overlaps
+        - Blocks extending outside their parent group
+        - Elements outside the canvas
+        - Text labels overflowing block/group boundaries
+
+    Returns:
+        {"ok": bool, "issue_count": int, "errors": [...], "warnings": [...]}
+        Each issue has: type, ids, message, suggestion.
+
+    Use this AFTER making changes to verify layout quality.
+    If issues are found, use sb_modify to fix individual elements,
+    or sb_auto_layout to recalculate all positions.
+    """
+    diagram = state.get()
+    issues = validate_layout(diagram)
+    errors = [i for i in issues if i["severity"] == "error"]
+    warnings = [i for i in issues if i["severity"] == "warning"]
+    return {
+        "ok": len(errors) == 0,
+        "issue_count": len(issues),
+        "errors": errors,
+        "warnings": warnings,
+    }
