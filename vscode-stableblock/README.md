@@ -13,6 +13,10 @@ Deterministic grid-based block diagram tool — syntax highlighting and interact
 - **Undo/Redo** — `Ctrl+Z` / `Ctrl+Y` in preview, syncs back to editor
 - **Delete** — `Delete` key removes selected items and related connections
 - **Select All** — `Ctrl+A` selects all blocks and groups
+- **Add Block in Group** — add blocks directly inside a selected group from the property panel
+- **Connection Management** — connect, delete, flip direction, toggle bidirectional when two blocks are selected
+- **Arrow Key Move** — move selected items by 1 grid unit with arrow keys
+- **Highlight Mode** — dim unconnected blocks (`H` key or HL button)
 - **Export** — SVG / PNG from preview panel
 
 ## Quick Start
@@ -49,7 +53,7 @@ This means your `.sb` file is always the source of truth.
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-0.4.6.vsix
+code --install-extension stableblock-0.5.0.vsix
 ```
 
 ## License

@@ -35,7 +35,7 @@
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-0.4.2.vsix
+code --install-extension stableblock-0.5.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
@@ -67,6 +67,10 @@ err -> handler style=dashed # 破線
 - **グループ連動** — 親グループを動かすと子も全て追従
 - **Shift+クリック複数選択** — 一括移動・サイズ変更・色変更・削除
 - **プロパティパネル** — ラベル、座標、サイズ、色、角丸、スタイルをGUIで編集
+- **グループ内ブロック追加** — グループ選択時にプロパティから直接ブロックを追加
+- **接続管理** — 2ブロック選択時にプロパティから接続・削除・方向変更・双方向切替
+- **矢印キー移動** — 選択アイテムを矢印キーで1グリッド単位ずつ移動
+- **ハイライトモード** — 接続のないブロックをトーンダウン表示（H キー / HL ボタン）
 - **Ctrl+Z / Ctrl+Y** — Undo / Redo（最大80段）
 - **Ctrl+C / Ctrl+X / Ctrl+V** — コピー / 切取 / 貼付（HTML版）
 - **Delete** — 選択アイテム削除（関連する接続線も自動削除）
@@ -80,6 +84,8 @@ err -> handler style=dashed # 破線
 stableblock/
 ├── LICENSE              # GPL-3.0
 ├── README.md
+├── VERSION              # バージョン一元管理
+├── bump-version.sh      # バージョン更新スクリプト
 ├── stableblock.html     # スタンドアロン版（これ1つで完結）
 └── vscode-stableblock/  # VSCode拡張
     ├── package.json
