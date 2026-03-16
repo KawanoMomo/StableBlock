@@ -5,16 +5,17 @@ import tempfile
 from pathlib import Path
 
 from stableblock_mcp import state
-from stableblock_mcp.tools.diagram import sb_new, sb_open, sb_save, sb_show
+from stableblock_mcp.tools.diagram import sb_new, sb_open, sb_resize_canvas, sb_save, sb_show, sb_undo
 from stableblock_mcp.tools.elements import (
     sb_add_block,
     sb_add_group,
     sb_connect,
     sb_modify,
+    sb_move_to_group,
     sb_remove,
 )
 from stableblock_mcp.tools.export import sb_export_svg
-from stableblock_mcp.tools.smart import sb_auto_layout, sb_from_template
+from stableblock_mcp.tools.smart import sb_auto_layout, sb_from_template, sb_validate_layout
 
 
 def setup_function():
@@ -174,6 +175,79 @@ def test_sb_duplicate_group_id():
     sb_add_group("g", "G")
     result = sb_add_group("g", "G2")
     assert "Error" in result
+
+
+def test_sb_show_detail():
+    sb_new()
+    sb_add_group("app", "Application", color_theme="blue")
+    sb_add_block("ui", "UI", group_id="app")
+    result = sb_show(detail=True)
+    assert result["block_count"] == 1
+    grp = result["groups"][0]
+    assert "x" in grp and "y" in grp and "w" in grp and "h" in grp
+    blk = grp["blocks"][0]
+    assert "x" in blk and "color" in blk and blk["id"] == "ui"
+
+
+def test_sb_undo():
+    sb_new()
+    sb_add_block("a", "A")
+    assert sb_show()["block_count"] == 1
+    result = sb_undo()
+    assert "Undone" in result
+    assert sb_show()["block_count"] == 0
+
+
+def test_sb_undo_empty():
+    sb_new()
+    result = sb_undo()
+    assert "Nothing" in result
+
+
+def test_sb_resize_canvas():
+    sb_new()
+    result = sb_resize_canvas(width=1200, height=800)
+    assert "1200x800" in result
+    detail = sb_show(detail=True)
+    assert detail["canvas"] == "1200x800"
+
+
+def test_sb_modify_position():
+    sb_new()
+    sb_add_block("a", "A")
+    result = sb_modify("a", x=10, y=5, w=12, h=4)
+    assert "x=10" in result and "w=12" in result
+    d = state.get()
+    blk = d.blocks[0]
+    assert blk.x == 10 and blk.y == 5 and blk.w == 12 and blk.h == 4
+
+
+def test_sb_move_to_group():
+    sb_new()
+    sb_add_group("g1", "Group 1")
+    sb_add_block("a", "A")
+    assert sb_show()["ungrouped_blocks"] == ["a"]
+    result = sb_move_to_group("a", "g1")
+    assert "g1" in result
+    assert sb_show()["groups"][0]["blocks"] == ["a"]
+
+
+def test_sb_move_to_group_ungroup():
+    sb_new()
+    sb_add_group("g1", "Group 1")
+    sb_add_block("a", "A", group_id="g1")
+    result = sb_move_to_group("a", None)
+    assert "Ungrouped" in result
+    assert sb_show()["ungrouped_blocks"] == ["a"]
+
+
+def test_sb_validate_clean():
+    sb_from_template("layered", {
+        "layers": [{"label": "App", "blocks": ["UI", "Logic"]}],
+    })
+    result = sb_validate_layout()
+    assert result["ok"] is True
+    assert result["issue_count"] == 0
 
 
 def test_e2e_full_workflow():

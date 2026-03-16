@@ -55,6 +55,31 @@ class Diagram(BaseModel):
     connections: list[Connection] = []
 
 
+class BlockDetail(BaseModel):
+    id: str
+    label: str
+    x: float
+    y: float
+    w: float
+    h: float
+    color: str
+    text_color: str
+    style: str
+    group_id: str | None
+
+
+class GroupDetail(BaseModel):
+    id: str
+    label: str
+    x: float
+    y: float
+    w: float
+    h: float
+    color: str
+    border_color: str
+    blocks: list[BlockDetail]
+
+
 class GroupSummary(BaseModel):
     id: str
     label: str
@@ -75,4 +100,15 @@ class DiagramSummary(BaseModel):
     canvas: str
     groups: list[GroupSummary]
     ungrouped_blocks: list[str]
+    connections: list[ConnectionSummary]
+
+
+class DiagramDetail(BaseModel):
+    """Detailed view with positions, sizes, and colors."""
+    block_count: int
+    group_count: int
+    connection_count: int
+    canvas: str
+    groups: list[GroupDetail]
+    ungrouped_blocks: list[BlockDetail]
     connections: list[ConnectionSummary]

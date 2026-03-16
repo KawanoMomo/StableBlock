@@ -1,4 +1,4 @@
-"""Element manipulation tools: sb_add_block, sb_add_group, sb_connect, sb_remove, sb_modify."""
+"""Element manipulation tools: sb_add_block, sb_add_group, sb_connect, sb_remove, sb_modify, sb_move_to_group."""
 
 from __future__ import annotations
 
@@ -43,6 +43,7 @@ def sb_add_block(
     if any(g.id == id for g in diagram.groups):
         return f"Error: ID '{id}' is already used by a group"
 
+    state.push_history()
     block = Block(
         id=id,
         label=label,
@@ -94,6 +95,7 @@ def sb_add_group(
     if any(b.id == id for b in diagram.blocks):
         return f"Error: ID '{id}' is already used by a block"
 
+    state.push_history()
     group_color = "#F3F4F6"
     border_color = "#9CA3AF"
     if color_theme and color_theme in COLOR_THEMES:
@@ -146,6 +148,7 @@ def sb_connect(
         if c.from_id == from_id and c.to_id == to_id:
             return f"Error: Connection {from_id} -> {to_id} already exists"
 
+    state.push_history()
     diagram.connections.append(
         Connection(
             from_id=from_id,
@@ -175,6 +178,7 @@ def sb_remove(id: str) -> str:
     # Remove block
     block = next((b for b in diagram.blocks if b.id == id), None)
     if block:
+        state.push_history()
         diagram.blocks.remove(block)
         removed.append(f"block '{id}'")
         # Remove connections involving this block
@@ -191,6 +195,7 @@ def sb_remove(id: str) -> str:
     # Remove group
     group = next((g for g in diagram.groups if g.id == id), None)
     if group:
+        state.push_history()
         diagram.groups.remove(group)
         removed.append(f"group '{id}'")
         # Unset group_id on blocks in this group
@@ -205,6 +210,10 @@ def sb_remove(id: str) -> str:
 def sb_modify(
     id: str,
     label: str | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    w: float | None = None,
+    h: float | None = None,
     color: str | None = None,
     text_color: str | None = None,
     border_color: str | None = None,
@@ -216,6 +225,10 @@ def sb_modify(
     Args:
         id: ID of the element to modify.
         label: New label text.
+        x: New X position (grid units).
+        y: New Y position (grid units).
+        w: New width (grid units).
+        h: New height (grid units).
         color: New background color (hex).
         text_color: New text color (hex, blocks only).
         border_color: New border color (hex).
@@ -226,6 +239,7 @@ def sb_modify(
         Confirmation of changes made.
     """
     diagram = state.get()
+    state.push_history()
     changes: list[str] = []
 
     # Try block
@@ -234,6 +248,18 @@ def sb_modify(
         if label is not None:
             block.label = label
             changes.append(f"label='{label}'")
+        if x is not None:
+            block.x = x
+            changes.append(f"x={x:g}")
+        if y is not None:
+            block.y = y
+            changes.append(f"y={y:g}")
+        if w is not None:
+            block.w = w
+            changes.append(f"w={w:g}")
+        if h is not None:
+            block.h = h
+            changes.append(f"h={h:g}")
         if color is not None:
             block.color = color
             changes.append(f"color={color}")
@@ -259,6 +285,18 @@ def sb_modify(
         if label is not None:
             group.label = label
             changes.append(f"label='{label}'")
+        if x is not None:
+            group.x = x
+            changes.append(f"x={x:g}")
+        if y is not None:
+            group.y = y
+            changes.append(f"y={y:g}")
+        if w is not None:
+            group.w = w
+            changes.append(f"w={w:g}")
+        if h is not None:
+            group.h = h
+            changes.append(f"h={h:g}")
         if color is not None:
             group.color = color
             changes.append(f"color={color}")
@@ -270,3 +308,39 @@ def sb_modify(
         return f"Modified group '{id}': {', '.join(changes)}"
 
     return f"Error: Element '{id}' not found"
+
+
+def sb_move_to_group(
+    block_id: str,
+    group_id: str | None = None,
+) -> str:
+    """Move a block into a different group (or ungroup it).
+
+    The block is automatically repositioned within the target group.
+
+    Args:
+        block_id: ID of the block to move.
+        group_id: Target group ID. If None, the block is ungrouped.
+
+    Returns:
+        Confirmation with new position.
+    """
+    diagram = state.get()
+    state.push_history()
+
+    block = next((b for b in diagram.blocks if b.id == block_id), None)
+    if not block:
+        return f"Error: Block '{block_id}' not found"
+
+    if group_id is None:
+        block.group_id = None
+        place_block_free(diagram, block)
+        return f"Ungrouped block '{block_id}', moved to ({block.x:g},{block.y:g})"
+
+    group = next((g for g in diagram.groups if g.id == group_id), None)
+    if not group:
+        return f"Error: Group '{group_id}' not found"
+
+    block.group_id = group_id
+    place_block_in_group(diagram, block, group)
+    return f"Moved block '{block_id}' to group '{group_id}' at ({block.x:g},{block.y:g})"

@@ -47,6 +47,7 @@ def sb_auto_layout(direction: str = "top-down") -> dict:
         Structured summary after relayout.
     """
     diagram = state.get()
+    state.push_history()
     auto_layout(diagram, direction)
     summary = state.summarize()
     return summary.model_dump()

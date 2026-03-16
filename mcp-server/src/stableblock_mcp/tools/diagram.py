@@ -1,4 +1,4 @@
-"""Diagram management tools: sb_new, sb_open, sb_save, sb_show."""
+"""Diagram management tools: sb_new, sb_open, sb_save, sb_show, sb_undo, sb_resize_canvas."""
 
 from __future__ import annotations
 
@@ -71,12 +71,56 @@ def sb_save(file_path: str) -> str:
     return f"Saved to {file_path} ({len(dsl_text)} bytes)"
 
 
-def sb_show() -> dict:
+def sb_show(detail: bool = False) -> dict:
     """Get the current diagram state as a structured summary.
 
+    Args:
+        detail: If True, include positions, sizes, and colors for all elements.
+                Use this when you need to check or adjust specific element properties.
+                Default False returns a compact overview with just IDs and structure.
+
     Returns:
-        Structured summary of the diagram including blocks, groups,
-        connections, and canvas size — designed for LLM consumption.
+        Structured summary of the diagram. With detail=True, includes
+        x, y, w, h, color for every block and group.
     """
-    summary = state.summarize()
-    return summary.model_dump()
+    if detail:
+        return state.summarize_detail().model_dump()
+    return state.summarize().model_dump()
+
+
+def sb_undo() -> str:
+    """Undo the last diagram change.
+
+    Restores the diagram to the state before the most recent operation.
+    Up to 30 levels of undo are supported.
+
+    Returns:
+        Confirmation or error message.
+    """
+    if state.undo():
+        summary = state.summarize()
+        return (
+            f"Undone. Current state: "
+            f"{summary.block_count} blocks, {summary.group_count} groups, "
+            f"{summary.connection_count} connections"
+        )
+    return "Nothing to undo"
+
+
+def sb_resize_canvas(width: int | None = None, height: int | None = None) -> str:
+    """Resize the diagram canvas.
+
+    Args:
+        width: New canvas width in pixels. If omitted, keeps current width.
+        height: New canvas height in pixels. If omitted, keeps current height.
+
+    Returns:
+        Confirmation with new canvas size.
+    """
+    diagram = state.get()
+    state.push_history()
+    if width is not None:
+        diagram.canvas.width = width
+    if height is not None:
+        diagram.canvas.height = height
+    return f"Canvas resized to {diagram.canvas.width}x{diagram.canvas.height}"
