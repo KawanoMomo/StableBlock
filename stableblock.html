@@ -274,7 +274,9 @@ function computePorts(connections,blockMap,g){
 function extPt(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
 function bpath(fp,tp,fs,ts){
   const dx=tp.x-fp.x,dy=tp.y-fp.y,dist=Math.sqrt(dx*dx+dy*dy);
-  const cpd=Math.max(30,dist*0.4);
+  let cpd=Math.max(30,dist*0.4);
+  const isH=(fs==='right'||fs==='left'),gap=isH?Math.abs(dx):Math.abs(dy);
+  if(gap>0)cpd=Math.min(cpd,gap*0.45);
   const c1=extPt(fp,fs,cpd),c2=extPt(tp,ts,cpd);
   return`M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`;
 }
