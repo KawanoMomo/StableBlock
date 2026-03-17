@@ -247,9 +247,10 @@ function toggleHighlight(){
 // SVG Rendering
 // ═══════════════════════════════════════════════
 function getSide(fb,tb,g){
-  const fcx=fb.x*g+fb.w*g/2,fcy=fb.y*g+fb.h*g/2,tcx=tb.x*g+tb.w*g/2,tcy=tb.y*g+tb.h*g/2,dx=tcx-fcx,dy=tcy-fcy;
-  if(Math.abs(dy)>Math.abs(dx))return dy>0?{fs:'bottom',ts:'top'}:{fs:'top',ts:'bottom'};
-  return dx>0?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};
+  const gapB=tb.y-(fb.y+fb.h),gapT=fb.y-(tb.y+tb.h),gapR=tb.x-(fb.x+fb.w),gapL=fb.x-(tb.x+tb.w);
+  const vBest=Math.max(gapB,gapT),hBest=Math.max(gapR,gapL);
+  if(vBest>=hBest)return gapB>=gapT?{fs:'bottom',ts:'top'}:{fs:'top',ts:'bottom'};
+  return gapR>=gapL?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};
 }
 function portPos(b,side,idx,total,g){
   const bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=0.2;
