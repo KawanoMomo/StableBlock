@@ -487,15 +487,19 @@ function renderProps(){
     if(sel.length===2){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
+      const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       if(conns.length===0){
         html+=`<div style="display:flex;gap:4px"><button class="prop-btn" onclick="connectTwo('${a}','${b}')" style="flex:1;background:#6366F1;color:#fff">${a} → ${b}</button><button class="prop-btn" onclick="connectTwo('${b}','${a}')" style="flex:1;background:#6366F1;color:#fff">${b} → ${a}</button></div>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">色を指定して接続</div><div class="color-grid">${connColors.map(c=>`<div class="color-dot" style="background:${c}" onclick="connectTwo('${a}','${b}','${c}')"></div>`).join('')}</div>`;
       } else {
         const c=conns[0],fa=c.from,ta=c.to;
         html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
         html+=`<div style="display:flex;gap:4px;flex-wrap:wrap">`;
         html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
         html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
-        html+=`</div><div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
+        html+=`</div>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
+        html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
       }
       html+=`</div>`;
     }
@@ -579,10 +583,11 @@ function batchDelete(){
 // Connection management (two-select)
 // ═══════════════════════════════════════════════
 function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
-function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;refresh();}
+function connectTwo(a,b,col){pushHistory();const extra=col?` color=${col}`:'';dsl=dsl.trimEnd()+`\n${a} -> ${b}${extra}\n`;refresh();}
 function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
 function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
 function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
+function setConnColor(a,b,col){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=lines[i].match(/color=\S+/)?lines[i].replace(/color=\S+/,`color=${col}`):lines[i].trimEnd()+` color=${col}`;break;}}dsl=lines.join("\n");refresh();}
 
 // ═══════════════════════════════════════════════
 // Add items

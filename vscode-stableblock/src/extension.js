@@ -258,13 +258,16 @@ function props(){
       '<div class="pl">Color</div><div class="cg">'+COLORS.map(function(c){return'<div class="cd" style="background:'+c+'" onclick="bProp(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     if(sel.length===2){
       var sa=sel[0].id,sb=sel[1].id,cns=findCB(sa,sb);
+      var CC=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       mh+='<div class="pl">Connection</div>';
       if(cns.length===0){
         mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sb+'\\',\\''+sa+'\\')">'+esc(sb)+' &rarr; '+esc(sa)+'</button></div>';
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Color + Connect</div><div class="cg">'+CC.map(function(c){return'<div class="cd" style="background:'+c+'" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
       }else{
         var cn=cns[0],fa=cn.from,ta=cn.to;
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
         mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1" onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1" onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Line Color</div><div class="cg">'+CC.map(function(c){return'<div class="cd'+(cn.color===c?' act':'')+'" style="background:'+c+'" onclick="setCC(\\''+fa+'\\',\\''+ta+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
         mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:4px;width:100%" onclick="rmConn(\\''+fa+'\\',\\''+ta+'\\')">Remove Connection</button>';
       }
     }
@@ -334,10 +337,11 @@ function pasteSel(){if(!clipboard||!clipboard.length)return;pushH();var ns=[];cl
 
 // Connection management (two-select)
 function findCB(a,b){return parsed.connections.filter(function(c){return(c.from===a&&c.to===b)||(c.from===b&&c.to===a)});}
-function connTwo(a,b){pushH();dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+"\\n";go();notify();}
+function connTwo(a,b,col){pushH();var extra=col?" color="+col:"";dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+extra+"\\n";go();notify();}
 function rmConn(a,b){pushH();var lines=dsl.split("\\n");dsl=lines.filter(function(l){var m=l.trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\\n");go();notify();}
 function flipC(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\\s*)(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)/,function(_,sp,f,s1,ar,s2,t){return sp+t+s1+ar+s2+f;});break;}}dsl=lines.join("\\n");go();notify();}
 function togBi(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\\n");go();notify();}
+function setCC(a,b,col){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=lines[i].match(/color=\\S+/)?lines[i].replace(/color=\\S+/,"color="+col):lines[i].trimEnd()+" color="+col;break;}}dsl=lines.join("\\n");go();notify();}
 
 // Add
 function addBlock(){pushH();var id="block_"+(addC++);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
