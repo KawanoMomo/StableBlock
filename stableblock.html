@@ -99,6 +99,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
+    <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
+    <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
     <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
     <div class="sep"></div>
@@ -592,10 +594,26 @@ function setConnColor(a,b,col){pushHistory();const lines=dsl.split("\n");for(let
 // ═══════════════════════════════════════════════
 // Add items
 // ═══════════════════════════════════════════════
-function addBlock(){pushHistory();const id=`block_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
-function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`block_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
-function addGroup(){pushHistory();const id=`group_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+function addBlock(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
+function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
+function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
+function labelToId(label){return label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';}
+function fixNames(){
+  if(!parsed)return;
+  const targets=[...parsed.blocks,...parsed.groups].filter(x=>x.id.startsWith('__new_'));
+  if(!targets.length)return;
+  pushHistory();
+  const usedIds=new Set([...parsed.blocks,...parsed.groups].filter(x=>!x.id.startsWith('__new_')).map(x=>x.id));
+  const renames=[];
+  targets.forEach(t=>{
+    let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
+    usedIds.add(base);renames.push({old:t.id,new:base});
+  });
+  renames.forEach(r=>{dsl=dsl.replace(new RegExp(`\\b${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g'),r.new);});
+  sel=sel.map(s=>{const r=renames.find(r=>r.old===s.id);return r?{...s,id:r.new}:s;});
+  refresh();
+}
 
 // ═══════════════════════════════════════════════
 // Editor / Refresh
@@ -644,7 +662,7 @@ function pasteClipboard(){
   const newSel=[];
   clipboard.forEach(ci=>{
     // Generate unique ID for paste
-    const newId=`${ci.id}_${addCounter++}`;
+    const newId=`__new_${addCounter++}`;
     // Offset pasted items by 2 grid units
     let line=ci.line.replace(new RegExp(`^(${ci.type}\\s+)${ci.id}`),`$1${newId}`);
     line=line.replace(/at\s+([\d.]+),([\d.]+)/,(m,x,y)=>`at ${+x+2},${+y+2}`);
