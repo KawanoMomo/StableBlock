@@ -11,11 +11,12 @@ from stableblock_mcp.tools.elements import (
     sb_add_group,
     sb_connect,
     sb_modify,
+    sb_modify_connection,
     sb_move_to_group,
     sb_remove,
 )
 from stableblock_mcp.tools.export import sb_export_svg
-from stableblock_mcp.tools.smart import sb_auto_layout, sb_from_template, sb_validate_layout
+from stableblock_mcp.tools.smart import sb_auto_layout, sb_fix_ids, sb_from_template, sb_validate_layout
 
 
 def setup_function():
@@ -287,3 +288,109 @@ def test_e2e_full_workflow():
     assert show2["connection_count"] == 2
 
     Path(path).unlink()
+
+
+# ── sb_modify_connection tests ──
+
+
+def test_sb_modify_connection_color():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    result = sb_modify_connection("a", "b", color="#EF4444")
+    assert "color=#EF4444" in result
+    conn = state.get().connections[0]
+    assert conn.color == "#EF4444"
+
+
+def test_sb_modify_connection_flip():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    result = sb_modify_connection("a", "b", flip=True)
+    assert "flipped" in result
+    conn = state.get().connections[0]
+    assert conn.from_id == "b" and conn.to_id == "a"
+
+
+def test_sb_modify_connection_bidir_and_label():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    result = sb_modify_connection("a", "b", bidirectional=True, label="sync")
+    assert "bidirectional" in result
+    assert "label='sync'" in result
+    conn = state.get().connections[0]
+    assert conn.bidirectional is True
+    assert conn.label == "sync"
+
+
+def test_sb_modify_connection_not_found():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    result = sb_modify_connection("a", "b", color="#000")
+    assert "Error" in result
+
+
+def test_sb_modify_connection_reverse_lookup():
+    """Can find connection by (to, from) order too."""
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    result = sb_modify_connection("b", "a", style="dashed")
+    assert "style=dashed" in result
+
+
+# ── sb_fix_ids tests ──
+
+
+def test_sb_fix_ids_basic():
+    sb_new()
+    sb_add_block("__new_1", "API Gateway")
+    sb_add_block("__new_2", "User Service")
+    sb_connect("__new_1", "__new_2")
+    result = sb_fix_ids()
+    assert "Renamed 2" in result
+    d = state.get()
+    ids = {b.id for b in d.blocks}
+    assert "api_gateway" in ids
+    assert "user_service" in ids
+    conn = d.connections[0]
+    assert conn.from_id == "api_gateway"
+    assert conn.to_id == "user_service"
+
+
+def test_sb_fix_ids_dedup():
+    sb_new()
+    sb_add_block("__new_1", "Service")
+    sb_add_block("__new_2", "Service")
+    sb_fix_ids()
+    d = state.get()
+    ids = [b.id for b in d.blocks]
+    assert "service" in ids
+    assert "service_2" in ids
+
+
+def test_sb_fix_ids_nothing():
+    sb_new()
+    sb_add_block("auth", "Auth")
+    result = sb_fix_ids()
+    assert "nothing" in result.lower()
+
+
+def test_sb_fix_ids_group():
+    sb_new()
+    sb_add_group("__new_1", "Core Services")
+    sb_add_block("__new_2", "Auth", group_id="__new_1")
+    sb_fix_ids()
+    d = state.get()
+    group = d.groups[0]
+    block = d.blocks[0]
+    assert group.id == "core_services"
+    assert block.id == "auth"
+    assert block.group_id == "core_services"
