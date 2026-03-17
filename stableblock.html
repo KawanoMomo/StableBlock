@@ -246,8 +246,37 @@ function toggleHighlight(){
 // ═══════════════════════════════════════════════
 // SVG Rendering
 // ═══════════════════════════════════════════════
-function getConn(fb,tb,g){const fcx=fb.x*g+fb.w*g/2,fcy=fb.y*g+fb.h*g/2,tcx=tb.x*g+tb.w*g/2,tcy=tb.y*g+tb.h*g/2,dx=tcx-fcx,dy=tcy-fcy;let fp,tp;if(Math.abs(dy)>Math.abs(dx)){if(dy>0){fp={x:fcx,y:fb.y*g+fb.h*g};tp={x:tcx,y:tb.y*g};}else{fp={x:fcx,y:fb.y*g};tp={x:tcx,y:tb.y*g+tb.h*g};}}else{if(dx>0){fp={x:fb.x*g+fb.w*g,y:fcy};tp={x:tb.x*g,y:tcy};}else{fp={x:fb.x*g,y:fcy};tp={x:tb.x*g+tb.w*g,y:tcy};}}return{fp,tp};}
-function bpath(fp,tp){const mx=(fp.x+tp.x)/2,my=(fp.y+tp.y)/2;return Math.abs(tp.y-fp.y)>Math.abs(tp.x-fp.x)?`M${fp.x},${fp.y} C${fp.x},${my} ${tp.x},${my} ${tp.x},${tp.y}`:`M${fp.x},${fp.y} C${mx},${fp.y} ${mx},${tp.y} ${tp.x},${tp.y}`;}
+function getSide(fb,tb,g){
+  const fcx=fb.x*g+fb.w*g/2,fcy=fb.y*g+fb.h*g/2,tcx=tb.x*g+tb.w*g/2,tcy=tb.y*g+tb.h*g/2,dx=tcx-fcx,dy=tcy-fcy;
+  if(Math.abs(dy)>Math.abs(dx))return dy>0?{fs:'bottom',ts:'top'}:{fs:'top',ts:'bottom'};
+  return dx>0?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};
+}
+function portPos(b,side,idx,total,g){
+  const bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=0.2;
+  const t=total===1?0.5:pad+(1-2*pad)*idx/(total-1);
+  if(side==='top')return{x:bx+bw*t,y:by};if(side==='bottom')return{x:bx+bw*t,y:by+bh};
+  if(side==='left')return{x:bx,y:by+bh*t};return{x:bx+bw,y:by+bh*t};
+}
+function computePorts(connections,blockMap,g){
+  const sides=connections.map(c=>{const fb=blockMap[c.from],tb=blockMap[c.to];return fb&&tb?getSide(fb,tb,g):null;});
+  const sm={};
+  connections.forEach((c,i)=>{if(!sides[i])return;const fb=blockMap[c.from],tb=blockMap[c.to];
+    if(!sm[c.from])sm[c.from]={};const fs=sides[i].fs;if(!sm[c.from][fs])sm[c.from][fs]=[];sm[c.from][fs].push({ci:i,ox:tb.x+tb.w/2,oy:tb.y+tb.h/2});
+    if(!sm[c.to])sm[c.to]={};const ts=sides[i].ts;if(!sm[c.to][ts])sm[c.to][ts]=[];sm[c.to][ts].push({ci:i,ox:fb.x+fb.w/2,oy:fb.y+fb.h/2});
+  });
+  for(const bid in sm)for(const side in sm[bid]){const list=sm[bid][side];list.sort((a,b)=>(side==='left'||side==='right')?(a.oy-b.oy):(a.ox-b.ox));}
+  return connections.map((c,i)=>{if(!sides[i])return null;const fb=blockMap[c.from],tb=blockMap[c.to];
+    const fl=sm[c.from][sides[i].fs],tl=sm[c.to][sides[i].ts];
+    return{fp:portPos(fb,sides[i].fs,fl.findIndex(p=>p.ci===i),fl.length,g),tp:portPos(tb,sides[i].ts,tl.findIndex(p=>p.ci===i),tl.length,g),fs:sides[i].fs,ts:sides[i].ts};
+  });
+}
+function stubPt(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
+function bpath(fp,tp,fs,ts){
+  const stub=12,f2=stubPt(fp,fs,stub),t2=stubPt(tp,ts,stub);
+  const mx=(f2.x+t2.x)/2,my=(f2.y+t2.y)/2;
+  const bez=Math.abs(t2.y-f2.y)>Math.abs(t2.x-f2.x)?`C${f2.x},${my} ${t2.x},${my} ${t2.x},${t2.y}`:`C${mx},${f2.y} ${mx},${t2.y} ${t2.x},${t2.y}`;
+  return`M${fp.x},${fp.y} L${f2.x},${f2.y} ${bez} L${tp.x},${tp.y}`;
+}
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 function renderSVG(){
@@ -269,9 +298,10 @@ function renderSVG(){
     s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
   });
   // Connections
-  connections.forEach((c,i)=>{const fb=blockMap[c.from],tb=blockMap[c.to];if(!fb||!tb)return;const{fp,tp}=getConn(fb,tb,g);const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=hlIds&&!isHighlightedConn(c,hlIds);
+  const ports=computePorts(connections,blockMap,g);
+  connections.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=hlIds&&!isHighlightedConn(c,hlIds);
     s+=`<g${cDimmed?` opacity="${dim}"`:''}>`;
-    s+=`<path d="${bpath(fp,tp)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${i})"${c.bidir?` marker-start="url(#a${i})"`:''}/>`;
+    s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${i})"${c.bidir?` marker-start="url(#a${i})"`:''}/>`;
     if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
     s+=`</g>`;});
   // Blocks
