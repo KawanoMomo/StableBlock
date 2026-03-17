@@ -2,7 +2,7 @@
   "name": "stableblock",
   "displayName": "StableBlock - Deterministic Block Diagrams",
   "description": "Syntax highlighting and live preview for StableBlock (.sb) diagram files",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "license": "GPL-3.0-only",
   "publisher": "stableblock",
   "repository": {
