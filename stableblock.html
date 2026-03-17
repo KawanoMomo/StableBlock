@@ -253,7 +253,7 @@ function getSide(fb,tb,g){
   return gapR>=gapL?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};
 }
 function portPos(b,side,idx,total,g){
-  const bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=total<=2?0.4:total<=4?0.25:0.15;
+  const bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=0.2;
   const t=total===1?0.5:pad+(1-2*pad)*idx/(total-1);
   if(side==='top')return{x:bx+bw*t,y:by};if(side==='bottom')return{x:bx+bw*t,y:by+bh};
   if(side==='left')return{x:bx,y:by+bh*t};return{x:bx+bw,y:by+bh*t};
