@@ -35,7 +35,7 @@
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-0.5.0.vsix
+code --install-extension stableblock-0.5.1.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
