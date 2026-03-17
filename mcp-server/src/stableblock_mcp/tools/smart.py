@@ -1,6 +1,8 @@
-"""Smart tools: sb_from_template, sb_auto_layout, sb_validate_layout."""
+"""Smart tools: sb_from_template, sb_auto_layout, sb_validate_layout, sb_fix_ids."""
 
 from __future__ import annotations
+
+import re
 
 from stableblock_mcp import state
 from stableblock_mcp.core.layout import auto_layout
@@ -81,3 +83,66 @@ def sb_validate_layout() -> dict:
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _label_to_id(label: str) -> str:
+    """Convert a label to a valid ID: lowercase, special chars removed."""
+    text = label.replace("\\n", " ")
+    text = re.sub(r"[^a-zA-Z0-9\s]", "", text)
+    text = re.sub(r"\s+", "_", text.strip()).lower()
+    return text or "block"
+
+
+def sb_fix_ids() -> str:
+    """Rename auto-generated IDs based on element labels.
+
+    Finds all blocks and groups whose ID starts with "__new_" (placeholder IDs
+    created by the GUI) and renames them to a clean ID derived from the label.
+    All connection references are updated automatically.
+
+    Example: block "__new_1" with label "API Gateway" → renamed to "api_gateway".
+    Duplicates are resolved by appending "_2", "_3", etc.
+
+    Returns:
+        Summary of renamed elements.
+    """
+    diagram = state.get()
+
+    all_elements = [*diagram.blocks, *diagram.groups]
+    targets = [e for e in all_elements if e.id.startswith("__new_")]
+
+    if not targets:
+        return "No placeholder IDs found (nothing to fix)"
+
+    state.push_history()
+
+    used_ids = {e.id for e in all_elements if not e.id.startswith("__new_")}
+    renames: list[tuple[str, str]] = []
+
+    for elem in targets:
+        base = _label_to_id(elem.label)
+        new_id = base
+        if new_id in used_ids:
+            n = 2
+            while f"{base}_{n}" in used_ids:
+                n += 1
+            new_id = f"{base}_{n}"
+        used_ids.add(new_id)
+        renames.append((elem.id, new_id))
+        elem.id = new_id
+
+    # Update group_id references in blocks
+    rename_map = dict(renames)
+    for b in diagram.blocks:
+        if b.group_id and b.group_id in rename_map:
+            b.group_id = rename_map[b.group_id]
+
+    # Update connection references
+    for c in diagram.connections:
+        if c.from_id in rename_map:
+            c.from_id = rename_map[c.from_id]
+        if c.to_id in rename_map:
+            c.to_id = rename_map[c.to_id]
+
+    lines = [f"  {old} → {new}" for old, new in renames]
+    return f"Renamed {len(renames)} element(s):\n" + "\n".join(lines)

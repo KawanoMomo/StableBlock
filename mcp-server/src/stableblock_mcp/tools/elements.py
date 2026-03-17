@@ -344,3 +344,61 @@ def sb_move_to_group(
     block.group_id = group_id
     place_block_in_group(diagram, block, group)
     return f"Moved block '{block_id}' to group '{group_id}' at ({block.x:g},{block.y:g})"
+
+
+def sb_modify_connection(
+    from_id: str,
+    to_id: str,
+    color: str | None = None,
+    style: str | None = None,
+    label: str | None = None,
+    bidirectional: bool | None = None,
+    flip: bool = False,
+) -> str:
+    """Modify properties of an existing connection.
+
+    Args:
+        from_id: Source block ID of the connection.
+        to_id: Target block ID of the connection.
+        color: New connection color (hex).
+        style: New style ("solid" or "dashed").
+        label: New label text (empty string to remove label).
+        bidirectional: Set bidirectional (True) or one-way (False).
+        flip: If True, reverse the connection direction.
+
+    Returns:
+        Confirmation of changes made.
+    """
+    diagram = state.get()
+
+    conn = next(
+        (c for c in diagram.connections
+         if (c.from_id == from_id and c.to_id == to_id)
+         or (c.from_id == to_id and c.to_id == from_id)),
+        None,
+    )
+    if not conn:
+        return f"Error: Connection between '{from_id}' and '{to_id}' not found"
+
+    state.push_history()
+    changes: list[str] = []
+
+    if color is not None:
+        conn.color = color
+        changes.append(f"color={color}")
+    if style is not None:
+        conn.style = style
+        changes.append(f"style={style}")
+    if label is not None:
+        conn.label = label
+        changes.append(f"label='{label}'" if label else "label removed")
+    if bidirectional is not None:
+        conn.bidirectional = bidirectional
+        changes.append("bidirectional" if bidirectional else "one-way")
+    if flip:
+        conn.from_id, conn.to_id = conn.to_id, conn.from_id
+        changes.append(f"flipped to {conn.from_id} -> {conn.to_id}")
+
+    if not changes:
+        return "No changes specified"
+    return f"Modified connection: {', '.join(changes)}"

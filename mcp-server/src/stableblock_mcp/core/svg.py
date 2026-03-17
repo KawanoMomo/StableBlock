@@ -1,6 +1,7 @@
 """SVG renderer — converts a Diagram to SVG string.
 
-Ported from stableblock.html renderSVG/getConn/bpath (L216-267).
+Ported from stableblock.html renderSVG with edge-gap side selection,
+port distribution, and bezier curves with control-point tangents.
 """
 
 from __future__ import annotations
@@ -15,48 +16,112 @@ def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
-def _get_conn(fb: Block, tb: Block, grid: int) -> tuple[dict, dict]:
-    """Calculate connection endpoints between two blocks."""
-    g = grid
-    fcx = fb.x * g + fb.w * g / 2
-    fcy = fb.y * g + fb.h * g / 2
-    tcx = tb.x * g + tb.w * g / 2
-    tcy = tb.y * g + tb.h * g / 2
-    dx = tcx - fcx
-    dy = tcy - fcy
-
-    if abs(dy) > abs(dx):
-        if dy > 0:
-            fp = {"x": fcx, "y": fb.y * g + fb.h * g}
-            tp = {"x": tcx, "y": tb.y * g}
-        else:
-            fp = {"x": fcx, "y": fb.y * g}
-            tp = {"x": tcx, "y": tb.y * g + tb.h * g}
-    else:
-        if dx > 0:
-            fp = {"x": fb.x * g + fb.w * g, "y": fcy}
-            tp = {"x": tb.x * g, "y": tcy}
-        else:
-            fp = {"x": fb.x * g, "y": fcy}
-            tp = {"x": tb.x * g + tb.w * g, "y": tcy}
-
-    return fp, tp
+def _get_side(fb: Block, tb: Block) -> dict:
+    """Edge-gap based side selection (matches GUI getSide)."""
+    gap_b = tb.y - (fb.y + fb.h)
+    gap_t = fb.y - (tb.y + tb.h)
+    gap_r = tb.x - (fb.x + fb.w)
+    gap_l = fb.x - (tb.x + tb.w)
+    v_best = max(gap_b, gap_t)
+    h_best = max(gap_r, gap_l)
+    if v_best >= h_best:
+        return {"fs": "bottom", "ts": "top"} if gap_b >= gap_t else {"fs": "top", "ts": "bottom"}
+    return {"fs": "right", "ts": "left"} if gap_r >= gap_l else {"fs": "left", "ts": "right"}
 
 
-def _bpath(fp: dict, tp: dict) -> str:
-    """Generate a cubic bezier path between two points."""
-    mx = (fp["x"] + tp["x"]) / 2
-    my = (fp["y"] + tp["y"]) / 2
-    if abs(tp["y"] - fp["y"]) > abs(tp["x"] - fp["x"]):
-        return (
-            f'M{fp["x"]},{fp["y"]} '
-            f'C{fp["x"]},{my} {tp["x"]},{my} {tp["x"]},{tp["y"]}'
+def _port_pos(b: Block, side: str, idx: int, total: int, g: int) -> dict:
+    """Calculate port position along a block edge with distribution."""
+    bx, by, bw, bh = b.x * g, b.y * g, b.w * g, b.h * g
+    pad = 0.2
+    t = 0.5 if total == 1 else pad + (1 - 2 * pad) * idx / (total - 1)
+    if side == "top":
+        return {"x": bx + bw * t, "y": by}
+    if side == "bottom":
+        return {"x": bx + bw * t, "y": by + bh}
+    if side == "left":
+        return {"x": bx, "y": by + bh * t}
+    return {"x": bx + bw, "y": by + bh * t}
+
+
+def _compute_ports(connections: list[Connection], block_map: dict[str, Block], g: int) -> list[dict | None]:
+    """Pre-compute all port positions with sorting (matches GUI computePorts)."""
+    sides = []
+    for c in connections:
+        fb = block_map.get(c.from_id)
+        tb = block_map.get(c.to_id)
+        sides.append(_get_side(fb, tb) if fb and tb else None)
+
+    # Build side map: block_id -> side -> [{ci, ox, oy}]
+    sm: dict[str, dict[str, list]] = {}
+    for i, c in enumerate(connections):
+        if not sides[i]:
+            continue
+        fb = block_map.get(c.from_id)
+        tb = block_map.get(c.to_id)
+        if not fb or not tb:
+            continue
+        fs, ts = sides[i]["fs"], sides[i]["ts"]
+        sm.setdefault(c.from_id, {}).setdefault(fs, []).append(
+            {"ci": i, "ox": tb.x + tb.w / 2, "oy": tb.y + tb.h / 2}
         )
-    else:
-        return (
-            f'M{fp["x"]},{fp["y"]} '
-            f'C{mx},{fp["y"]} {mx},{tp["y"]} {tp["x"]},{tp["y"]}'
+        sm.setdefault(c.to_id, {}).setdefault(ts, []).append(
+            {"ci": i, "ox": fb.x + fb.w / 2, "oy": fb.y + fb.h / 2}
         )
+
+    # Sort ports on each side
+    for bid in sm:
+        for sd in sm[bid]:
+            key = "oy" if sd in ("left", "right") else "ox"
+            sm[bid][sd].sort(key=lambda p: p[key])
+
+    # Build result
+    result = []
+    for i, c in enumerate(connections):
+        if not sides[i]:
+            result.append(None)
+            continue
+        fb = block_map.get(c.from_id)
+        tb = block_map.get(c.to_id)
+        if not fb or not tb:
+            result.append(None)
+            continue
+        fs, ts = sides[i]["fs"], sides[i]["ts"]
+        fl = sm[c.from_id][fs]
+        tl = sm[c.to_id][ts]
+        fi = next(j for j, p in enumerate(fl) if p["ci"] == i)
+        ti = next(j for j, p in enumerate(tl) if p["ci"] == i)
+        result.append({
+            "fp": _port_pos(fb, fs, fi, len(fl), g),
+            "tp": _port_pos(tb, ts, ti, len(tl), g),
+            "fs": fs,
+            "ts": ts,
+        })
+    return result
+
+
+def _ext_pt(p: dict, side: str, d: float) -> dict:
+    """Extend point along side normal."""
+    if side == "top":
+        return {"x": p["x"], "y": p["y"] - d}
+    if side == "bottom":
+        return {"x": p["x"], "y": p["y"] + d}
+    if side == "left":
+        return {"x": p["x"] - d, "y": p["y"]}
+    return {"x": p["x"] + d, "y": p["y"]}
+
+
+def _bpath(fp: dict, tp: dict, fs: str, ts: str) -> str:
+    """Generate cubic bezier with control points on edge normals."""
+    dx = tp["x"] - fp["x"]
+    dy = tp["y"] - fp["y"]
+    dist = math.sqrt(dx * dx + dy * dy)
+    cpd = max(30, dist * 0.4)
+    c1 = _ext_pt(fp, fs, cpd)
+    c2 = _ext_pt(tp, ts, cpd)
+    return (
+        f'M{fp["x"]},{fp["y"]} '
+        f'C{c1["x"]},{c1["y"]} {c2["x"]},{c2["y"]} {tp["x"]},{tp["y"]}'
+    )
 
 
 def render_svg(diagram: Diagram) -> str:
@@ -76,7 +141,7 @@ def render_svg(diagram: Diagram) -> str:
     )
 
     # Defs: grid pattern + arrow markers
-    parts.append(f'<defs>')
+    parts.append('<defs>')
     parts.append(
         f'<pattern id="gd" width="{g}" height="{g}" patternUnits="userSpaceOnUse">'
         f'<circle cx="{g / 2}" cy="{g / 2}" r="0.5" fill="#CBD5E1" opacity="0.5"/>'
@@ -107,17 +172,17 @@ def render_svg(diagram: Diagram) -> str:
             f'opacity="0.9">{_esc(gr.label)}</text></g>'
         )
 
-    # Connections
+    # Connections — with port distribution and bezier curves
+    ports = _compute_ports(diagram.connections, block_map, g)
     for i, c in enumerate(diagram.connections):
-        fb = block_map.get(c.from_id)
-        tb = block_map.get(c.to_id)
-        if not fb or not tb:
+        port = ports[i]
+        if not port:
             continue
-        fp, tp = _get_conn(fb, tb, g)
+        fp, tp, fs, ts = port["fp"], port["tp"], port["fs"], port["ts"]
         dash = ' stroke-dasharray="6,3"' if c.style == "dashed" else ""
         marker_start = f' marker-start="url(#a{i})"' if c.bidirectional else ""
         parts.append(
-            f'<path d="{_bpath(fp, tp)}" fill="none" stroke="{c.color}" '
+            f'<path d="{_bpath(fp, tp, fs, ts)}" fill="none" stroke="{c.color}" '
             f'stroke-width="1.5"{dash} marker-end="url(#a{i})"{marker_start}/>'
         )
         if c.label:
