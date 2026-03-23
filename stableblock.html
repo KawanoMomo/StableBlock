@@ -476,7 +476,7 @@ function setupInteractions(){
       const dragSet=new Map();
       sel.forEach(si=>{
         const it=getItem(si); if(!it)return;
-        dragSet.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y});
+        dragSet.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y,w:it.w,h:it.h});
         if(si.type==="group"){
           const ch=findChildren(it);
           ch.childBlocks.forEach(b=>{if(!dragSet.has(b.id))dragSet.set(b.id,{type:"block",id:b.id,sx:b.x,sy:b.y});});
@@ -490,24 +490,29 @@ function setupInteractions(){
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
         let dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
-        // Snap guides: check alignment with non-selected items
+        // Snap guides: find closest alignment with non-selected items
         const dragIds=new Set(items.map(it=>it.id));
         const others=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(it=>!dragIds.has(it.id));
-        const primary=items[0]; if(primary){
+        const primary=items[0]; const guides=[];
+        if(primary&&primary.w){
           const px=primary.sx+dx,py=primary.sy+dy,pw=primary.w,ph=primary.h;
-          const snap=1, guides=[];
+          const snap=1;let bestV=null,bestH=null;
           for(const o of others){
-            if(Math.abs(px-o.x)<=snap){dx+=(o.x-px);guides.push({axis:'v',pos:o.x});}
-            else if(Math.abs(px+pw-(o.x+o.w))<=snap){dx+=(o.x+o.w-pw-px);guides.push({axis:'v',pos:o.x+o.w});}
-            else if(Math.abs(px-(o.x+o.w))<=snap){dx+=(o.x+o.w-px);guides.push({axis:'v',pos:o.x+o.w});}
-            else if(Math.abs(px+pw-o.x)<=snap){dx+=(o.x-pw-px);guides.push({axis:'v',pos:o.x});}
-            if(Math.abs(py-o.y)<=snap){dy+=(o.y-py);guides.push({axis:'h',pos:o.y});}
-            else if(Math.abs(py+ph-(o.y+o.h))<=snap){dy+=(o.y+o.h-ph-py);guides.push({axis:'h',pos:o.y+o.h});}
-            else if(Math.abs(py-(o.y+o.h))<=snap){dy+=(o.y+o.h-py);guides.push({axis:'h',pos:o.y+o.h});}
-            else if(Math.abs(py+ph-o.y)<=snap){dy+=(o.y-ph-py);guides.push({axis:'h',pos:o.y});}
+            const checks=[
+              {d:px-o.x,pos:o.x},{d:px+pw-(o.x+o.w),pos:o.x+o.w-pw},
+              {d:px-(o.x+o.w),pos:o.x+o.w},{d:px+pw-o.x,pos:o.x-pw}
+            ];
+            for(const c of checks){if(Math.abs(c.d)<=snap&&(bestV===null||Math.abs(c.d)<Math.abs(bestV.d))){bestV={d:c.d,pos:c.pos};}}
+            const vChecks=[
+              {d:py-o.y,pos:o.y},{d:py+ph-(o.y+o.h),pos:o.y+o.h-ph},
+              {d:py-(o.y+o.h),pos:o.y+o.h},{d:py+ph-o.y,pos:o.y-ph}
+            ];
+            for(const c of vChecks){if(Math.abs(c.d)<=snap&&(bestH===null||Math.abs(c.d)<Math.abs(bestH.d))){bestH={d:c.d,pos:c.pos};}}
           }
-          snapLines=guides;
+          if(bestV!==null){dx+=(bestV.pos-px);guides.push({axis:'v',pos:bestV.pos});}
+          if(bestH!==null){dy+=(bestH.pos-py);guides.push({axis:'h',pos:bestH.pos});}
         }
+        snapLines=guides;
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
