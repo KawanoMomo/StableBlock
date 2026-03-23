@@ -101,7 +101,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
-    <button class="tb tb-anno-active" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
+    <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
     <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
     <div class="sep"></div>
     <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
@@ -175,7 +175,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, annotationEdit=false;
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false;
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -313,7 +313,7 @@ function renderSVG(){
   const{canvas,blocks,groups,notes,connections,blockMap}=parsed, g=canvas.grid;
   const hlIds=highlight?getConnectedIds():null;
   const hlGroups=hlIds?getHighlightedGroups(hlIds):null;
-  const dim=0.15;
+  const dim=0.15, annoDim=0.35;
   const normalConns=connections.filter(c=>!isAnnotationConn(c));
   const annoConns=connections.filter(c=>isAnnotationConn(c));
   const allItems=getAllItemMap();
@@ -323,22 +323,22 @@ function renderSVG(){
   s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
 
   // Groups
-  groups.forEach(gr=>{const sl=isSel(gr.id);const dimmed=(hlIds&&!hlGroups.has(gr.id))||annotationEdit;
-    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:${annotationEdit?'default':'grab'}"${dimmed?` opacity="${dim}"`:''}>`;
+  groups.forEach(gr=>{const sl=isSel(gr.id);const hlDim=hlIds&&!hlGroups.has(gr.id);const aDim=annotationEdit;const op=hlDim?dim:aDim?annoDim:null;
+    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:${annotationEdit?'default':'grab'}"${op!==null?` opacity="${op}"`:''}>`;
     s+=`<rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
     s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
   });
   // Normal connections
   const ports=computePorts(normalConns,blockMap,g);
-  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=(hlIds&&!isHighlightedConn(c,hlIds))||annotationEdit;
+  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:annotationEdit?annoDim:null;
     const ci=connections.indexOf(c);
-    s+=`<g${cDimmed?` opacity="${dim}"`:''}>`;
+    s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
     s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
     if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
     s+=`</g>`;});
   // Blocks
-  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bDimmed=(hlIds&&!hlIds.has(b.id))||annotationEdit;
-    s+=`<g data-type="block" data-id="${b.id}" style="cursor:${annotationEdit?'default':'grab'}"${bDimmed?` opacity="${dim}"`:''}>`;
+  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bHl=hlIds&&!hlIds.has(b.id);const bop=bHl?dim:annotationEdit?annoDim:null;
+    s+=`<g data-type="block" data-id="${b.id}" style="cursor:${annotationEdit?'default':'grab'}"${bop!==null?` opacity="${bop}"`:''}>`;
     s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
     b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
     s+=`</g>`;});

@@ -117,7 +117,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
   <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button>
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
-  <div class="sep"></div><button class="tb anno-act" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode" style="opacity:0.4;pointer-events:none">&#x270E; Edit</button>
+  <div class="sep"></div><button class="tb" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode" style="opacity:0.4;pointer-events:none">&#x270E; Edit</button>
   <div class="sep"></div><button class="tb" onclick="fixN()" title="Rename __new_ IDs from labels">Fix ID</button>
   <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
@@ -129,7 +129,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>
 var vscodeApi = acquireVsCodeApi();
 var dsl = ${dslJson};
-var zm=1,parsed=null,sel=[],hist=[],fut=[],addC=1,highlight=false,showAnno=true,annoEdit=false;
+var zm=1,parsed=null,sel=[],hist=[],fut=[],addC=1,highlight=false,showAnno=false,annoEdit=false;
 var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
 var BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
 var NOTE_COLORS=["#FEF3C7","#FEE2E2","#DBEAFE","#DCFCE7","#F5F3FF","#FCE7F3","#CFFAFE","#FFF7ED","#F1F5F9","#FEF9C3","#ECFDF5","#F8FAFC"];
@@ -203,7 +203,7 @@ function toggleAnnoEdit(){
 
 function render(){
   if(!parsed)return;var cv=parsed.canvas,bl=parsed.blocks,gr=parsed.groups,nt=parsed.notes,cn=parsed.connections,bm=parsed.blockMap,g=cv.grid;
-  var hlIds=highlight?getHlIds():null;var hlGr=hlIds?getHlGroups(hlIds):null;var dim=0.15;
+  var hlIds=highlight?getHlIds():null;var hlGr=hlIds?getHlGroups(hlIds):null;var dim=0.15,aDim=0.35;
   var normalConns=cn.filter(function(c){return !isAnnoConn(c)});
   var annoConns=cn.filter(function(c){return isAnnoConn(c)});
   var aMap=allMap();
@@ -212,14 +212,14 @@ function render(){
   cn.forEach(function(c,i){s+='<marker id="a'+i+'" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="'+c.color+'"/></marker>';});
   s+='</defs><rect width="100%" height="100%" fill="url(#gd)"/>';
 
-  gr.forEach(function(x){var sl=isSel(x.id);var gDim=(hlIds&&!hlGr.has(x.id))||annoEdit;s+='<g data-type="group" data-id="'+x.id+'" style="cursor:'+(annoEdit?'default':'grab')+'"'+(gDim?' opacity="'+dim+'"':'')+'><rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+(sl?'#6366F1':x.borderColor)+'" stroke-width="'+(sl?3:1.5)+'" rx="8" opacity="0.85"'+(sl?' stroke-dasharray="8,4"':'')+'/><text x="'+(x.x*g+8)+'" y="'+(x.y*g+14)+'" font-size="11" font-weight="600" fill="'+x.borderColor+'" opacity="0.9" style="pointer-events:none">'+esc(x.label)+'</text></g>';});
+  gr.forEach(function(x){var sl=isSel(x.id);var gHl=hlIds&&!hlGr.has(x.id);var gOp=gHl?dim:annoEdit?aDim:null;s+='<g data-type="group" data-id="'+x.id+'" style="cursor:'+(annoEdit?'default':'grab')+'"'+(gOp!==null?' opacity="'+gOp+'"':'')+'><rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+(sl?'#6366F1':x.borderColor)+'" stroke-width="'+(sl?3:1.5)+'" rx="8" opacity="0.85"'+(sl?' stroke-dasharray="8,4"':'')+'/><text x="'+(x.x*g+8)+'" y="'+(x.y*g+14)+'" font-size="11" font-weight="600" fill="'+x.borderColor+'" opacity="0.9" style="pointer-events:none">'+esc(x.label)+'</text></g>';});
 
   // Normal connections
   var ports=cPorts(normalConns,bm,g);
-  normalConns.forEach(function(c,i){var p=ports[i];if(!p)return;var d=c.style==="dashed"?' stroke-dasharray="6,3"':'';var cDim=(hlIds&&!isHlConn(c,hlIds))||annoEdit;var ci=cn.indexOf(c);s+='<g'+(cDim?' opacity="'+dim+'"':'')+'><path d="'+bP(p.fp,p.tp,p.fs,p.ts)+'" fill="none" stroke="'+c.color+'" stroke-width="1.5"'+d+' marker-end="url(#a'+ci+')"'+(c.bidir?' marker-start="url(#a'+ci+')"':'')+'/>';if(c.label)s+='<text x="'+((p.fp.x+p.tp.x)/2)+'" y="'+((p.fp.y+p.tp.y)/2-5)+'" font-size="10" fill="'+c.color+'" text-anchor="middle" font-weight="500">'+esc(c.label)+'</text>';s+='</g>';});
+  normalConns.forEach(function(c,i){var p=ports[i];if(!p)return;var d=c.style==="dashed"?' stroke-dasharray="6,3"':'';var cHl=hlIds&&!isHlConn(c,hlIds);var cOp=cHl?dim:annoEdit?aDim:null;var ci=cn.indexOf(c);s+='<g'+(cOp!==null?' opacity="'+cOp+'"':'')+'><path d="'+bP(p.fp,p.tp,p.fs,p.ts)+'" fill="none" stroke="'+c.color+'" stroke-width="1.5"'+d+' marker-end="url(#a'+ci+')"'+(c.bidir?' marker-start="url(#a'+ci+')"':'')+'/>';if(c.label)s+='<text x="'+((p.fp.x+p.tp.x)/2)+'" y="'+((p.fp.y+p.tp.y)/2-5)+'" font-size="10" fill="'+c.color+'" text-anchor="middle" font-weight="500">'+esc(c.label)+'</text>';s+='</g>';});
 
-  bl.forEach(function(b){var sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,ds=b.style==="dashed"?' stroke-dasharray="6,3"':'',ft=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";var bDim=(hlIds&&!hlIds.has(b.id))||annoEdit;
-    s+='<g data-type="block" data-id="'+b.id+'" style="cursor:'+(annoEdit?'default':'grab')+'"'+(bDim?' opacity="'+dim+'"':'')+'><rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" stroke="'+(sl?'#FFFFFF':(b.borderColor||b.color))+'" stroke-width="'+sw+'"'+ds+' rx="'+b.round+'" style="filter:'+ft+'"/>';
+  bl.forEach(function(b){var sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,ds=b.style==="dashed"?' stroke-dasharray="6,3"':'',ft=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";var bHl=hlIds&&!hlIds.has(b.id);var bOp=bHl?dim:annoEdit?aDim:null;
+    s+='<g data-type="block" data-id="'+b.id+'" style="cursor:'+(annoEdit?'default':'grab')+'"'+(bOp!==null?' opacity="'+bOp+'"':'')+'><rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" stroke="'+(sl?'#FFFFFF':(b.borderColor||b.color))+'" stroke-width="'+sw+'"'+ds+' rx="'+b.round+'" style="filter:'+ft+'"/>';
     // Split label on literal backslash-n
     b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*14;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="11" font-weight="600" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">'+esc(ln)+'</text>';});
     s+='</g>';});
