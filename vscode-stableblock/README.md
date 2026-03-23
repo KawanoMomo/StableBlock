@@ -4,20 +4,44 @@ Deterministic grid-based block diagram tool — syntax highlighting and interact
 
 ## Features
 
+### Editor
 - **Syntax Highlighting** — keywords, IDs, labels, coordinates, colors, arrows
 - **Interactive Live Preview** — `Ctrl+Shift+V` to open; updates as you type
 - **Drag & Drop** — move blocks/groups in the preview, DSL auto-updates in the editor
 - **Resize Handles** — 8-point handles on selected items, drag to resize
 - **Multi-Select** — `Shift+Click` to select multiple items, drag together
+- **Multi-Select → Group** — create a group around selected blocks
 - **Group-Linked Move** — dragging a parent group moves all children
-- **Undo/Redo** — `Ctrl+Z` / `Ctrl+Y` in preview, syncs back to editor
-- **Delete** — `Delete` key removes selected items and related connections
-- **Select All** — `Ctrl+A` selects all blocks and groups
-- **Add Block in Group** — add blocks directly inside a selected group from the property panel
-- **Connection Management** — connect, delete, flip direction, toggle bidirectional when two blocks are selected
+- **Snap Guides** — yellow alignment lines shown during drag
+- **Search/Filter** — toolbar search input dims non-matching elements
+- **Connection Management** — connect, delete, flip, toggle bidirectional, change color/width/style
 - **Arrow Key Move** — move selected items by 1 grid unit with arrow keys
 - **Highlight Mode** — dim unconnected blocks (`H` key or HL button)
-- **Export** — SVG / PNG from preview panel
+- **ID Auto-Fix** — rename `__new_*` placeholder IDs from labels
+
+### Annotation Layer
+- **`note` DSL syntax** — annotations rendered on a separate top layer
+- **Show/Hide Toggle** — `N` key or Anno button
+- **Edit Mode** — locks blocks, only notes are interactive
+- **Note → Block connections** — always rendered as dashed lines
+
+### Export
+- **SVG / PNG / Transparent PNG** — from toolbar
+- **Clipboard Copy** — copy PNG to clipboard
+- **Mermaid Export** — convert to flowchart TD format
+- **Git Visual Diff** — side-by-side SVG comparison with HEAD
+
+### Keyboard Shortcuts (in preview)
+| Key | Action |
+|-----|--------|
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
+| `Ctrl+A` | Select All (mode-aware) |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / Cut / Paste |
+| `Delete` | Delete selected |
+| `H` | Toggle highlight mode |
+| `N` | Toggle annotation visibility |
+| Arrow keys | Move selected by 1 grid unit |
 
 ## Quick Start
 
@@ -37,6 +61,8 @@ block middleware "Middleware" at 1,8 size 30x2 color=#F59E0B text=#FFFFFF round=
 
 app1 -> middleware
 app2 -> middleware
+
+note tip "This is an annotation" at 22,3 size 8x2 color=#FEF3C7 text=#92400E
 ```
 
 ## Bidirectional Sync
@@ -45,7 +71,7 @@ The preview and editor stay in sync:
 - **Editor → Preview**: Typing in the editor updates the preview in real-time
 - **Preview → Editor**: Dragging/resizing in the preview writes back to the editor document
 
-This means your `.sb` file is always the source of truth.
+Your `.sb` file is always the source of truth.
 
 ## Installation
 
