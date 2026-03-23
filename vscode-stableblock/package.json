@@ -2,7 +2,7 @@
   "name": "stableblock",
   "displayName": "StableBlock - Deterministic Block Diagrams",
   "description": "Syntax highlighting and live preview for StableBlock (.sb) diagram files",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "license": "GPL-3.0-only",
   "publisher": "stableblock",
   "repository": {
@@ -43,7 +43,8 @@
       { "command": "stableblock.selectAll", "title": "StableBlock: Select All" },
       { "command": "stableblock.copy", "title": "StableBlock: Copy" },
       { "command": "stableblock.cut", "title": "StableBlock: Cut" },
-      { "command": "stableblock.paste", "title": "StableBlock: Paste" }
+      { "command": "stableblock.paste", "title": "StableBlock: Paste" },
+      { "command": "stableblock.diffPreview", "title": "StableBlock: Visual Diff with Git HEAD" }
     ],
     "menus": {
       "editor/title": [
