@@ -53,7 +53,7 @@ This means your `.sb` file is always the source of truth.
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-0.5.2.vsix
+code --install-extension stableblock-0.6.0.vsix
 ```
 
 ## License
