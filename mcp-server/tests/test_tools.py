@@ -9,11 +9,14 @@ from stableblock_mcp.tools.diagram import sb_new, sb_open, sb_resize_canvas, sb_
 from stableblock_mcp.tools.elements import (
     sb_add_block,
     sb_add_group,
+    sb_align,
     sb_connect,
+    sb_disconnect,
     sb_modify,
     sb_modify_connection,
     sb_move_to_group,
     sb_remove,
+    sb_swap,
 )
 from stableblock_mcp.tools.export import sb_export_svg
 from stableblock_mcp.tools.smart import sb_auto_layout, sb_fix_ids, sb_from_template, sb_validate_layout
@@ -394,3 +397,106 @@ def test_sb_fix_ids_group():
     assert group.id == "core_services"
     assert block.id == "auth"
     assert block.group_id == "core_services"
+
+
+# ── sb_swap tests ──
+
+
+def test_sb_swap():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    a_pos = (state.get().blocks[0].x, state.get().blocks[0].y)
+    b_pos = (state.get().blocks[1].x, state.get().blocks[1].y)
+    result = sb_swap("a", "b")
+    assert "Swapped" in result
+    assert state.get().blocks[0].x == b_pos[0]
+    assert state.get().blocks[1].x == a_pos[0]
+
+
+def test_sb_swap_not_found():
+    sb_new()
+    sb_add_block("a", "A")
+    result = sb_swap("a", "nonexistent")
+    assert "Error" in result
+
+
+# ── sb_align tests ──
+
+
+def test_sb_align_left():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_modify("a", x=5, y=1)
+    sb_modify("b", x=10, y=5)
+    result = sb_align(["a", "b"], "left")
+    assert "Aligned" in result
+    d = state.get()
+    assert d.blocks[0].x == d.blocks[1].x == 5
+
+
+def test_sb_align_top():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_modify("a", x=1, y=3)
+    sb_modify("b", x=10, y=8)
+    sb_align(["a", "b"], "top")
+    d = state.get()
+    assert d.blocks[0].y == d.blocks[1].y == 3
+
+
+def test_sb_align_distribute_h():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_add_block("c", "C")
+    sb_modify("a", x=0, y=1, w=4, h=3)
+    sb_modify("b", x=6, y=1, w=4, h=3)
+    sb_modify("c", x=20, y=1, w=4, h=3)
+    sb_align(["a", "b", "c"], "distribute-h")
+    d = state.get()
+    bm = {b.id: b for b in d.blocks}
+    gap1 = bm["b"].x - (bm["a"].x + bm["a"].w)
+    gap2 = bm["c"].x - (bm["b"].x + bm["b"].w)
+    assert abs(gap1 - gap2) < 0.2
+
+
+def test_sb_align_not_found():
+    sb_new()
+    sb_add_block("a", "A")
+    result = sb_align(["a", "z"], "left")
+    assert "Error" in result
+
+
+# ── sb_disconnect tests ──
+
+
+def test_sb_disconnect():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    assert len(state.get().connections) == 1
+    result = sb_disconnect("a", "b")
+    assert "Disconnected" in result
+    assert len(state.get().connections) == 0
+
+
+def test_sb_disconnect_reverse_order():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    sb_connect("a", "b")
+    result = sb_disconnect("b", "a")
+    assert "Disconnected" in result
+    assert len(state.get().connections) == 0
+
+
+def test_sb_disconnect_not_found():
+    sb_new()
+    sb_add_block("a", "A")
+    sb_add_block("b", "B")
+    result = sb_disconnect("a", "b")
+    assert "Error" in result

@@ -402,3 +402,140 @@ def sb_modify_connection(
     if not changes:
         return "No changes specified"
     return f"Modified connection: {', '.join(changes)}"
+
+
+def sb_swap(id_a: str, id_b: str) -> str:
+    """Swap the positions of two blocks or groups.
+
+    Args:
+        id_a: ID of the first element.
+        id_b: ID of the second element.
+
+    Returns:
+        Confirmation with new positions.
+    """
+    diagram = state.get()
+
+    def find(eid: str):
+        return next((b for b in diagram.blocks if b.id == eid), None) or \
+               next((g for g in diagram.groups if g.id == eid), None)
+
+    a = find(id_a)
+    b = find(id_b)
+    if not a:
+        return f"Error: Element '{id_a}' not found"
+    if not b:
+        return f"Error: Element '{id_b}' not found"
+
+    state.push_history()
+    a.x, b.x = b.x, a.x
+    a.y, b.y = b.y, a.y
+    return f"Swapped positions: '{id_a}' at ({a.x:g},{a.y:g}), '{id_b}' at ({b.x:g},{b.y:g})"
+
+
+def sb_align(
+    ids: list[str],
+    axis: str = "left",
+) -> str:
+    """Align multiple blocks/groups along an axis.
+
+    Args:
+        ids: List of element IDs to align (at least 2).
+        axis: Alignment mode — "left", "right", "top", "bottom",
+              "center-h" (horizontal center), "center-v" (vertical center),
+              "distribute-h" (equal horizontal spacing),
+              "distribute-v" (equal vertical spacing).
+
+    Returns:
+        Confirmation of alignment applied.
+    """
+    diagram = state.get()
+
+    def find(eid: str):
+        return next((b for b in diagram.blocks if b.id == eid), None) or \
+               next((g for g in diagram.groups if g.id == eid), None)
+
+    items = [find(eid) for eid in ids]
+    missing = [eid for eid, it in zip(ids, items) if it is None]
+    if missing:
+        return f"Error: Elements not found: {', '.join(missing)}"
+    if len(items) < 2:
+        return "Error: Need at least 2 elements to align"
+
+    state.push_history()
+
+    if axis == "left":
+        target = min(it.x for it in items)
+        for it in items:
+            it.x = target
+    elif axis == "right":
+        target = max(it.x + it.w for it in items)
+        for it in items:
+            it.x = target - it.w
+    elif axis == "top":
+        target = min(it.y for it in items)
+        for it in items:
+            it.y = target
+    elif axis == "bottom":
+        target = max(it.y + it.h for it in items)
+        for it in items:
+            it.y = target - it.h
+    elif axis == "center-h":
+        target = sum(it.x + it.w / 2 for it in items) / len(items)
+        for it in items:
+            it.x = round(target - it.w / 2, 1)
+    elif axis == "center-v":
+        target = sum(it.y + it.h / 2 for it in items) / len(items)
+        for it in items:
+            it.y = round(target - it.h / 2, 1)
+    elif axis == "distribute-h":
+        items.sort(key=lambda it: it.x)
+        if len(items) >= 3:
+            total_w = sum(it.w for it in items)
+            span = items[-1].x + items[-1].w - items[0].x
+            gap = (span - total_w) / (len(items) - 1)
+            x = items[0].x
+            for it in items:
+                it.x = round(x, 1)
+                x += it.w + gap
+    elif axis == "distribute-v":
+        items.sort(key=lambda it: it.y)
+        if len(items) >= 3:
+            total_h = sum(it.h for it in items)
+            span = items[-1].y + items[-1].h - items[0].y
+            gap = (span - total_h) / (len(items) - 1)
+            y = items[0].y
+            for it in items:
+                it.y = round(y, 1)
+                y += it.h + gap
+    else:
+        return f"Error: Unknown axis '{axis}'. Use: left, right, top, bottom, center-h, center-v, distribute-h, distribute-v"
+
+    return f"Aligned {len(items)} elements ({axis})"
+
+
+def sb_disconnect(from_id: str, to_id: str) -> str:
+    """Remove a connection between two blocks.
+
+    Args:
+        from_id: One endpoint block ID.
+        to_id: Other endpoint block ID.
+
+    Returns:
+        Confirmation message.
+    """
+    diagram = state.get()
+
+    idx = next(
+        (i for i, c in enumerate(diagram.connections)
+         if (c.from_id == from_id and c.to_id == to_id)
+         or (c.from_id == to_id and c.to_id == from_id)),
+        None,
+    )
+    if idx is None:
+        return f"Error: No connection between '{from_id}' and '{to_id}'"
+
+    state.push_history()
+    removed = diagram.connections.pop(idx)
+    arrow = "<->" if removed.bidirectional else "->"
+    return f"Disconnected {removed.from_id} {arrow} {removed.to_id}"

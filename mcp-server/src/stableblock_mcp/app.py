@@ -15,11 +15,14 @@ from stableblock_mcp.tools.diagram import (
 from stableblock_mcp.tools.elements import (
     sb_add_block,
     sb_add_group,
+    sb_align,
     sb_connect,
+    sb_disconnect,
     sb_modify,
     sb_modify_connection,
     sb_move_to_group,
     sb_remove,
+    sb_swap,
 )
 from stableblock_mcp.tools.export import sb_export_svg
 from stableblock_mcp.tools.smart import sb_auto_layout, sb_fix_ids, sb_from_template, sb_validate_layout
@@ -50,6 +53,9 @@ StableBlock MCP Server — deterministic block diagram tool.
 - `sb_show(detail=True)` shows exact positions, sizes, and colors — use it before adjusting layout
 - `sb_modify` can change position (x, y) and size (w, h) in grid units
 - `sb_modify_connection` changes connection color, style, label, direction, or flips it
+- `sb_disconnect` removes a connection between two blocks
+- `sb_swap` swaps positions of two elements
+- `sb_align` aligns multiple elements (left, right, top, bottom, center-h, center-v, distribute-h, distribute-v)
 - `sb_move_to_group` reassigns a block to a different group with auto-positioning
 - `sb_fix_ids` renames placeholder __new_ IDs to clean IDs derived from labels
 - `sb_resize_canvas` adjusts canvas dimensions
@@ -69,7 +75,7 @@ mcp = FastMCP(
     instructions=INSTRUCTIONS,
 )
 
-# Register all tools (18 total)
+# Register all tools (21 total)
 mcp.tool()(sb_new)
 mcp.tool()(sb_open)
 mcp.tool()(sb_save)
@@ -79,9 +85,12 @@ mcp.tool()(sb_resize_canvas)
 mcp.tool()(sb_add_block)
 mcp.tool()(sb_add_group)
 mcp.tool()(sb_connect)
+mcp.tool()(sb_disconnect)
 mcp.tool()(sb_remove)
 mcp.tool()(sb_modify)
 mcp.tool()(sb_modify_connection)
+mcp.tool()(sb_swap)
+mcp.tool()(sb_align)
 mcp.tool()(sb_move_to_group)
 mcp.tool()(sb_from_template)
 mcp.tool()(sb_auto_layout)
