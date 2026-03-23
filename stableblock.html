@@ -507,7 +507,6 @@ function renderProps(){
       el.innerHTML=`<div class="prop-section">
         <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
         <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
-        <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A;margin-top:6px" onclick="addNote()">+ 注釈追加</button>
       </div>
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
       <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
@@ -579,7 +578,7 @@ function renderProps(){
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}: ${item.id}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
-    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setLabel(this.value.replace(/\\n/g,'\\\\\\\\n'))">${item.label.replace(/\\\\n/g,'\\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('y',-1)">▲</button><button class="step-btn dn" onclick="nudge('y',1)">▼</button></div></div></div>
@@ -612,6 +611,7 @@ function renderProps(){
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
 function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;
