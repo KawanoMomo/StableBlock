@@ -27,6 +27,8 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
+.tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
+.tb-anno-edit { border-color:#EC4899; color:#F9A8D4; background:#500724; }
 .sep { width:1px; height:14px; background:var(--border); margin:0 4px; }
 
 /* Body */
@@ -99,6 +101,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
+    <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
+    <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
+    <div class="sep"></div>
     <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
@@ -170,7 +175,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false;
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false;
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -181,14 +186,16 @@ let clipboard=null; // [{type,dslLine}]
 const COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626","#1E293B","#0F172A","#334155","#475569"];
 const BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
 function isSel(id){return sel.some(s=>s.id===id)}
-function getItem(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]}
+function getItem(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]||parsed.noteMap[s.id]}
+function isAnnotationConn(c){return !!(parsed.noteMap[c.from]||parsed.noteMap[c.to])}
+function getAllItemMap(){return Object.assign({},parsed.blockMap,parsed.noteMap)}
 
 // ═══════════════════════════════════════════════
 // Parser
 // ═══════════════════════════════════════════════
 function parseDSL(text){
   const lines=text.split("\n"),canvas={width:960,height:640,grid:20};
-  const blocks=[],groups=[],connections=[],errors=[],blockMap={},groupMap={};
+  const blocks=[],groups=[],notes=[],connections=[],errors=[],blockMap={},groupMap={},noteMap={};
   for(let i=0;i<lines.length;i++){
     const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
     try{
@@ -197,12 +204,14 @@ function parseDSL(text){
       if(m){const[,id,label,x,y,w,h,rest]=m;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
       m=raw.match(/^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
+      m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,label,x,y,w,h,rest]=m;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
       if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
     }catch(e){errors.push({line:ln,msg:e.message});}
   }
-  return{canvas,blocks,groups,connections,errors,blockMap,groupMap};
+  return{canvas,blocks,groups,notes,connections,errors,blockMap,groupMap,noteMap};
 }
 
 // ═══════════════════════════════════════════════
@@ -244,6 +253,23 @@ function toggleHighlight(){
   document.getElementById('hl-btn').classList.toggle('tb-hl-active',highlight);
   renderSVG();
 }
+function toggleAnnotations(){
+  showAnnotations=!showAnnotations;
+  document.getElementById('anno-btn').classList.toggle('tb-anno-active',showAnnotations);
+  const editBtn=document.getElementById('anno-edit-btn');
+  editBtn.style.opacity=showAnnotations?'':'0.4';
+  editBtn.style.pointerEvents=showAnnotations?'':'none';
+  if(!showAnnotations&&annotationEdit){annotationEdit=false;editBtn.classList.remove('tb-anno-edit');sel=sel.filter(s=>s.type!=='note');}
+  renderSVG();renderProps();
+}
+function toggleAnnotationEdit(){
+  if(!showAnnotations)return;
+  annotationEdit=!annotationEdit;
+  document.getElementById('anno-edit-btn').classList.toggle('tb-anno-edit',annotationEdit);
+  if(annotationEdit)sel=sel.filter(s=>s.type==='note');
+  else sel=sel.filter(s=>s.type!=='note');
+  renderSVG();renderProps();
+}
 
 // ═══════════════════════════════════════════════
 // SVG Rendering
@@ -284,56 +310,73 @@ function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 
 function renderSVG(){
   if(!parsed)return;
-  const{canvas,blocks,groups,connections,blockMap}=parsed, g=canvas.grid;
-  // Highlight: compute connected set
+  const{canvas,blocks,groups,notes,connections,blockMap}=parsed, g=canvas.grid;
   const hlIds=highlight?getConnectedIds():null;
   const hlGroups=hlIds?getHighlightedGroups(hlIds):null;
-  const dim=0.15; // opacity for dimmed elements
+  const dim=0.15, annoDim=0.35;
+  const normalConns=connections.filter(c=>!isAnnotationConn(c));
+  const annoConns=connections.filter(c=>isAnnotationConn(c));
+  const allItems=getAllItemMap();
   let s=`<svg width="${canvas.width*zoom}" height="${canvas.height*zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:'IBM Plex Sans','Noto Sans JP',sans-serif">`;
   s+=`<defs><pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g/2}" cy="${g/2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
   connections.forEach((c,i)=>{s+=`<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`;});
   s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
 
   // Groups
-  groups.forEach(gr=>{const sl=isSel(gr.id);const dimmed=hlIds&&!hlGroups.has(gr.id);
-    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"${dimmed?` opacity="${dim}"`:''}>`;
+  groups.forEach(gr=>{const sl=isSel(gr.id);const hlDim=hlIds&&!hlGroups.has(gr.id);const aDim=annotationEdit;const op=hlDim?dim:aDim?annoDim:null;
+    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:${annotationEdit?'default':'grab'}"${op!==null?` opacity="${op}"`:''}>`;
     s+=`<rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
     s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
   });
-  // Connections
-  const ports=computePorts(connections,blockMap,g);
-  connections.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=hlIds&&!isHighlightedConn(c,hlIds);
-    s+=`<g${cDimmed?` opacity="${dim}"`:''}>`;
-    s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${i})"${c.bidir?` marker-start="url(#a${i})"`:''}/>`;
+  // Normal connections
+  const ports=computePorts(normalConns,blockMap,g);
+  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:annotationEdit?annoDim:null;
+    const ci=connections.indexOf(c);
+    s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
+    s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
     if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
     s+=`</g>`;});
   // Blocks
-  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bDimmed=hlIds&&!hlIds.has(b.id);
-    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"${bDimmed?` opacity="${dim}"`:''}>`;
+  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bHl=hlIds&&!hlIds.has(b.id);const bop=bHl?dim:annotationEdit?annoDim:null;
+    s+=`<g data-type="block" data-id="${b.id}" style="cursor:${annotationEdit?'default':'grab'}"${bop!==null?` opacity="${bop}"`:''}>`;
     s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
     b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
     s+=`</g>`;});
 
+  // Annotation layer (on top)
+  if(showAnnotations){
+    const annoPorts=computePorts(annoConns,allItems,g);
+    annoConns.forEach((c,i)=>{const p=annoPorts[i];if(!p)return;const{fp,tp,fs,ts}=p;
+      const ci=connections.indexOf(c);
+      s+=`<g opacity="${annotationEdit?1:0.7}">`;
+      s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
+      if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
+      s+=`</g>`;});
+    notes.forEach(n=>{const sl=isSel(n.id);
+      s+=`<g data-type="note" data-id="${n.id}" style="cursor:${annotationEdit?'grab':'default'}" opacity="${annotationEdit?1:0.7}">`;
+      s+=`<rect x="${n.x*g}" y="${n.y*g}" width="${n.w*g}" height="${n.h*g}" fill="${n.color}" stroke="${sl?'#F59E0B':(n.borderColor||'#D97706')}" stroke-width="${sl?2.5:1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
+      n.label.split("\\n").forEach((line,li)=>{const ty=n.y*g+6+li*14;s+=`<text x="${n.x*g+6}" y="${ty+10}" font-size="11" font-weight="400" fill="${n.textColor}" text-anchor="start" style="pointer-events:none">${esc(line)}</text>`;});
+      s+=`</g>`;});
+  }
+
   // Resize handles for selected items
   sel.forEach(si=>{
     const it=getItem(si); if(!it)return;
+    const isNote=it.type==='note';
+    if(isNote&&!annotationEdit)return;
+    if(!isNote&&annotationEdit)return;
     const x=it.x*g, y=it.y*g, w=it.w*g, h=it.h*g;
-    const hs=10, hitS=20; // visible handle size, invisible hit area
+    const hs=10, hitS=20;
+    const hColor=isNote?'#F59E0B':'#6366F1';
     const handles=[
-      {cx:x,    cy:y,    cur:'nw-resize',edge:'nw'},
-      {cx:x+w,  cy:y,    cur:'ne-resize',edge:'ne'},
-      {cx:x,    cy:y+h,  cur:'sw-resize',edge:'sw'},
-      {cx:x+w,  cy:y+h,  cur:'se-resize',edge:'se'},
-      {cx:x+w/2,cy:y,    cur:'n-resize', edge:'n'},
-      {cx:x+w/2,cy:y+h,  cur:'s-resize', edge:'s'},
-      {cx:x,    cy:y+h/2,cur:'w-resize', edge:'w'},
-      {cx:x+w,  cy:y+h/2,cur:'e-resize', edge:'e'},
+      {cx:x,    cy:y,    cur:'nw-resize',edge:'nw'},{cx:x+w,  cy:y,    cur:'ne-resize',edge:'ne'},
+      {cx:x,    cy:y+h,  cur:'sw-resize',edge:'sw'},{cx:x+w,  cy:y+h,  cur:'se-resize',edge:'se'},
+      {cx:x+w/2,cy:y,    cur:'n-resize', edge:'n'}, {cx:x+w/2,cy:y+h,  cur:'s-resize', edge:'s'},
+      {cx:x,    cy:y+h/2,cur:'w-resize', edge:'w'}, {cx:x+w,  cy:y+h/2,cur:'e-resize', edge:'e'},
     ];
     handles.forEach(hd=>{
-      // Invisible larger hit area
       s+=`<rect data-resize="${hd.edge}" data-rid="${si.id}" data-rtype="${si.type}" x="${hd.cx-hitS/2}" y="${hd.cy-hitS/2}" width="${hitS}" height="${hitS}" fill="transparent" style="cursor:${hd.cur}" />`;
-      // Visible handle
-      s+=`<rect x="${hd.cx-hs/2}" y="${hd.cy-hs/2}" width="${hs}" height="${hs}" fill="#6366F1" stroke="#fff" stroke-width="1.5" rx="2" style="pointer-events:none" />`;
+      s+=`<rect x="${hd.cx-hs/2}" y="${hd.cy-hs/2}" width="${hs}" height="${hs}" fill="${hColor}" stroke="#fff" stroke-width="1.5" rx="2" style="pointer-events:none" />`;
     });
   });
 
@@ -360,7 +403,7 @@ function setupInteractions(){
     el.addEventListener('mousedown',e=>{
       e.preventDefault();e.stopPropagation();
       const edge=el.dataset.resize, id=el.dataset.rid, type=el.dataset.rtype;
-      const item=type==="block"?parsed.blockMap[id]:parsed.groupMap[id];
+      const item=type==="block"?parsed.blockMap[id]:type==="note"?parsed.noteMap[id]:parsed.groupMap[id];
       if(!item)return;
       pushHistory();
       const{sx,sy}=getSvgScale();
@@ -389,6 +432,8 @@ function setupInteractions(){
     el.addEventListener('mousedown',e=>{
       e.preventDefault();e.stopPropagation();
       const type=el.dataset.type, id=el.dataset.id;
+      if(type==='note'&&!annotationEdit)return;
+      if(type!=='note'&&annotationEdit)return;
 
       // Selection logic: Shift adds, otherwise replaces
       if(e.shiftKey){
@@ -449,22 +494,32 @@ function renderProps(){
   const el=document.getElementById('prop-content'), title=document.getElementById('prop-title');
 
   if(sel.length===0){
-    title.textContent='ツール';
-    el.innerHTML=`<div class="prop-section">
-      <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
-      <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
-    </div>
-    <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
-    <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
-    <button class="prop-btn" onclick="addConn()">接続追加</button>
-    <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
-        クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
-        <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
-        <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
-        <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
-        <span style="color:var(--muted)">Delete</span> 削除<br>
-        <span style="color:var(--muted)">H</span> ハイライト
+    title.textContent=annotationEdit?'注釈ツール':'ツール';
+    if(annotationEdit){
+      el.innerHTML=`<div class="prop-section">
+        <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ 注釈追加</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
+        注釈編集モード中<br>ブロック/グループは操作できません<br>
+        <span style="color:var(--muted)">✎ 編集</span> ボタンで解除
       </div>`;
+    } else {
+      el.innerHTML=`<div class="prop-section">
+        <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
+        <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
+      </div>
+      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
+      <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
+      <button class="prop-btn" onclick="addConn()">接続追加</button>
+      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
+          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
+          <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
+          <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
+          <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
+          <span style="color:var(--muted)">Delete</span> 削除<br>
+          <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈
+        </div>`;
+    }
     return;
   }
 
@@ -512,15 +567,18 @@ function renderProps(){
   // Single select
   const si=sel[0], item=getItem(si);
   if(!item){sel=[];renderProps();return;}
-  const isBlock=item.type==="block";
+  const isBlock=item.type==="block", isNote=item.type==="note";
   title.textContent='プロパティ';
-  const colors=isBlock?COLORS:BG_COLORS;
+  const NOTE_COLORS=["#FEF3C7","#FEE2E2","#DBEAFE","#DCFCE7","#F5F3FF","#FCE7F3","#CFFAFE","#FFF7ED","#F1F5F9","#FEF9C3","#ECFDF5","#F8FAFC"];
+  const colors=isNote?NOTE_COLORS:isBlock?COLORS:BG_COLORS;
   const colorDots=colors.map(c=>`<div class="color-dot ${item.color===c?'active':''}" style="background:${c}" onclick="setProp('color','${c}')"></div>`).join('');
+  const typeLabel=isNote?'NOTE':isBlock?'BLOCK':'GROUP';
+  const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <span style="font-size:12px;font-weight:700;color:${isBlock?'#6366F1':'#818CF8'}">${isBlock?'BLOCK':'GROUP'}: ${item.id}</span>
+    <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}: ${item.id}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
-    <div class="prop-section"><div class="prop-label">ラベル</div><input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('y',-1)">▲</button><button class="step-btn dn" onclick="nudge('y',1)">▼</button></div></div></div>
@@ -531,14 +589,17 @@ function renderProps(){
     </div></div>
     <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" oninput="setProp('color',this.value)" placeholder="#RRGGBB"></div>`;
 
-  if(isBlock){
-    html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
-  } else {
+  if(isBlock||isNote){
+    html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
+  }
+  if(!isBlock&&!isNote){
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
     html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup('${item.id}')" style="background:#6366F1;color:#fff;width:100%">＋ ブロック追加</button></div>`;
   }
-  if(isBlock){
+  if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
+  }
+  if(isBlock){
     html+=`<div class="prop-section"><div class="prop-label">スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn ${item.style===st?'active':''}" onclick="setProp('style','${st}')">${st}</button>`).join('')}</div></div>`;
   }
   html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="deleteItem()">削除</button></div>`;
@@ -550,6 +611,7 @@ function renderProps(){
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
 function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;
@@ -597,14 +659,15 @@ function setConnColor(a,b,col){pushHistory();const lines=dsl.split("\n");for(let
 function addBlock(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
 function labelToId(label){return label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';}
 function fixNames(){
   if(!parsed)return;
-  const targets=[...parsed.blocks,...parsed.groups].filter(x=>x.id.startsWith('__new_'));
+  const targets=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id.startsWith('__new_'));
   if(!targets.length)return;
   pushHistory();
-  const usedIds=new Set([...parsed.blocks,...parsed.groups].filter(x=>!x.id.startsWith('__new_')).map(x=>x.id));
+  const usedIds=new Set([...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>!x.id.startsWith('__new_')).map(x=>x.id));
   const renames=[];
   targets.forEach(t=>{
     let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
@@ -622,7 +685,7 @@ function syncEditor(){suppressSync=true;document.getElementById('editor').value=
 function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
 function refresh(){parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
 function renderErrors(){const el=document.getElementById('error-bar');if(parsed.errors.length){el.style.display='block';el.innerHTML=parsed.errors.map(e=>`L${e.line}: ${esc(e.msg)}`).join('<br>');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
+function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
 
 // ═══════════════════════════════════════════════
 // Export / Import
@@ -707,11 +770,12 @@ document.addEventListener('keydown',e=>{
   // Delete / Backspace: delete selected
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
   // Ctrl+A: select all
-  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();if(annotationEdit)sel=parsed.notes.map(n=>({type:'note',id:n.id}));else sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
   // Arrow keys: move selected
   if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
   // H: toggle highlight
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
+  if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
 
 parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();
