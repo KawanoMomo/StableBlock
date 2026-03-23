@@ -117,7 +117,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
   <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button>
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
-  <div class="sep"></div><button class="tb anno-act" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode">&#x270E; Edit</button>
+  <div class="sep"></div><button class="tb anno-act" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode" style="opacity:0.4;pointer-events:none">&#x270E; Edit</button>
   <div class="sep"></div><button class="tb" onclick="fixN()" title="Rename __new_ IDs from labels">Fix ID</button>
   <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
@@ -187,7 +187,7 @@ function toggleAnno(){
   var btn=document.getElementById('anno-btn');
   if(btn)btn.classList.toggle('anno-act',showAnno);
   var editBtn=document.getElementById('anno-edit-btn');
-  if(editBtn)editBtn.style.display=showAnno?'':'none';
+  if(editBtn){editBtn.style.opacity=showAnno?'':'0.4';editBtn.style.pointerEvents=showAnno?'':'none';}
   if(!showAnno&&annoEdit){annoEdit=false;if(editBtn)editBtn.classList.remove('anno-edit');sel=sel.filter(function(s){return s.type!=='note'});}
   render();props();
 }
@@ -236,7 +236,7 @@ function render(){
     nt.forEach(function(n){var sl=isSel(n.id);
       s+='<g data-type="note" data-id="'+n.id+'" style="cursor:'+(annoEdit?'grab':'default')+'" opacity="'+(annoEdit?1:0.7)+'">';
       s+='<rect x="'+(n.x*g)+'" y="'+(n.y*g)+'" width="'+(n.w*g)+'" height="'+(n.h*g)+'" fill="'+n.color+'" stroke="'+(sl?'#F59E0B':(n.borderColor||'#D97706'))+'" stroke-width="'+(sl?2.5:1)+'" stroke-dasharray="4,2" rx="'+n.round+'" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>';
-      n.label.split("\\\\n").forEach(function(ln,li,ar){var ty=n.y*g+n.h*g/2+(li-(ar.length-1)/2)*14;s+='<text x="'+(n.x*g+n.w*g/2)+'" y="'+ty+'" font-size="11" font-weight="600" fill="'+n.textColor+'" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">'+esc(ln)+'</text>';});
+      n.label.split("\\\\n").forEach(function(ln,li){var ty=n.y*g+6+li*14;s+='<text x="'+(n.x*g+6)+'" y="'+(ty+10)+'" font-size="11" font-weight="400" fill="'+n.textColor+'" text-anchor="start" style="pointer-events:none">'+esc(ln)+'</text>';});
       s+='</g>';});
   }
 
@@ -299,14 +299,20 @@ function setupInt(){
 function props(){
   var el=document.getElementById('propPanel');
   if(!sel.length){
-    el.innerHTML='<div class="pl" style="margin-top:0">TOOLS</div>'+
-      '<button class="pbtn" onclick="addBlock()">+ Block</button>'+
-      '<button class="pbtn" onclick="addGroup()">+ Group</button>'+
-      '<button class="pbtn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ Note</button>'+
-      '<div class="pl">CONNECT</div>'+
-      '<div class="pr"><input class="pi" id="cf" placeholder="from" style="flex:1"><span style="color:#888;line-height:24px">&rarr;</span><input class="pi" id="ct" placeholder="to" style="flex:1"></div>'+
-      '<button class="pbtn" onclick="addConn()">Add</button>'+
-      '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>N: toggle annotations</div>';
+    if(annoEdit){
+      el.innerHTML='<div class="pl" style="margin-top:0">ANNOTATION TOOLS</div>'+
+        '<button class="pbtn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ Note</button>'+
+        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Annotation edit mode<br>Blocks/groups are locked<br>Click Edit button to exit</div>';
+    }else{
+      el.innerHTML='<div class="pl" style="margin-top:0">TOOLS</div>'+
+        '<button class="pbtn" onclick="addBlock()">+ Block</button>'+
+        '<button class="pbtn" onclick="addGroup()">+ Group</button>'+
+        '<button class="pbtn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ Note</button>'+
+        '<div class="pl">CONNECT</div>'+
+        '<div class="pr"><input class="pi" id="cf" placeholder="from" style="flex:1"><span style="color:#888;line-height:24px">&rarr;</span><input class="pi" id="ct" placeholder="to" style="flex:1"></div>'+
+        '<button class="pbtn" onclick="addConn()">Add</button>'+
+        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: highlight N: annotations</div>';
+    }
     return;
   }
   if(sel.length>1){
@@ -340,7 +346,7 @@ function props(){
   var typeColor=isN?'#F59E0B':isB?'#A5B4FC':'#C4B5FD';
   var colors=isN?NOTE_COLORS:isB?COLORS:BG_COLORS;
   var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+': '+it.id+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
-  h+='<div class="pl">Label</div><input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">';
+  h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sLb(this.value.replace(/\\n/g,\\'\\\\\\\\n\\'))">'+it.label.replace(/\\\\n/g,'\\n')+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
   h+=stepperRow("X","sNudge(\\'x\\',-1)","sNudge(\\'x\\',1)",it.x)+stepperRow("Y","sNudge(\\'y\\',-1)","sNudge(\\'y\\',1)",it.y);
   h+=stepperRow("W","sNudgeSz(\\'w\\',-1)","sNudgeSz(\\'w\\',1)",it.w)+stepperRow("H","sNudgeSz(\\'h\\',-1)","sNudgeSz(\\'h\\',1)",it.h);
   h+='<div class="pl">Color</div><div class="cg">'+colors.map(function(c){return'<div class="cd'+(it.color===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';

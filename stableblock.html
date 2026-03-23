@@ -102,7 +102,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
     <button class="tb tb-anno-active" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
-    <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード">✎ 編集</button>
+    <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
     <div class="sep"></div>
     <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
@@ -257,7 +257,8 @@ function toggleAnnotations(){
   showAnnotations=!showAnnotations;
   document.getElementById('anno-btn').classList.toggle('tb-anno-active',showAnnotations);
   const editBtn=document.getElementById('anno-edit-btn');
-  editBtn.style.display=showAnnotations?'':'none';
+  editBtn.style.opacity=showAnnotations?'':'0.4';
+  editBtn.style.pointerEvents=showAnnotations?'':'none';
   if(!showAnnotations&&annotationEdit){annotationEdit=false;editBtn.classList.remove('tb-anno-edit');sel=sel.filter(s=>s.type!=='note');}
   renderSVG();renderProps();
 }
@@ -354,7 +355,7 @@ function renderSVG(){
     notes.forEach(n=>{const sl=isSel(n.id);
       s+=`<g data-type="note" data-id="${n.id}" style="cursor:${annotationEdit?'grab':'default'}" opacity="${annotationEdit?1:0.7}">`;
       s+=`<rect x="${n.x*g}" y="${n.y*g}" width="${n.w*g}" height="${n.h*g}" fill="${n.color}" stroke="${sl?'#F59E0B':(n.borderColor||'#D97706')}" stroke-width="${sl?2.5:1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
-      n.label.split("\\n").forEach((line,li,arr)=>{const ty=n.y*g+n.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${n.x*g+n.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${n.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
+      n.label.split("\\n").forEach((line,li)=>{const ty=n.y*g+6+li*14;s+=`<text x="${n.x*g+6}" y="${ty+10}" font-size="11" font-weight="400" fill="${n.textColor}" text-anchor="start" style="pointer-events:none">${esc(line)}</text>`;});
       s+=`</g>`;});
   }
 
@@ -493,23 +494,33 @@ function renderProps(){
   const el=document.getElementById('prop-content'), title=document.getElementById('prop-title');
 
   if(sel.length===0){
-    title.textContent='ツール';
-    el.innerHTML=`<div class="prop-section">
-      <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
-      <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
-      <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A;margin-top:6px" onclick="addNote()">+ 注釈追加</button>
-    </div>
-    <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
-    <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
-    <button class="prop-btn" onclick="addConn()">接続追加</button>
-    <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
-        クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
-        <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
-        <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
-        <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
-        <span style="color:var(--muted)">Delete</span> 削除<br>
-        <span style="color:var(--muted)">H</span> ハイライト
+    title.textContent=annotationEdit?'注釈ツール':'ツール';
+    if(annotationEdit){
+      el.innerHTML=`<div class="prop-section">
+        <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ 注釈追加</button>
+      </div>
+      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
+        注釈編集モード中<br>ブロック/グループは操作できません<br>
+        <span style="color:var(--muted)">✎ 編集</span> ボタンで解除
       </div>`;
+    } else {
+      el.innerHTML=`<div class="prop-section">
+        <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
+        <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
+        <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A;margin-top:6px" onclick="addNote()">+ 注釈追加</button>
+      </div>
+      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
+      <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
+      <button class="prop-btn" onclick="addConn()">接続追加</button>
+      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
+          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
+          <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
+          <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
+          <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
+          <span style="color:var(--muted)">Delete</span> 削除<br>
+          <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈
+        </div>`;
+    }
     return;
   }
 
@@ -568,7 +579,7 @@ function renderProps(){
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}: ${item.id}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
-    <div class="prop-section"><div class="prop-label">ラベル</div><input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">${(isBlock||isNote)?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setLabel(this.value.replace(/\\n/g,'\\\\\\\\n'))">${item.label.replace(/\\\\n/g,'\\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('y',-1)">▲</button><button class="step-btn dn" onclick="nudge('y',1)">▼</button></div></div></div>
