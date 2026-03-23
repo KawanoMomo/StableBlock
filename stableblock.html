@@ -323,22 +323,22 @@ function renderSVG(){
   s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
 
   // Groups
-  groups.forEach(gr=>{const sl=isSel(gr.id);const dimmed=hlIds&&!hlGroups.has(gr.id);
-    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"${dimmed?` opacity="${dim}"`:''}>`;
+  groups.forEach(gr=>{const sl=isSel(gr.id);const dimmed=(hlIds&&!hlGroups.has(gr.id))||annotationEdit;
+    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:${annotationEdit?'default':'grab'}"${dimmed?` opacity="${dim}"`:''}>`;
     s+=`<rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
     s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
   });
   // Normal connections
   const ports=computePorts(normalConns,blockMap,g);
-  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=hlIds&&!isHighlightedConn(c,hlIds);
+  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cDimmed=(hlIds&&!isHighlightedConn(c,hlIds))||annotationEdit;
     const ci=connections.indexOf(c);
     s+=`<g${cDimmed?` opacity="${dim}"`:''}>`;
     s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="1.5"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
     if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
     s+=`</g>`;});
   // Blocks
-  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bDimmed=hlIds&&!hlIds.has(b.id);
-    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"${bDimmed?` opacity="${dim}"`:''}>`;
+  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bDimmed=(hlIds&&!hlIds.has(b.id))||annotationEdit;
+    s+=`<g data-type="block" data-id="${b.id}" style="cursor:${annotationEdit?'default':'grab'}"${bDimmed?` opacity="${dim}"`:''}>`;
     s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
     b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
     s+=`</g>`;});
