@@ -180,7 +180,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='';
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='', snapLines=[];
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -402,6 +402,9 @@ function renderSVG(){
     });
   });
 
+  // Snap guides
+  snapLines.forEach(gd=>{if(gd.axis==='v')s+=`<line x1="${gd.pos*g}" y1="0" x2="${gd.pos*g}" y2="${canvas.height}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;else s+=`<line x1="0" y1="${gd.pos*g}" x2="${canvas.width}" y2="${gd.pos*g}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;});
+
   s+=`</svg>`;
   document.getElementById('svg-wrap').innerHTML=s;
   setupInteractions();
@@ -503,9 +506,7 @@ function setupInteractions(){
             else if(Math.abs(py-(o.y+o.h))<=snap){dy+=(o.y+o.h-py);guides.push({axis:'h',pos:o.y+o.h});}
             else if(Math.abs(py+ph-o.y)<=snap){dy+=(o.y-ph-py);guides.push({axis:'h',pos:o.y});}
           }
-          // Draw guides
-          let gl=document.getElementById('snap-guides');if(!gl){gl=document.createElementNS('http://www.w3.org/2000/svg','g');gl.id='snap-guides';document.querySelector('#svg-wrap svg')?.appendChild(gl);}
-          gl.innerHTML=guides.map(gd=>gd.axis==='v'?`<line x1="${gd.pos*g}" y1="0" x2="${gd.pos*g}" y2="${parsed.canvas.height}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`:`<line x1="0" y1="${gd.pos*g}" x2="${parsed.canvas.width}" y2="${gd.pos*g}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`).join('');
+          snapLines=guides;
         }
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
@@ -513,6 +514,7 @@ function setupInteractions(){
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
+        snapLines=[];
         if(!moved)return; refresh();
       }
       window.addEventListener('mousemove',onMove);
