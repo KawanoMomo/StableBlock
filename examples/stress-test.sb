@@ -1,0 +1,329 @@
+# StableBlock v0.6 — Stress Test (Large Enterprise System)
+# 150+ blocks, 30+ groups, 200+ connections
+@canvas width=2400 height=2400 grid=20
+
+# ═══════════════════════════════════════
+# Layer 1: Client Applications
+# ═══════════════════════════════════════
+group clients "Client Applications" at 1,1 size 118x8 color=#EEF2FF border=#818CF8
+
+block web_app "Web App\n(React)" at 2,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block mobile_ios "iOS App\n(Swift)" at 13,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block mobile_android "Android\n(Kotlin)" at 24,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block desktop "Desktop\n(Electron)" at 35,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block cli_tool "CLI Tool\n(Go)" at 46,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block admin_panel "Admin\nPanel" at 57,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block partner_portal "Partner\nPortal" at 68,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block iot_device "IoT\nDevices" at 79,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block chatbot "Chatbot\n(Slack)" at 90,3 size 10x5 color=#6366F1 text=#FFFFFF round=6
+block sdk_js "JS SDK" at 101,3 size 8x5 color=#818CF8 text=#FFFFFF round=4
+block sdk_py "Python SDK" at 110,3 size 8x5 color=#818CF8 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 2: API Gateway & Load Balancing
+# ═══════════════════════════════════════
+group gateway "API Gateway & Load Balancing" at 1,10 size 118x8 color=#DBEAFE border=#3B82F6
+
+block cdn "CDN\n(CloudFront)" at 2,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block waf "WAF\n(ModSec)" at 13,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block lb_main "Load Balancer\n(HAProxy)" at 24,12 size 12x5 color=#3B82F6 text=#FFFFFF round=4
+block api_gw "API Gateway\n(Kong)" at 37,12 size 12x5 color=#3B82F6 text=#FFFFFF round=4
+block graphql_gw "GraphQL\nGateway" at 50,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block grpc_gw "gRPC\nGateway" at 61,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block ws_gw "WebSocket\nGateway" at 72,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block rate_limit "Rate\nLimiter" at 83,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block api_version "API Version\nRouter" at 94,12 size 10x5 color=#3B82F6 text=#FFFFFF round=4
+block ssl_term "SSL\nTermination" at 105,12 size 12x5 color=#3B82F6 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 3: Authentication & Security
+# ═══════════════════════════════════════
+group auth "Authentication & Security" at 1,19 size 118x8 color=#FEE2E2 border=#EF4444
+
+block auth_svc "Auth\nService" at 2,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block oauth "OAuth2\nServer" at 13,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block jwt_svc "JWT\nService" at 24,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block rbac "RBAC\nEngine" at 35,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block mfa "MFA\nService" at 46,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block session "Session\nManager" at 57,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block api_key "API Key\nManager" at 68,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block vault "Vault\n(HashiCorp)" at 79,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block cert_mgr "Certificate\nManager" at 90,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+block audit_log "Audit\nLogger" at 101,21 size 10x5 color=#DC2626 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 4: Core Business Services
+# ═══════════════════════════════════════
+group core "Core Business Services" at 1,28 size 118x8 color=#FEF3C7 border=#F59E0B
+
+block user_svc "User\nService" at 2,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block order_svc "Order\nService" at 13,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block product_svc "Product\nService" at 24,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block payment_svc "Payment\nService" at 35,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block inventory_svc "Inventory\nService" at 46,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block shipping_svc "Shipping\nService" at 57,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block pricing_svc "Pricing\nEngine" at 68,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block catalog_svc "Catalog\nService" at 79,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block cart_svc "Cart\nService" at 90,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+block wishlist_svc "Wishlist\nService" at 101,30 size 10x5 color=#D97706 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 5: Domain Services
+# ═══════════════════════════════════════
+group domain "Domain Services" at 1,37 size 118x8 color=#DCFCE7 border=#22C55E
+
+block search_svc "Search\n(Elastic)" at 2,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block recommend "Recommend\nEngine" at 13,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block review_svc "Review\nService" at 24,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block notification "Notification\nService" at 35,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block email_svc "Email\nService" at 46,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block sms_svc "SMS\nService" at 57,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block push_svc "Push\nService" at 68,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block loyalty_svc "Loyalty\nProgram" at 79,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block coupon_svc "Coupon\nService" at 90,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+block tax_svc "Tax\nCalculator" at 101,39 size 10x5 color=#16A34A text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 6: Integration & Messaging
+# ═══════════════════════════════════════
+group messaging "Integration & Messaging" at 1,46 size 118x8 color=#F5F3FF border=#8B5CF6
+
+block kafka "Kafka\nCluster" at 2,48 size 12x5 color=#8B5CF6 text=#FFFFFF round=4
+block rabbitmq "RabbitMQ" at 15,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block redis_queue "Redis\nStreams" at 26,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block event_bus "Event\nBus" at 37,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block saga_orch "Saga\nOrchestrator" at 48,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block cqrs "CQRS\nHandler" at 59,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block etl "ETL\nPipeline" at 70,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block webhook "Webhook\nManager" at 81,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block scheduler "Job\nScheduler" at 92,48 size 10x5 color=#8B5CF6 text=#FFFFFF round=4
+block dead_letter "Dead Letter\nQueue" at 103,48 size 12x5 color=#8B5CF6 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 7: Data Storage
+# ═══════════════════════════════════════
+group storage "Data Storage" at 1,55 size 118x8 color=#CFFAFE border=#06B6D4
+
+block pg_main "PostgreSQL\n(Primary)" at 2,57 size 12x5 color=#0891B2 text=#FFFFFF round=4
+block pg_replica "PostgreSQL\n(Replica)" at 15,57 size 12x5 color=#0891B2 text=#FFFFFF round=4
+block mongo "MongoDB\nCluster" at 28,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block redis_cache "Redis\nCache" at 39,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block elastic "Elastic\nSearch" at 50,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block s3 "S3\nStorage" at 61,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block dynamo "DynamoDB" at 72,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block neo4j "Neo4j\nGraph" at 83,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block timescale "TimescaleDB" at 94,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+block minio "MinIO\n(Objects)" at 105,57 size 10x5 color=#0891B2 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 8: Infrastructure & DevOps
+# ═══════════════════════════════════════
+group infra "Infrastructure & DevOps" at 1,64 size 118x8 color=#F1F5F9 border=#64748B
+
+block k8s "Kubernetes\nCluster" at 2,66 size 12x5 color=#475569 text=#FFFFFF round=4
+block docker "Docker\nRegistry" at 15,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block terraform "Terraform" at 26,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block ansible "Ansible" at 37,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block jenkins "Jenkins\nCI/CD" at 48,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block argocd "ArgoCD" at 59,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block prometheus "Prometheus" at 70,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block grafana "Grafana" at 81,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block elk "ELK\nStack" at 92,66 size 10x5 color=#475569 text=#FFFFFF round=4
+block jaeger "Jaeger\nTracing" at 103,66 size 12x5 color=#475569 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 9: External Integrations
+# ═══════════════════════════════════════
+group external "External Integrations" at 1,73 size 118x8 color=#FFF7ED border=#EA580C
+
+block stripe "Stripe\nPayment" at 2,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block paypal "PayPal" at 13,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block twilio "Twilio\nSMS" at 24,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block sendgrid "SendGrid\nEmail" at 35,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block google_maps "Google\nMaps" at 46,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block aws_svc "AWS\nServices" at 57,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block salesforce "Salesforce\nCRM" at 68,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block sap "SAP\nERP" at 79,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block datadog "Datadog\nAPM" at 90,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+block pagerduty "PagerDuty\nAlerts" at 101,75 size 10x5 color=#EA580C text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Layer 10: Analytics & ML
+# ═══════════════════════════════════════
+group analytics "Analytics & Machine Learning" at 1,82 size 118x8 color=#FCE7F3 border=#EC4899
+
+block spark "Apache\nSpark" at 2,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block airflow "Apache\nAirflow" at 13,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block ml_train "ML Training\nPipeline" at 24,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block ml_serve "ML Serving\n(TFServing)" at 35,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block feature_store "Feature\nStore" at 46,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block data_lake "Data\nLake" at 57,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block bi_tool "BI Dashboard\n(Metabase)" at 68,84 size 12x5 color=#DB2777 text=#FFFFFF round=4
+block ab_test "A/B Testing\nEngine" at 81,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block anomaly "Anomaly\nDetection" at 92,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+block nlp_svc "NLP\nService" at 103,84 size 10x5 color=#DB2777 text=#FFFFFF round=4
+
+# ═══════════════════════════════════════
+# Connections: Client → Gateway
+# ═══════════════════════════════════════
+web_app -> cdn
+mobile_ios -> lb_main
+mobile_android -> lb_main
+desktop -> api_gw
+cli_tool -> api_gw
+admin_panel -> api_gw
+partner_portal -> api_gw
+iot_device -> grpc_gw
+chatbot -> ws_gw
+sdk_js -> api_gw
+sdk_py -> api_gw
+cdn -> waf
+waf -> lb_main
+lb_main -> api_gw
+lb_main -> graphql_gw
+lb_main -> grpc_gw
+lb_main -> ws_gw
+
+# Gateway → Auth
+api_gw -> auth_svc
+api_gw -> rate_limit
+api_gw -> api_version
+graphql_gw -> auth_svc
+grpc_gw -> auth_svc
+ws_gw -> session
+ssl_term -> lb_main
+
+# Auth internal
+auth_svc -> oauth
+auth_svc -> jwt_svc
+auth_svc -> mfa
+oauth -> session
+jwt_svc -> vault
+rbac -> auth_svc
+api_key -> auth_svc
+cert_mgr -> vault
+auth_svc -> audit_log
+
+# Gateway → Core
+api_gw -> user_svc
+api_gw -> order_svc
+api_gw -> product_svc
+api_gw -> cart_svc
+graphql_gw -> user_svc
+graphql_gw -> product_svc
+graphql_gw -> order_svc
+
+# Core internal
+order_svc -> payment_svc
+order_svc -> inventory_svc
+order_svc -> shipping_svc
+order_svc -> pricing_svc
+product_svc -> catalog_svc
+product_svc -> pricing_svc
+cart_svc -> product_svc
+cart_svc -> pricing_svc
+wishlist_svc -> product_svc
+user_svc -> auth_svc
+
+# Core → Domain
+product_svc -> search_svc
+product_svc -> recommend
+order_svc -> notification
+user_svc -> notification
+product_svc -> review_svc
+notification -> email_svc
+notification -> sms_svc
+notification -> push_svc
+order_svc -> loyalty_svc
+cart_svc -> coupon_svc
+order_svc -> tax_svc
+
+# Domain → Messaging
+order_svc -> kafka
+payment_svc -> kafka
+inventory_svc -> rabbitmq
+shipping_svc -> rabbitmq
+notification -> redis_queue
+kafka -> event_bus
+event_bus -> saga_orch
+event_bus -> cqrs
+etl -> kafka
+webhook -> event_bus
+scheduler -> rabbitmq
+kafka -> dead_letter
+rabbitmq -> dead_letter
+
+# Core → Storage
+user_svc -> pg_main
+order_svc -> pg_main
+product_svc -> mongo
+payment_svc -> pg_main
+inventory_svc -> pg_main
+pg_main -> pg_replica
+search_svc -> elastic
+product_svc -> redis_cache
+session -> redis_cache
+cart_svc -> redis_cache
+catalog_svc -> s3
+review_svc -> dynamo
+loyalty_svc -> neo4j
+prometheus -> timescale
+s3 -> minio
+
+# Infrastructure
+k8s -> docker
+jenkins -> docker
+jenkins -> k8s
+argocd -> k8s
+terraform -> k8s
+ansible -> k8s
+prometheus -> grafana
+elk -> grafana
+jaeger -> grafana
+k8s -> prometheus
+k8s -> elk
+k8s -> jaeger
+
+# External integrations
+payment_svc -> stripe
+payment_svc -> paypal
+sms_svc -> twilio
+email_svc -> sendgrid
+shipping_svc -> google_maps
+aws_svc -> s3
+user_svc -> salesforce
+order_svc -> sap
+k8s -> datadog
+pagerduty -> prometheus
+
+# Analytics & ML
+kafka -> spark
+spark -> data_lake
+airflow -> spark
+airflow -> etl
+data_lake -> ml_train
+ml_train -> ml_serve
+ml_train -> feature_store
+ml_serve -> recommend
+feature_store -> recommend
+data_lake -> bi_tool
+ab_test -> product_svc
+anomaly -> prometheus
+nlp_svc -> search_svc
+nlp_svc -> chatbot
+
+# Cross-layer connections
+recommend -> redis_cache
+search_svc -> redis_cache
+audit_log -> elk
+rate_limit -> redis_cache
+cqrs -> pg_replica
+saga_orch -> order_svc
+etl -> pg_replica
+etl -> mongo
+webhook -> partner_portal
+scheduler -> etl
+datadog -> grafana
+anomaly -> pagerduty
+bi_tool -> pg_replica
+ab_test -> kafka
