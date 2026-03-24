@@ -19,7 +19,7 @@ sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VER}\"/" vscode-stableblock/p
 sed -i "s/# StableBlock v[0-9.]\+/# StableBlock v${MAJOR_MINOR}/" stableblock.html
 
 # 4. stableblock.html — badge
-sed -i "s/v[0-9.]\+ [A-Za-z]*/v${MAJOR_MINOR}/" stableblock.html
+sed -i "s/v[0-9.]\+<\/span>/v${MAJOR_MINOR}<\/span>/" stableblock.html
 
 # 5. README.md — vsix filename
 sed -i "s/stableblock-[0-9.]\+\.vsix/stableblock-${VER}.vsix/g" README.md
