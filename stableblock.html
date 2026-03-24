@@ -344,10 +344,11 @@ function computePorts(connections,blockMap,g){
     if(!sm[c.from])sm[c.from]={};const fs=sides[i].fs;if(!sm[c.from][fs])sm[c.from][fs]=[];sm[c.from][fs].push({ci:i,ox:tb.x+tb.w/2,oy:tb.y+tb.h/2});
     if(!sm[c.to])sm[c.to]={};const ts=sides[i].ts;if(!sm[c.to][ts])sm[c.to][ts]=[];sm[c.to][ts].push({ci:i,ox:fb.x+fb.w/2,oy:fb.y+fb.h/2});
   });
-  for(const bid in sm)for(const side in sm[bid]){const list=sm[bid][side];list.sort((a,b)=>(side==='left'||side==='right')?(a.oy-b.oy):(a.ox-b.ox));}
+  const idxMap={};
+  for(const bid in sm)for(const side in sm[bid]){const list=sm[bid][side];list.sort((a,b)=>(side==='left'||side==='right')?(a.oy-b.oy):(a.ox-b.ox));list.forEach((p,idx)=>{idxMap[bid+'|'+side+'|'+p.ci]=idx;});}
   return connections.map((c,i)=>{if(!sides[i])return null;const fb=blockMap[c.from],tb=blockMap[c.to];
     const fl=sm[c.from][sides[i].fs],tl=sm[c.to][sides[i].ts];
-    return{fp:portPos(fb,sides[i].fs,fl.findIndex(p=>p.ci===i),fl.length,g),tp:portPos(tb,sides[i].ts,tl.findIndex(p=>p.ci===i),tl.length,g),fs:sides[i].fs,ts:sides[i].ts};
+    return{fp:portPos(fb,sides[i].fs,idxMap[c.from+'|'+sides[i].fs+'|'+i],fl.length,g),tp:portPos(tb,sides[i].ts,idxMap[c.to+'|'+sides[i].ts+'|'+i],tl.length,g),fs:sides[i].fs,ts:sides[i].ts};
   });
 }
 function extPt(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
@@ -463,6 +464,7 @@ function setupInteractions(){
       const mx0=e.clientX, my0=e.clientY;
       const ox=item.x, oy=item.y, ow=item.w, oh=item.h;
 
+      let resizeRaf=null;
       function onMove(ev){
         const dxg=Math.round((ev.clientX-mx0)*sx/g), dyg=Math.round((ev.clientY-my0)*sy/g);
         let nx=ox, ny=oy, nw=ow, nh=oh;
@@ -472,9 +474,9 @@ function setupInteractions(){
         if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
         updatePos(type,id,Math.max(0,nx),Math.max(0,ny));
         updateSize(type,id,nw,nh);
-        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+        if(!resizeRaf)resizeRaf=requestAnimationFrame(()=>{parsed=parseDSL(dsl);renderSVG();resizeRaf=null;});
       }
-      function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);refresh();}
+      function onUp(){if(resizeRaf){cancelAnimationFrame(resizeRaf);resizeRaf=null;}window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);refresh();}
       window.addEventListener('mousemove',onMove);
       window.addEventListener('mouseup',onUp);
     });
@@ -512,16 +514,17 @@ function setupInteractions(){
         }
       });
       const items=[...dragSet.values()];
-      let moved=false, histPushed=false;
+      let moved=false, histPushed=false, dragRaf=null;
 
       function onMove(ev){
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
         const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
-        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+        if(!dragRaf)dragRaf=requestAnimationFrame(()=>{parsed=parseDSL(dsl);renderSVG();dragRaf=null;});
       }
       function onUp(ev){
+        if(dragRaf){cancelAnimationFrame(dragRaf);dragRaf=null;}
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
         if(!moved)return; refresh();
