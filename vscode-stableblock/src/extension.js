@@ -373,20 +373,12 @@ function setupInt(){
     else{if(!isSel(id))sel=[{type:tp,id:id}];}
     render();props();
     var sc=svgSc(),mx0=e.clientX,my0=e.clientY,ds=new Map();
-    sel.forEach(function(si){var it=getIt(si);if(!it)return;ds.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y,w:it.w,h:it.h});
+    sel.forEach(function(si){var it=getIt(si);if(!it)return;ds.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y});
       if(si.type==="group"){var ch=fCh(it);ch.cb.forEach(function(b){if(!ds.has(b.id))ds.set(b.id,{type:"block",id:b.id,sx:b.x,sy:b.y});});ch.cg.forEach(function(x){if(!ds.has(x.id))ds.set(x.id,{type:"group",id:x.id,sx:x.x,sy:x.y});});}});
     var items=Array.from(ds.values()),moved=false,hp=false,dragIds=new Set();items.forEach(function(it){dragIds.add(it.id);});
-    function onM(ev){if(!hp){pushH();hp=true;}moved=true;var dx=Math.round((ev.clientX-mx0)*sc.sx/g),dy=Math.round((ev.clientY-my0)*sc.sy/g);
-      // Snap guides: show alignment lines (visual only, no position forcing)
-      var others=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(o){return !dragIds.has(o.id)});
-      var primary=items[0];var guides=[];
-      if(primary&&primary.w){var px=primary.sx+dx,py=primary.sy+dy,pw=primary.w,ph=primary.h;
-        others.forEach(function(o){
-          if(px===o.x||px+pw===o.x+o.w||px===o.x+o.w||px+pw===o.x)guides.push({axis:'v',pos:(px===o.x||px===o.x+o.w?px:px+pw)*g});
-          if(py===o.y||py+ph===o.y+o.h||py===o.y+o.h||py+ph===o.y)guides.push({axis:'h',pos:(py===o.y||py===o.y+o.h?py:py+ph)*g});
-        });}
-      snapGuides=guides.map(function(gd){return gd.axis==='v'?{x1:gd.pos,y1:0,x2:gd.pos,y2:parsed.canvas.height}:{x1:0,y1:gd.pos,x2:parsed.canvas.width,y2:gd.pos};});
-      items.forEach(function(it){upP(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy));});parsed=parseDSL(dsl);
+    function onM(ev){if(!hp){pushH();hp=true;}moved=true;var dx=Math.round((ev.clientX-mx0)*sc.sx/g),dy=Math.round((ev.clientY-my0)*sc.sy/g);items.forEach(function(it){upP(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy));});parsed=parseDSL(dsl);
+      // Snap guides
+      snapGuides=[];var thresh=0.5;var selItems=sel.map(function(si){return getIt(si)}).filter(Boolean);var others=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(o){return !dragIds.has(o.id)});selItems.forEach(function(si){var sx=si.x,sy=si.y,smx=si.x+si.w/2,smy=si.y+si.h/2,sex=si.x+si.w,sey=si.y+si.h;others.forEach(function(o){var ox=o.x,oy=o.y,omx=o.x+o.w/2,omy=o.y+o.h/2,oex=o.x+o.w,oey=o.y+o.h;if(Math.abs(sx-ox)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-oex)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(smx-omx)<=thresh)snapGuides.push({x1:smx*g,y1:0,x2:smx*g,y2:parsed.canvas.height});if(Math.abs(sx-oex)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-ox)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(sy-oy)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oey)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});if(Math.abs(smy-omy)<=thresh)snapGuides.push({x1:0,y1:smy*g,x2:parsed.canvas.width,y2:smy*g});if(Math.abs(sy-oey)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oy)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});});});
       render();}
     function onU(){window.removeEventListener('mousemove',onM);window.removeEventListener('mouseup',onU);snapGuides=[];if(!moved)return;go();notify();}
     window.addEventListener('mousemove',onM);window.addEventListener('mouseup',onU);});});
