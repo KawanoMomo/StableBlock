@@ -104,7 +104,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
     <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
     <div class="sep"></div>
-    <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
+    <button class="tb" onclick="fixNames(event.shiftKey)" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
     <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
@@ -689,12 +689,13 @@ function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type=
 function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
 function labelToId(label){return label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';}
-function fixNames(){
+function fixNames(all){
   if(!parsed)return;
-  const targets=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id.startsWith('__new_'));
+  const allItems=[...parsed.blocks,...parsed.groups,...parsed.notes];
+  const targets=all?allItems:allItems.filter(x=>x.id.startsWith('__new_'));
   if(!targets.length)return;
   pushHistory();
-  const usedIds=new Set([...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>!x.id.startsWith('__new_')).map(x=>x.id));
+  const usedIds=new Set(allItems.filter(x=>!targets.includes(x)).map(x=>x.id));
   const renames=[];
   targets.forEach(t=>{
     let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
