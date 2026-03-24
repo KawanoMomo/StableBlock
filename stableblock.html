@@ -104,7 +104,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
     <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
     <div class="sep"></div>
-    <button class="tb" onclick="fixNames()" title="__new_ IDをラベルから自動生成">ID補正</button>
+    <button class="tb" onclick="fixNames(event.shiftKey)" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
     <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
@@ -180,7 +180,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='', snapLines=[];
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='';
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -200,18 +200,18 @@ function getAllItemMap(){return Object.assign({},parsed.blockMap,parsed.noteMap)
 // ═══════════════════════════════════════════════
 function parseDSL(text){
   const lines=text.split("\n"),canvas={width:960,height:640,grid:20};
-  const blocks=[],groups=[],notes=[],connections=[],errors=[],blockMap={},groupMap={},noteMap={};
+  const blocks=[],groups=[],notes=[],connections=[],errors=[],blockMap={},groupMap={},noteMap={},allIds={};
   for(let i=0;i<lines.length;i++){
     const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
     try{
       if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];continue;}
       if(raw.startsWith("@include")){const inc=raw.match(/@include\s+"([^"]+)"/);if(inc)errors.push({line:ln,msg:`@include "${inc[1]}" — use preprocessInclude() to resolve`});continue;}
       let m=raw.match(/^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
+      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
       m=raw.match(/^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
+      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
       m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
+      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
       if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
@@ -402,9 +402,6 @@ function renderSVG(){
     });
   });
 
-  // Snap guides
-  snapLines.forEach(gd=>{if(gd.axis==='v')s+=`<line x1="${gd.pos*g}" y1="0" x2="${gd.pos*g}" y2="${canvas.height}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;else s+=`<line x1="0" y1="${gd.pos*g}" x2="${canvas.width}" y2="${gd.pos*g}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;});
-
   s+=`</svg>`;
   document.getElementById('svg-wrap').innerHTML=s;
   setupInteractions();
@@ -489,26 +486,13 @@ function setupInteractions(){
       function onMove(ev){
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
-        let dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
-        // Snap guides: show alignment lines (visual only, no position forcing)
-        const dragIds=new Set(items.map(it=>it.id));
-        const others=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(it=>!dragIds.has(it.id));
-        const primary=items[0]; const guides=[];
-        if(primary&&primary.w){
-          const px=primary.sx+dx,py=primary.sy+dy,pw=primary.w,ph=primary.h;
-          for(const o of others){
-            if(px===o.x||px+pw===o.x+o.w||px===o.x+o.w||px+pw===o.x) guides.push({axis:'v',pos:px===o.x||px===o.x+o.w?px:px+pw});
-            if(py===o.y||py+ph===o.y+o.h||py===o.y+o.h||py+ph===o.y) guides.push({axis:'h',pos:py===o.y||py===o.y+o.h?py:py+ph});
-          }
-        }
-        snapLines=guides;
+        const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
-        snapLines=[];
         if(!moved)return; refresh();
       }
       window.addEventListener('mousemove',onMove);
@@ -704,19 +688,29 @@ function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimE
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
-function labelToId(label){return label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';}
-function fixNames(){
+function labelToId(label){let s=label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/, '');return s;}
+function fixNames(all){
   if(!parsed)return;
-  const targets=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id.startsWith('__new_'));
+  const allItems=[...parsed.blocks,...parsed.groups,...parsed.notes];
+  const targets=all?allItems:allItems.filter(x=>x.id.startsWith('__new_'));
   if(!targets.length)return;
   pushHistory();
-  const usedIds=new Set([...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>!x.id.startsWith('__new_')).map(x=>x.id));
+  const usedIds=new Set(allItems.filter(x=>!targets.includes(x)).map(x=>x.id));
   const renames=[];
   targets.forEach(t=>{
     let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
-    usedIds.add(base);renames.push({old:t.id,new:base});
+    usedIds.add(base);renames.push({old:t.id,new:base,line:t.line});
   });
-  renames.forEach(r=>{dsl=dsl.replace(new RegExp(`\\b${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g'),r.new);});
+  // Line-based replacement for definitions (handles duplicate IDs)
+  const lines=dsl.split("\n");
+  renames.forEach(r=>{
+    const idx=r.line-1;
+    if(idx>=0&&idx<lines.length)lines[idx]=lines[idx].replace(new RegExp(`^(\\s*(?:block|group|note)\\s+)${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(\\s+)`),`$1${r.new}$2`);
+  });
+  // Connection lines: build first-wins map for ambiguous duplicates
+  const connMap={};renames.forEach(r=>{if(!connMap[r.old])connMap[r.old]=r.new;});
+  for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;for(const[old,nw]of Object.entries(connMap)){const re=new RegExp(`\\b${old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g');lines[i]=lines[i].replace(re,nw);}}
+  dsl=lines.join("\n");
   sel=sel.map(s=>{const r=renames.find(r=>r.old===s.id);return r?{...s,id:r.new}:s;});
   refresh();
 }
