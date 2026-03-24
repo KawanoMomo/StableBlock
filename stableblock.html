@@ -699,9 +699,18 @@ function fixNames(all){
   const renames=[];
   targets.forEach(t=>{
     let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
-    usedIds.add(base);renames.push({old:t.id,new:base});
+    usedIds.add(base);renames.push({old:t.id,new:base,line:t.line});
   });
-  renames.forEach(r=>{dsl=dsl.replace(new RegExp(`\\b${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g'),r.new);});
+  // Line-based replacement for definitions (handles duplicate IDs)
+  const lines=dsl.split("\n");
+  renames.forEach(r=>{
+    const idx=r.line-1;
+    if(idx>=0&&idx<lines.length)lines[idx]=lines[idx].replace(new RegExp(`^(\\s*(?:block|group|note)\\s+)${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(\\s+)`),`$1${r.new}$2`);
+  });
+  // Connection lines: build first-wins map for ambiguous duplicates
+  const connMap={};renames.forEach(r=>{if(!connMap[r.old])connMap[r.old]=r.new;});
+  for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;for(const[old,nw]of Object.entries(connMap)){const re=new RegExp(`\\b${old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g');lines[i]=lines[i].replace(re,nw);}}
+  dsl=lines.join("\n");
   sel=sel.map(s=>{const r=renames.find(r=>r.old===s.id);return r?{...s,id:r.new}:s;});
   refresh();
 }
