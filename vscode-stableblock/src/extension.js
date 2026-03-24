@@ -1,3 +1,19 @@
+/**
+ * StableBlock VSCode Extension
+ *
+ * Provides syntax highlighting and interactive webview preview for .sb files.
+ * The webview contains a full editor (same logic as stableblock.html) with
+ * bidirectional sync: editor changes update preview, preview drag/edit updates editor.
+ *
+ * Extension host (this file, Node.js):
+ *   - activate(): registers commands (preview, undo, redo, copy, paste, diff)
+ *   - getWebviewContent(): returns HTML with embedded JS for the preview panel
+ *   - getDiffContent(): returns side-by-side visual diff HTML
+ *
+ * Webview (embedded JS, ES5 style, inside template literal):
+ *   - parseDSL, render, props, go — same architecture as stableblock.html
+ *   - Communicates with extension via vscodeApi.postMessage()
+ */
 const vscode = require("vscode");
 
 function activate(context) {

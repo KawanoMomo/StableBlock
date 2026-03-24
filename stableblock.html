@@ -1,3 +1,23 @@
+<!--
+  StableBlock — Deterministic Grid-Based Block Diagram Editor
+  Single-file standalone editor. Open in any browser, no build step needed.
+
+  Structure:
+    <style>       CSS (dark theme, toolbar, property panel, editor)
+    <div#header>  Toolbar (zoom, undo, highlight, annotations, search, export)
+    <div#body>    Main layout: DSL editor (left) + SVG preview (right) + property panel
+    <script>      All application logic:
+      - State variables & undo/redo
+      - parseDSL()          DSL text → parsed data (blocks, groups, notes, connections)
+      - updatePos/Size/Prop  Regex-based DSL mutation
+      - Annotation helpers   isAnnotationConn, getAllItemMap, toggles
+      - renderSVG()          Parsed data → SVG with interactions
+      - setupInteractions()  Drag, resize, select handlers
+      - renderProps()        Property panel for selection
+      - Actions              Add/delete/copy/paste/group/fixNames
+      - Export               SVG/PNG/Mermaid/clipboard
+      - Keyboard & editor    Shortcuts, DSL editor sync
+-->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -89,7 +109,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
   <div class="logo">
     <div class="logo-icon">◆</div>
     <span class="logo-text">StableBlock</span>
-    <span class="badge">v0.5</span>
+    <span class="badge">v0.6</span>
   </div>
   <div class="toolbar">
     <button class="tb" onclick="setZoom(-1)">−</button>
@@ -180,8 +200,12 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
+// zoom: current zoom level, parsed: result of parseDSL(), sel: selected items [{type,id}]
+// addCounter: auto-increment for new element IDs, highlight: HL mode toggle
+// showAnnotations/annotationEdit: annotation layer visibility and edit mode
+// searchQuery: toolbar search filter text
 let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='';
-// Undo/Redo
+// Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
 function undo(){if(!history.length)return;future.push(dsl);dsl=history.pop();sel=[];refresh();}
@@ -196,7 +220,9 @@ function isAnnotationConn(c){return !!(parsed.noteMap[c.from]||parsed.noteMap[c.
 function getAllItemMap(){return Object.assign({},parsed.blockMap,parsed.noteMap)}
 
 // ═══════════════════════════════════════════════
-// Parser
+// Parser — converts DSL text into structured data
+// Returns: {canvas, blocks[], groups[], notes[], connections[], errors[], blockMap, groupMap, noteMap}
+// Detects duplicate IDs and reports them as errors
 // ═══════════════════════════════════════════════
 function parseDSL(text){
   const lines=text.split("\n"),canvas={width:960,height:640,grid:20};
@@ -221,7 +247,8 @@ function parseDSL(text){
 }
 
 // ═══════════════════════════════════════════════
-// DSL Updaters
+// DSL Updaters — modify DSL text in-place via regex
+// These find the matching line by type+id and replace the target value
 // ═══════════════════════════════════════════════
 function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"[^"]*"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
 function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"[^"]*?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
@@ -231,7 +258,7 @@ function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y
 function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
 
 // ═══════════════════════════════════════════════
-// Highlight
+// Highlight, Annotations, Search — toggle modes that affect rendering
 // ═══════════════════════════════════════════════
 function getConnectedIds(){
   // Returns set of all block IDs that participate in any connection
@@ -294,7 +321,9 @@ async function preprocessInclude(text){
 function matchesSearch(item){if(!searchQuery)return true;return item.id.toLowerCase().includes(searchQuery)||item.label.toLowerCase().includes(searchQuery);}
 
 // ═══════════════════════════════════════════════
-// SVG Rendering
+// SVG Rendering — builds SVG string from parsed data
+// Render order: groups → normal connections → blocks → [annotation layer] → resize handles
+// Respects highlight, annotation edit, and search dimming
 // ═══════════════════════════════════════════════
 function getSide(fb,tb,g){
   const gapB=tb.y-(fb.y+fb.h),gapT=fb.y-(tb.y+tb.h),gapR=tb.x-(fb.x+fb.w),gapL=fb.x-(tb.x+tb.w);
@@ -409,6 +438,8 @@ function renderSVG(){
 
 // ═══════════════════════════════════════════════
 // Interactions: Drag, Resize, Select
+// Called after each renderSVG to attach event listeners to SVG elements
+// Annotation edit mode filters: notes only when editing, blocks/groups otherwise
 // ═══════════════════════════════════════════════
 function getSvgScale(){
   const svg=document.querySelector('#svg-wrap svg');
@@ -510,7 +541,10 @@ function setupInteractions(){
 }
 
 // ═══════════════════════════════════════════════
-// Property Panel
+// Property Panel — context-sensitive UI for selected items
+// No selection: add buttons + shortcuts help (annotation mode: note add only)
+// Multi-select: batch operations + connection UI (2 items) + group selected
+// Single select: full property editor (block/group/note specific)
 // ═══════════════════════════════════════════════
 function renderProps(){
   const el=document.getElementById('prop-content'), title=document.getElementById('prop-title');
@@ -669,7 +703,7 @@ function batchDelete(){
 }
 
 // ═══════════════════════════════════════════════
-// Connection management (two-select)
+// Connection management (two-select) — find, create, remove, flip, bidir, color, width, style
 // ═══════════════════════════════════════════════
 function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
 function connectTwo(a,b,col){pushHistory();const extra=col?` color=${col}`:'';dsl=dsl.trimEnd()+`\n${a} -> ${b}${extra}\n`;refresh();}
@@ -680,7 +714,8 @@ function setConnColor(a,b,col){setConnProp(a,b,'color',col);}
 function setConnProp(a,b,prop,val){pushHistory();const lines=dsl.split("\n");const re=new RegExp(prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=re.test(lines[i])?lines[i].replace(re,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}}dsl=lines.join("\n");refresh();}
 
 // ═══════════════════════════════════════════════
-// Add items
+// Add items — all new elements get __new_N placeholder IDs
+// groupSelected() creates a group from bounding box of selected blocks
 // ═══════════════════════════════════════════════
 function addBlock(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
@@ -688,6 +723,9 @@ function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimE
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
+// labelToId: convert label → valid ID (lowercase, alphanum+underscore, max 30 chars)
+// fixNames(all): normal click → rename __new_ only; Shift+click → rename ALL IDs
+// Uses line-based replacement to handle duplicate IDs correctly
 function labelToId(label){let s=label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/, '');return s;}
 function fixNames(all){
   if(!parsed)return;
@@ -725,7 +763,7 @@ function renderErrors(){const el=document.getElementById('error-bar');if(parsed.
 function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
 
 // ═══════════════════════════════════════════════
-// Export / Import
+// Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
 // ═══════════════════════════════════════════════
 function download(name,data){const a=document.createElement('a');a.href=data;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 function exportSB(){download('diagram.sb','data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));}
@@ -739,7 +777,7 @@ function exportMermaid(){if(!parsed)return;let m='graph TD\n';const inGroup={};p
 function setZoom(dir){zoom=Math.max(0.25,Math.min(3,zoom+dir*0.25));document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
 
 // ═══════════════════════════════════════════════
-// Copy / Cut / Paste
+// Copy / Cut / Paste — stores DSL lines in clipboard, paste offsets by +2 grid units
 // ═══════════════════════════════════════════════
 function getItemDSLLine(type,id){
   const lines=dsl.split("\n");
