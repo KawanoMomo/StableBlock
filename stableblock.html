@@ -180,7 +180,7 @@ comm  -> os
 diag  -> drv
 log   -> hal
 `;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='', snapLines=[];
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='';
 // Undo/Redo
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -402,9 +402,6 @@ function renderSVG(){
     });
   });
 
-  // Snap guides
-  snapLines.forEach(gd=>{if(gd.axis==='v')s+=`<line x1="${gd.pos*g}" y1="0" x2="${gd.pos*g}" y2="${canvas.height}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;else s+=`<line x1="0" y1="${gd.pos*g}" x2="${canvas.width}" y2="${gd.pos*g}" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,4"/>`;});
-
   s+=`</svg>`;
   document.getElementById('svg-wrap').innerHTML=s;
   setupInteractions();
@@ -489,26 +486,13 @@ function setupInteractions(){
       function onMove(ev){
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
-        let dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
-        // Snap guides: show alignment lines (visual only, no position forcing)
-        const dragIds=new Set(items.map(it=>it.id));
-        const others=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(it=>!dragIds.has(it.id));
-        const primary=items[0]; const guides=[];
-        if(primary&&primary.w){
-          const px=primary.sx+dx,py=primary.sy+dy,pw=primary.w,ph=primary.h;
-          for(const o of others){
-            if(px===o.x||px+pw===o.x+o.w||px===o.x+o.w||px+pw===o.x) guides.push({axis:'v',pos:px===o.x||px===o.x+o.w?px:px+pw});
-            if(py===o.y||py+ph===o.y+o.h||py===o.y+o.h||py+ph===o.y) guides.push({axis:'h',pos:py===o.y||py===o.y+o.h?py:py+ph});
-          }
-        }
-        snapLines=guides;
+        const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
-        snapLines=[];
         if(!moved)return; refresh();
       }
       window.addEventListener('mousemove',onMove);
