@@ -688,7 +688,7 @@ function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimE
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
 function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
-function labelToId(label){return label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';}
+function labelToId(label){let s=label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/, '');return s;}
 function fixNames(all){
   if(!parsed)return;
   const allItems=[...parsed.blocks,...parsed.groups,...parsed.notes];
