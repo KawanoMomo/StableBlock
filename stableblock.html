@@ -49,6 +49,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
 .tb-anno-edit { border-color:#EC4899; color:#F9A8D4; background:#500724; }
+.tb-line-active { border-color:#06B6D4; color:#67E8F9; background:#083344; }
 .sep { width:1px; height:14px; background:var(--border); margin:0 4px; }
 
 /* Body */
@@ -119,6 +120,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" onclick="undo()" title="Ctrl+Z">↩</button>
     <button class="tb" onclick="redo()" title="Ctrl+Y">↪</button>
     <div class="sep"></div>
+    <button class="tb" id="line-mode-btn" onclick="cycleLineMode()" title="L キーで切替: 曲線/直線/直角">⌇ 曲線</button>
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
     <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
@@ -204,7 +206,7 @@ log   -> hal
 // addCounter: auto-increment for new element IDs, highlight: HL mode toggle
 // showAnnotations/annotationEdit: annotation layer visibility and edit mode
 // searchQuery: toolbar search filter text
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='';
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='', lineMode='curved';
 // Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -239,7 +241,7 @@ function parseDSL(text){
       m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
-      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),bidir:arrow==="-->",line:ln});continue;}
+      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
     }catch(e){errors.push({line:ln,msg:e.message});}
   }
@@ -303,6 +305,15 @@ function toggleAnnotationEdit(){
   else sel=sel.filter(s=>s.type!=='note');
   renderSVG();renderProps();
 }
+function cycleLineMode(){
+  const modes=['curved','straight','ortho'];
+  lineMode=modes[(modes.indexOf(lineMode)+1)%modes.length];
+  const btn=document.getElementById('line-mode-btn');
+  const labels={curved:'⌇ 曲線',straight:'╱ 直線',ortho:'⊾ 直角'};
+  btn.textContent=labels[lineMode];
+  btn.classList.toggle('tb-line-active',lineMode!=='curved');
+  renderSVG();
+}
 function doSearch(q){searchQuery=q.toLowerCase();renderSVG();}
 const includeCache={};
 async function preprocessInclude(text){
@@ -357,6 +368,22 @@ function bpath(fp,tp,fs,ts){
   const c1=extPt(fp,fs,cpd),c2=extPt(tp,ts,cpd);
   return`M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`;
 }
+function straightPath(fp,tp){return`M${fp.x},${fp.y} L${tp.x},${tp.y}`;}
+function orthoPath(fp,tp,fs,ts){
+  const gap=20;
+  const e1=extPt(fp,fs,gap),e2=extPt(tp,ts,gap);
+  const isVF=fs==='top'||fs==='bottom', isVT=ts==='top'||ts==='bottom';
+  if(isVF&&isVT){const my=(e1.y+e2.y)/2;return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e1.x},${my} L${e2.x},${my} L${e2.x},${e2.y} L${tp.x},${tp.y}`;}
+  if(!isVF&&!isVT){const mx=(e1.x+e2.x)/2;return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${mx},${e1.y} L${mx},${e2.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;}
+  if(isVF&&!isVT)return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e1.x},${e2.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;
+  return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e2.x},${e1.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;
+}
+function connPath(fp,tp,fs,ts,route){
+  const m=route||lineMode;
+  if(m==='straight')return straightPath(fp,tp);
+  if(m==='ortho')return orthoPath(fp,tp,fs,ts);
+  return bpath(fp,tp,fs,ts);
+}
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 function renderSVG(){
@@ -384,7 +411,7 @@ function renderSVG(){
   normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:annotationEdit?annoDim:null;
     const ci=connections.indexOf(c);
     s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
-    s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
+    s+=`<path d="${connPath(fp,tp,fs,ts,c.route)}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
     if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
     s+=`</g>`;});
   // Blocks
@@ -400,7 +427,7 @@ function renderSVG(){
     annoConns.forEach((c,i)=>{const p=annoPorts[i];if(!p)return;const{fp,tp,fs,ts}=p;
       const ci=connections.indexOf(c);
       s+=`<g opacity="${annotationEdit?1:0.7}">`;
-      s+=`<path d="${bpath(fp,tp,fs,ts)}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
+      s+=`<path d="${connPath(fp,tp,fs,ts,c.route)}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
       if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
       s+=`</g>`;});
     notes.forEach(n=>{const sl=isSel(n.id);
@@ -573,7 +600,8 @@ function renderProps(){
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除<br>
-          <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈
+          <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈<br>
+          <span style="color:var(--muted)">L</span> 線モード切替
         </div>`;
     }
     return;
@@ -614,6 +642,7 @@ function renderProps(){
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線のスタイル</div><div style="display:flex;gap:4px">${["solid","dashed"].map(st=>`<button class="style-btn ${c.style===st?'active':''}" onclick="setConnProp('${fa}','${ta}','style','${st}')">${st}</button>`).join('')}</div>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">経路</div><div style="display:flex;gap:4px">${[{v:'',l:'既定'},{v:'curved',l:'曲線'},{v:'straight',l:'直線'},{v:'ortho',l:'直角'}].map(r=>`<button class="style-btn ${(c.route||'')===(r.v)?'active':''}" onclick="${r.v?`setConnProp('${fa}','${ta}','route','${r.v}')`:`removeConnProp('${fa}','${ta}','route')`}">${r.l}</button>`).join('')}</div>`;
         html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
       }
       html+=`</div>`;
@@ -712,6 +741,7 @@ function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<l
 function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
 function setConnColor(a,b,col){setConnProp(a,b,'color',col);}
 function setConnProp(a,b,prop,val){pushHistory();const lines=dsl.split("\n");const re=new RegExp(prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=re.test(lines[i])?lines[i].replace(re,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}}dsl=lines.join("\n");refresh();}
+function removeConnProp(a,b,prop){pushHistory();const lines=dsl.split("\n");const re=new RegExp('\\s*'+prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=lines[i].replace(re,'');break;}}dsl=lines.join("\n");refresh();}
 
 // ═══════════════════════════════════════════════
 // Add items — all new elements get __new_N placeholder IDs
@@ -854,6 +884,7 @@ document.addEventListener('keydown',e=>{
   if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
   // H: toggle highlight
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
+  if(e.key==='l'||e.key==='L'){e.preventDefault();cycleLineMode();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
 
