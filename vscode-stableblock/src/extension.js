@@ -177,6 +177,42 @@ function getWebviewContent(dslText) {
   // Use JSON.stringify to safely inject DSL text — avoids all escaping issues
   const dslJson = JSON.stringify(dslText);
 
+  // ───── Excel エクスポート用アセットをインライン埋め込み ─────
+  // webview は file:// 制約と CSP のため <script type="module"> + import が
+  // 使えないので、emitter.js / JSZip / template-skeleton を文字列として読み込み
+  // <script> として inline する。emitter.js は ESM 形式なので `export` キーワードを
+  // 剥がして window.StableBlockExcel に集約する。
+  const path = require('path');
+  const fs = require('fs');
+  const REPO_ROOT = path.resolve(__dirname, '..', '..');
+  let emitterScript = '';
+  let jszipScript = '';
+  const templateFiles = {};
+  try {
+    emitterScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'excel', 'emitter.js'), 'utf8');
+    jszipScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'excel', 'jszip.min.js'), 'utf8');
+    const TPL = [
+      '[Content_Types].xml',
+      '_rels/.rels',
+      'xl/workbook.xml',
+      'xl/_rels/workbook.xml.rels',
+      'xl/worksheets/sheet1.xml',
+      'xl/worksheets/_rels/sheet1.xml.rels',
+      'xl/drawings/_rels/drawing1.xml.rels',
+    ];
+    for (const f of TPL) {
+      templateFiles[f] = fs.readFileSync(path.join(REPO_ROOT, 'core', 'excel', 'template-skeleton', ...f.split('/')), 'utf8');
+    }
+  } catch (e) {
+    console.error('[stableblock] Failed to load Excel emitter assets:', e.message);
+  }
+  // ESM の `export function`/`export async function` を素の関数宣言に変換し、
+  // 末尾で window.StableBlockExcel として一括公開する
+  const emitterAsGlobals = emitterScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx };';
+  const templateFilesJson = JSON.stringify(templateFiles);
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -212,7 +248,11 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .hl-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
 .anno-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
 .anno-edit{border-color:#EC4899!important;color:#F9A8D4!important;background:#500724!important}
-</style></head><body>
+</style>
+<script>${jszipScript}<\/script>
+<script>${emitterAsGlobals}<\/script>
+<script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
+</head><body>
 <div class="toolbar">
   <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button>
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
@@ -558,6 +598,17 @@ function pngCanvas(transparent,cb){var svg=document.querySelector('#wrap svg');i
 function exportPNG(){pngCanvas(false,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});});}
 function exportPNGT(){pngCanvas(true,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});});}
 function copyPNG(){pngCanvas(false,function(c){c.toBlob(function(blob){if(blob&&navigator.clipboard&&navigator.clipboard.write){navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){vscodeApi.postMessage({type:'info',text:'PNG copied to clipboard'});}).catch(function(){vscodeApi.postMessage({type:'info',text:'Clipboard copy failed'});});}else{vscodeApi.postMessage({type:'info',text:'Clipboard API not available'});}});});}
+function exportXlsx(){
+  try{
+    if(!parsed){vscodeApi.postMessage({type:'info',text:'図がパースされていません'});return;}
+    if(!window.StableBlockExcel||!window.JSZip){vscodeApi.postMessage({type:'info',text:'Excel エクスポート用モジュール未ロード'});return;}
+    window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}).then(function(bytes){
+      var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+      var b64=btoa(binary);
+      vscodeApi.postMessage({type:'exportXlsx',data:b64});
+    }).catch(function(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});});
+  }catch(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});}
+}
 function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('zl').textContent=Math.round(zm*100)+'%';render();}
 
 // Keyboard
