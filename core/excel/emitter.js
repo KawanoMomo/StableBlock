@@ -200,3 +200,14 @@ export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
     `<xdr:clientData/>` +
   `</xdr:absoluteAnchor>`;
 }
+
+const Z_ORDER = { group: 0, connection: 1, connlabel: 2, block: 3, note: 4 };
+
+export function sortByZOrder(items) {
+  return [...items].sort((a, b) => {
+    const za = Z_ORDER[a.kind] ?? 99;
+    const zb = Z_ORDER[b.kind] ?? 99;
+    if (za !== zb) return za - zb;
+    return (a.srcIndex || 0) - (b.srcIndex || 0);
+  });
+}
