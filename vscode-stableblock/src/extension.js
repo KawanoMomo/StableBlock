@@ -219,7 +219,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
   <div class="sep"></div><button class="tb" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode" style="opacity:0.4;pointer-events:none">&#x270E; Edit</button>
   <div class="sep"></div><button class="tb" onclick="fixN(event.shiftKey)" title="Rename __new_ IDs from labels">Fix ID</button>
-  <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button><button class="tb" onclick="exportPNGT()">PNG&#x2205;</button><button class="tb" onclick="copyPNG()">&#x2398; Copy</button>
+  <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button><button class="tb" onclick="exportPNGT()">PNG&#x2205;</button><button class="tb" onclick="copyPNG()">&#x2398; Copy</button><button class="tb" onclick="exportXlsx()">Excel</button>
   <div class="sep"></div><button class="tb" onclick="exportMmd()">Mermaid</button>
   <div class="sep"></div><input class="pi" id="search-input" placeholder="Search..." style="width:100px;font-size:10px" oninput="doSearch(this.value)">
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
