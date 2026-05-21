@@ -1,0 +1,4 @@
+@canvas width=400 height=200 grid=20
+block ui "UI" at 1,1 size 5x3 color=#3B82F6 text=#FFFFFF round=4
+block core "Core" at 10,1 size 5x3 color=#10B981 text=#FFFFFF round=4
+ui -> core "request"
