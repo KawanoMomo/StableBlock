@@ -15,15 +15,15 @@
 - [ ] `fixtures/with-note.sb` 同様
 
 ローカルサーバー起動方法:
+```bat
+start-html.bat
 ```
-python -m http.server 8000
-```
-ブラウザで `http://localhost:8000/stableblock.html` を開く（file:// だと fetch がブロックされる）。
+（リポジトリルートで実行。Python優先、無ければ npx http-server にフォールバック。ブラウザは自動で開く。）
 
 ### VSCode 拡張
 
-- [ ] `vscode-stableblock/` で `npx vsce package --allow-missing-repository` 実行
-- [ ] `code --install-extension stableblock-*.vsix` でインストール
+- [ ] `build-vscode.bat` を実行（パッケージ化 + インストールを一括）
+- [ ] VSCode 再起動またはウィンドウリロード
 - [ ] 任意の `.sb` をプレビューし、ツールバーに Excel ボタンが表示される
 - [ ] ボタン → 保存ダイアログ → diagram.xlsx 保存
 

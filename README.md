@@ -29,7 +29,21 @@
 
 `stableblock.html` をブラウザで開くだけ。オフラインで動作。
 
+**Excelエクスポートを使う場合**は `file://` ではfetchがブロックされるためローカルHTTPサーバーが必要：
+
+```bat
+start-html.bat
+```
+
+`start-html.bat` はPython（無ければNode）でポート8000のサーバーを起動し、ブラウザを自動で開く。`Ctrl+C` で停止。
+
 ### VSCode拡張
+
+```bat
+build-vscode.bat
+```
+
+`build-vscode.bat` は `vsce package` でビルドして `code --install-extension` でインストールまで実行。手動の場合は:
 
 ```bash
 cd vscode-stableblock
@@ -39,6 +53,14 @@ code --install-extension stableblock-0.6.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
+
+### テスト実行
+
+```bat
+run-tests.bat
+```
+
+JS エミッタの単体・golden ファイルテストを実行（Node.js組み込みテストランナー）。
 
 ### MCPサーバー
 
