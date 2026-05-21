@@ -2,6 +2,14 @@
 
 All notable changes to StableBlock will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Excel (.xlsx) エクスポート機能 (HTML 版 / VSCode 拡張)
+  - ブロック・接続線・グループ・注釈をネイティブ Excel シェイプとして出力
+  - 各シェイプを Excel 上で個別にテキスト・色・位置・サイズ編集可能
+  - 既存設計書へのコピー＆貼り付け用途を想定
+
 ## [0.6.0] - 2026-03-23
 
 ### Added
