@@ -102,6 +102,29 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 input[type=number] { -moz-appearance:textfield; }
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 </style>
+<script src="core/excel/jszip.min.js"></script>
+<script type="module">
+  // Excel エクスポート: emitter.js を ES Module として読み込んで window に公開し、
+  // template-skeleton の 7 ファイルを fetch してグローバル保持する。
+  import * as Emitter from './core/excel/emitter.js';
+  window.StableBlockExcel = Emitter;
+  const PATHS = [
+    '[Content_Types].xml',
+    '_rels/.rels',
+    'xl/workbook.xml',
+    'xl/_rels/workbook.xml.rels',
+    'xl/worksheets/sheet1.xml',
+    'xl/worksheets/_rels/sheet1.xml.rels',
+    'xl/drawings/_rels/drawing1.xml.rels'
+  ];
+  window.StableBlockTemplateFiles = {};
+  Promise.all(PATHS.map(async p => {
+    const r = await fetch('./core/excel/template-skeleton/' + p);
+    if (!r.ok) throw new Error('failed to fetch template: ' + p + ' (' + r.status + ')');
+    window.StableBlockTemplateFiles[p] = await r.text();
+  })).then(() => { window.StableBlockExcelReady = true; console.log('[stableblock] Excel template loaded'); })
+    .catch(e => { console.error('[stableblock] Excel template load failed:', e); });
+</script>
 </head>
 <body>
 
@@ -773,6 +796,7 @@ function pngCanvas(transparent){const svg=document.querySelector('#svg-wrap svg'
 function exportPNG(){pngCanvas(false).then(c=>{if(c)download('diagram.png',c.toDataURL('image/png'));});}
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c)download('diagram_transparent.png',c.toDataURL('image/png'));});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});});}
+async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh();};reader.readAsText(file);input.value='';}
 function exportMermaid(){if(!parsed)return;let m='graph TD\n';const inGroup={};parsed.groups.forEach(gr=>{const children=parsed.blocks.filter(b=>isInside(b,gr));if(children.length){m+=`  subgraph ${gr.id}["${gr.label}"]\n`;children.forEach(b=>{m+=`    ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;inGroup[b.id]=true;});m+=`  end\n`;}});parsed.blocks.filter(b=>!inGroup[b.id]).forEach(b=>{m+=`  ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;});parsed.connections.filter(c=>!isAnnotationConn(c)).forEach(c=>{const arrow=c.bidir?'<-->':'-->';const lbl=c.label?`|${c.label}|`:'';m+=`  ${c.from} ${arrow}${lbl} ${c.to}\n`;});download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(m));}
 function setZoom(dir){zoom=Math.max(0.25,Math.min(3,zoom+dir*0.25));document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
