@@ -78,3 +78,37 @@ test('golden: with-group AST matches expected drawing.xml', () => {
   const actual = buildDrawingXml(withGroupAst());
   assert.equal(normalizeXml(actual), normalizeXml(expected));
 });
+
+function withNoteAst() {
+  return {
+    canvas: { width: 400, height: 300, grid: 20 },
+    blocks: [
+      { id: 'ui', label: 'UI', x: 1, y: 3, w: 5, h: 3, color: '#3B82F6', textColor: '#FFFFFF', borderColor: null, round: 4, style: 'solid' },
+      { id: 'core', label: 'Core', x: 10, y: 3, w: 5, h: 3, color: '#10B981', textColor: '#FFFFFF', borderColor: null, round: 4, style: 'solid' }
+    ],
+    groups: [],
+    notes: [
+      { id: 'memo', label: '重要', x: 1, y: 1, w: 8, h: 1, color: '#FEF3C7', textColor: '#92400E', borderColor: null, round: 4, style: 'solid' }
+    ],
+    connections: [
+      { from: 'ui', to: 'core', label: '', color: '#64748B', style: 'solid', width: 1.5, bidir: false }
+    ],
+    blockMap: {
+      ui: { x: 1, y: 3, w: 5, h: 3 },
+      core: { x: 10, y: 3, w: 5, h: 3 }
+    }
+  };
+}
+
+test('golden: with-note AST matches expected drawing.xml', () => {
+  const expected = readFileSync(join(FIXTURE_DIR, 'with-note.expected-drawing.xml'), 'utf8');
+  const actual = buildDrawingXml(withNoteAst());
+  assert.equal(normalizeXml(actual), normalizeXml(expected));
+});
+
+test('golden: note appears above blocks in z-order', () => {
+  const xml = buildDrawingXml(withNoteAst());
+  const blockUiIdx = xml.indexOf('block:ui');
+  const noteIdx = xml.indexOf('note:memo');
+  assert.ok(blockUiIdx < noteIdx, `note (${noteIdx}) should come after block (${blockUiIdx})`);
+});
