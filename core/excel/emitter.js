@@ -1,6 +1,8 @@
 // StableBlock → Xlsx Drawing XML Emitter
 // 仕様: core/excel/xlsx-emit-spec.md
 
+import JSZip from 'jszip';
+
 export function pxToEmu(px) {
   // Banker's rounding (round half to even) so 0.5 px -> 4762 EMU and
   // 1.5 px -> 14288 EMU (both expected by tests). This matches IEEE 754's
@@ -253,4 +255,13 @@ export function buildDrawingXml(ast) {
     ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     anchorXmls.join('') +
     `</xdr:wsDr>`;
+}
+
+export async function packageXlsx(templateFiles, drawingXml) {
+  const zip = new JSZip();
+  for (const [path, content] of Object.entries(templateFiles)) {
+    zip.file(path, content);
+  }
+  zip.file('xl/drawings/drawing1.xml', drawingXml);
+  return await zip.generateAsync({ type: 'uint8array' });
 }
