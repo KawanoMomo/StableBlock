@@ -1,0 +1,5 @@
+@canvas width=400 height=300 grid=20
+group app "Application" at 1,1 size 18x8 color=#EEF2FF border=#818CF8
+block ui "UI" at 2,3 size 5x3 color=#3B82F6 text=#FFFFFF round=4
+block core "Core" at 10,3 size 5x3 color=#10B981 text=#FFFFFF round=4
+ui -> core

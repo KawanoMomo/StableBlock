@@ -51,3 +51,30 @@ test('golden: renderXlsx produces valid xlsx zip', async () => {
   assert.ok(drawing.includes('conn:0'));
   assert.ok(drawing.includes('connlabel:0'));
 });
+
+function withGroupAst() {
+  return {
+    canvas: { width: 400, height: 300, grid: 20 },
+    blocks: [
+      { id: 'ui', label: 'UI', x: 2, y: 3, w: 5, h: 3, color: '#3B82F6', textColor: '#FFFFFF', borderColor: null, round: 4, style: 'solid' },
+      { id: 'core', label: 'Core', x: 10, y: 3, w: 5, h: 3, color: '#10B981', textColor: '#FFFFFF', borderColor: null, round: 4, style: 'solid' }
+    ],
+    groups: [
+      { id: 'app', label: 'Application', x: 1, y: 1, w: 18, h: 8, color: '#EEF2FF', borderColor: '#818CF8' }
+    ],
+    notes: [],
+    connections: [
+      { from: 'ui', to: 'core', label: '', color: '#64748B', style: 'solid', width: 1.5, bidir: false }
+    ],
+    blockMap: {
+      ui: { x: 2, y: 3, w: 5, h: 3 },
+      core: { x: 10, y: 3, w: 5, h: 3 }
+    }
+  };
+}
+
+test('golden: with-group AST matches expected drawing.xml', () => {
+  const expected = readFileSync(join(FIXTURE_DIR, 'with-group.expected-drawing.xml'), 'utf8');
+  const actual = buildDrawingXml(withGroupAst());
+  assert.equal(normalizeXml(actual), normalizeXml(expected));
+});
