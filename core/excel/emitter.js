@@ -2,7 +2,16 @@
 // 仕様: core/excel/xlsx-emit-spec.md
 
 export function pxToEmu(px) {
-  return Math.trunc(px * 9525);
+  // Banker's rounding (round half to even) so 0.5 px -> 4762 EMU and
+  // 1.5 px -> 14288 EMU (both expected by tests). This matches IEEE 754's
+  // default rounding mode and avoids the asymmetric bias of round-half-up.
+  const scaled = px * 9525;
+  const rounded = Math.round(scaled);
+  const frac = scaled - Math.floor(scaled);
+  if (frac === 0.5) {
+    return rounded % 2 === 0 ? rounded : rounded - 1;
+  }
+  return rounded;
 }
 
 export function gridToEmu(grid, gridPx) {
@@ -126,4 +135,35 @@ export function computeConnectionEndpoints(conn, blockMap, gridPx) {
   const c1 = centerOfShape(from, gridPx);
   const c2 = centerOfShape(to, gridPx);
   return { x1: c1.x, y1: c1.y, x2: c2.x, y2: c2.y };
+}
+
+export function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
+  const { x1, y1, x2, y2 } = endpoints;
+  const minX = Math.min(x1, x2);
+  const minY = Math.min(y1, y2);
+  const absDx = Math.abs(x2 - x1);
+  const absDy = Math.abs(y2 - y1);
+  const flipH = x1 > x2 ? 'true' : 'false';
+  const flipV = y1 > y2 ? 'true' : 'false';
+  const lineColor = normalizeColor(conn.color, '64748B');
+  const lineWidth = pxToEmu(Number(conn.width) || 1.5);
+  const dashXml = conn.style === 'dashed' ? '<a:prstDash val="dash"/>' : '';
+  const headEnd = conn.bidir ? '<a:headEnd type="triangle"/>' : '';
+
+  return `<xdr:absoluteAnchor>` +
+    `<xdr:pos x="${minX}" y="${minY}"/>` +
+    `<xdr:ext cx="${absDx}" cy="${absDy}"/>` +
+    `<xdr:cxnSp macro="">` +
+      `<xdr:nvCxnSpPr>` +
+        `<xdr:cNvPr id="${shapeId}" name="conn:${connIndex}"/>` +
+        `<xdr:cNvCxnSpPr/>` +
+      `</xdr:nvCxnSpPr>` +
+      `<xdr:spPr>` +
+        `<a:xfrm flipH="${flipH}" flipV="${flipV}"><a:off x="0" y="0"/><a:ext cx="${absDx}" cy="${absDy}"/></a:xfrm>` +
+        `<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>` +
+        `<a:ln w="${lineWidth}"><a:solidFill><a:srgbClr val="${lineColor}"/></a:solidFill>${dashXml}${headEnd}<a:tailEnd type="triangle"/></a:ln>` +
+      `</xdr:spPr>` +
+    `</xdr:cxnSp>` +
+    `<xdr:clientData/>` +
+  `</xdr:absoluteAnchor>`;
 }
