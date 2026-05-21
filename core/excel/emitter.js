@@ -265,3 +265,18 @@ export async function packageXlsx(templateFiles, drawingXml) {
   zip.file('xl/drawings/drawing1.xml', drawingXml);
   return await zip.generateAsync({ type: 'uint8array' });
 }
+
+export async function renderXlsx(ast, opts = {}) {
+  const templateFiles = opts.templateFiles || (await loadTemplateFilesAsync());
+  const drawingXml = buildDrawingXml(ast);
+  return await packageXlsx(templateFiles, drawingXml);
+}
+
+async function loadTemplateFilesAsync() {
+  // Node 環境では template-loader.mjs を、ブラウザでは window.StableBlockTemplateFiles を使う
+  if (typeof window !== 'undefined' && window.StableBlockTemplateFiles) {
+    return window.StableBlockTemplateFiles;
+  }
+  const mod = await import('./template-loader.mjs');
+  return mod.loadTemplateFiles();
+}
