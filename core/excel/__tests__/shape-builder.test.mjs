@@ -81,3 +81,31 @@ test('buildBlockShape: \\n in label splits into multiple <a:p>', () => {
   const pCount = (xml.match(/<a:p>/g) || []).length;
   assert.equal(pCount, 2);
 });
+
+import { buildGroupShape } from '../emitter.js';
+
+test('buildGroupShape: basic group with label', () => {
+  const group = {
+    id: 'app', label: 'Application',
+    x: 1, y: 1, w: 20, h: 10,
+    color: '#EEF2FF', borderColor: '#818CF8'
+  };
+  const xml = buildGroupShape(group, 1, 20);
+  assert.ok(xml.includes('group:app'));
+  assert.ok(xml.includes('Application'));
+  assert.ok(xml.includes('val="EEF2FF"'));
+  assert.ok(xml.includes('val="818CF8"'));
+  assert.ok(xml.includes('alpha val="40000"'));  // 半透明
+  assert.ok(xml.includes('anchor="t"'));         // 左上ラベル
+  assert.ok(xml.includes('algn="l"'));
+});
+
+test('buildGroupShape: no border falls back to gray default', () => {
+  const group = {
+    id: 'g', label: 'G',
+    x: 0, y: 0, w: 5, h: 5,
+    color: '#EEEEEE', borderColor: null
+  };
+  const xml = buildGroupShape(group, 1, 20);
+  assert.ok(xml.includes('<a:ln>'));  // border defaults to something
+});

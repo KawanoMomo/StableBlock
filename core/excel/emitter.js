@@ -74,3 +74,35 @@ export function buildBlockShape(block, shapeId, gridPx) {
     `<xdr:clientData/>` +
   `</xdr:absoluteAnchor>`;
 }
+
+export function buildGroupShape(group, shapeId, gridPx) {
+  const x = gridToEmu(group.x, gridPx);
+  const y = gridToEmu(group.y, gridPx);
+  const cx = gridToEmu(group.w, gridPx);
+  const cy = gridToEmu(group.h, gridPx);
+  const fillColor = normalizeColor(group.color, 'F3F4F6');
+  const borderColor = normalizeColor(group.borderColor, '9CA3AF');
+
+  return `<xdr:absoluteAnchor>` +
+    `<xdr:pos x="${x}" y="${y}"/>` +
+    `<xdr:ext cx="${cx}" cy="${cy}"/>` +
+    `<xdr:sp macro="" textlink="">` +
+      `<xdr:nvSpPr>` +
+        `<xdr:cNvPr id="${shapeId}" name="group:${escapeXml(group.id)}"/>` +
+        `<xdr:cNvSpPr/>` +
+      `</xdr:nvSpPr>` +
+      `<xdr:spPr>` +
+        `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        `<a:solidFill><a:srgbClr val="${fillColor}"><a:alpha val="40000"/></a:srgbClr></a:solidFill>` +
+        `<a:ln><a:solidFill><a:srgbClr val="${borderColor}"/></a:solidFill></a:ln>` +
+      `</xdr:spPr>` +
+      `<xdr:txBody>` +
+        `<a:bodyPr wrap="square" anchor="t"/>` +
+        `<a:lstStyle/>` +
+        `<a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill></a:rPr><a:t>${escapeXml(group.label || '')}</a:t></a:r></a:p>` +
+      `</xdr:txBody>` +
+    `</xdr:sp>` +
+    `<xdr:clientData/>` +
+  `</xdr:absoluteAnchor>`;
+}
