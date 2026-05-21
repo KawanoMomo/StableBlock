@@ -4,8 +4,8 @@
   "private": true,
   "description": "StableBlock — text-based block diagram editor",
   "scripts": {
-    "test": "node --test core/excel/__tests__/",
-    "test:watch": "node --test --watch core/excel/__tests__/"
+    "test": "node --test \"core/excel/__tests__/*.test.mjs\"",
+    "test:watch": "node --test --watch \"core/excel/__tests__/*.test.mjs\""
   },
   "devDependencies": {
     "jszip": "^3.10.1",
