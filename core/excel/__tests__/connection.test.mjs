@@ -57,3 +57,29 @@ test('buildConnectionShape: reversed coords use flipH', () => {
   const xml = buildConnectionShape(conn, 0, endpoints, 1);
   assert.ok(xml.includes('flipH="true"'));
 });
+
+import { buildConnectionLabel } from '../emitter.js';
+
+test('buildConnectionLabel: places textbox at midpoint', () => {
+  const xml = buildConnectionLabel(
+    { from: 'a', to: 'b', label: 'request' },
+    0,
+    { x1: 100000, y1: 100000, x2: 500000, y2: 100000 },
+    99
+  );
+  assert.ok(xml.includes('name="connlabel:0"'));
+  assert.ok(xml.includes('request'));
+  // midX = 300000 - 250000 (textbox half width) = 50000
+  assert.ok(xml.includes('x="50000"'));
+});
+
+test('buildConnectionLabel: escapes special chars in label', () => {
+  const xml = buildConnectionLabel(
+    { from: 'a', to: 'b', label: '<X & Y>' },
+    0,
+    { x1: 0, y1: 0, x2: 100000, y2: 0 },
+    99
+  );
+  assert.ok(xml.includes('&lt;X &amp; Y&gt;'));
+  assert.ok(!xml.includes('<X & Y>'));
+});

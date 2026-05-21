@@ -167,3 +167,36 @@ export function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
     `<xdr:clientData/>` +
   `</xdr:absoluteAnchor>`;
 }
+
+export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
+  const { x1, y1, x2, y2 } = endpoints;
+  const midX = Math.round((x1 + x2) / 2);
+  const midY = Math.round((y1 + y2) / 2);
+  const tbW = 500000;
+  const tbH = 200000;
+  const posX = midX - tbW / 2;
+  const posY = midY - tbH / 2;
+
+  return `<xdr:absoluteAnchor>` +
+    `<xdr:pos x="${posX}" y="${posY}"/>` +
+    `<xdr:ext cx="${tbW}" cy="${tbH}"/>` +
+    `<xdr:sp macro="" textlink="">` +
+      `<xdr:nvSpPr>` +
+        `<xdr:cNvPr id="${shapeId}" name="connlabel:${connIndex}"/>` +
+        `<xdr:cNvSpPr txBox="1"/>` +
+      `</xdr:nvSpPr>` +
+      `<xdr:spPr>` +
+        `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${tbW}" cy="${tbH}"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        `<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>` +
+        `<a:ln><a:noFill/></a:ln>` +
+      `</xdr:spPr>` +
+      `<xdr:txBody>` +
+        `<a:bodyPr wrap="square" anchor="ctr"/>` +
+        `<a:lstStyle/>` +
+        `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill></a:rPr><a:t>${escapeXml(conn.label || '')}</a:t></a:r></a:p>` +
+      `</xdr:txBody>` +
+    `</xdr:sp>` +
+    `<xdr:clientData/>` +
+  `</xdr:absoluteAnchor>`;
+}
