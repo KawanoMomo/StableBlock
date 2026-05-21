@@ -211,3 +211,46 @@ export function sortByZOrder(items) {
     return (a.srcIndex || 0) - (b.srcIndex || 0);
   });
 }
+
+export function buildDrawingXml(ast) {
+  const gridPx = ast.canvas?.grid || 20;
+  const items = [];
+
+  (ast.groups || []).forEach((g, i) => items.push({ kind: 'group', data: g, srcIndex: i }));
+
+  (ast.connections || []).forEach((c, i) => {
+    const ep = computeConnectionEndpoints(c, ast.blockMap || {}, gridPx);
+    if (!ep) {
+      console.warn(`[excel-emitter] skipping connection: ${c.from} -> ${c.to} (endpoint missing)`);
+      return;
+    }
+    items.push({ kind: 'connection', data: c, srcIndex: i, endpoints: ep, connIndex: i });
+    if (c.label) {
+      items.push({ kind: 'connlabel', data: c, srcIndex: i, endpoints: ep, connIndex: i });
+    }
+  });
+
+  (ast.blocks || []).forEach((b, i) => items.push({ kind: 'block', data: b, srcIndex: i }));
+  (ast.notes || []).forEach((n, i) => items.push({ kind: 'note', data: n, srcIndex: i }));
+
+  const sorted = sortByZOrder(items);
+
+  let shapeId = 1;
+  const anchorXmls = sorted.map(item => {
+    switch (item.kind) {
+      case 'group': return buildGroupShape(item.data, shapeId++, gridPx);
+      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++);
+      case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++);
+      case 'block': return buildBlockShape(item.data, shapeId++, gridPx);
+      case 'note': return buildNoteShape(item.data, shapeId++, gridPx);
+      default: return '';
+    }
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"` +
+    ` xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"` +
+    ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+    anchorXmls.join('') +
+    `</xdr:wsDr>`;
+}
