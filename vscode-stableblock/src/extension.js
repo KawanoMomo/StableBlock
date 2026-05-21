@@ -67,6 +67,17 @@ function activate(context) {
             vscode.window.showInformationMessage("PNG saved: " + uri.fsPath);
           }
         }
+        if (msg.type === "exportXlsx") {
+          const uri = await vscode.window.showSaveDialog({
+            filters: { "Excel": ["xlsx"] },
+            defaultUri: vscode.Uri.file("diagram.xlsx")
+          });
+          if (uri) {
+            const buf = Buffer.from(msg.data, 'base64');
+            await vscode.workspace.fs.writeFile(uri, buf);
+            vscode.window.showInformationMessage("Excel ファイルを書き出しました: " + uri.fsPath);
+          }
+        }
         if (msg.type === "exportMmd") {
           const uri = await vscode.window.showSaveDialog({ filters: { "Mermaid": ["mmd", "md"] }, defaultUri: vscode.Uri.file("diagram.mmd") });
           if (uri) {
