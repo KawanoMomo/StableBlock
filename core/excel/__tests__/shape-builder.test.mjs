@@ -109,3 +109,17 @@ test('buildGroupShape: no border falls back to gray default', () => {
   const xml = buildGroupShape(group, 1, 20);
   assert.ok(xml.includes('<a:ln>'));  // border defaults to something
 });
+
+import { buildNoteShape } from '../emitter.js';
+
+test('buildNoteShape: note has note: prefix in name', () => {
+  const note = {
+    id: 'memo', label: 'Memo',
+    x: 1, y: 1, w: 5, h: 2,
+    color: '#FEF3C7', textColor: '#92400E',
+    borderColor: null, round: 4, style: 'solid'
+  };
+  const xml = buildNoteShape(note, 10, 20);
+  assert.ok(xml.includes('name="note:memo"'));
+  assert.ok(xml.includes('val="FEF3C7"'));
+});

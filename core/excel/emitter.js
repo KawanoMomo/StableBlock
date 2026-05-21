@@ -106,3 +106,9 @@ export function buildGroupShape(group, shapeId, gridPx) {
     `<xdr:clientData/>` +
   `</xdr:absoluteAnchor>`;
 }
+
+export function buildNoteShape(note, shapeId, gridPx) {
+  // ノートは Block と同じ形だが name プレフィックスが note:
+  const xml = buildBlockShape(note, shapeId, gridPx);
+  return xml.replace(`name="block:${escapeXml(note.id)}"`, `name="note:${escapeXml(note.id)}"`);
+}
