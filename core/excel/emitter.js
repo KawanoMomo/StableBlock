@@ -112,3 +112,18 @@ export function buildNoteShape(note, shapeId, gridPx) {
   const xml = buildBlockShape(note, shapeId, gridPx);
   return xml.replace(`name="block:${escapeXml(note.id)}"`, `name="note:${escapeXml(note.id)}"`);
 }
+
+export function centerOfShape(shape, gridPx) {
+  const cxPx = (shape.x + shape.w / 2) * gridPx;
+  const cyPx = (shape.y + shape.h / 2) * gridPx;
+  return { x: pxToEmu(cxPx), y: pxToEmu(cyPx) };
+}
+
+export function computeConnectionEndpoints(conn, blockMap, gridPx) {
+  const from = blockMap[conn.from];
+  const to = blockMap[conn.to];
+  if (!from || !to) return null;
+  const c1 = centerOfShape(from, gridPx);
+  const c2 = centerOfShape(to, gridPx);
+  return { x1: c1.x, y1: c1.y, x2: c2.x, y2: c2.y };
+}
