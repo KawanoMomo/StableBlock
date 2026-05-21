@@ -1,7 +1,11 @@
 // StableBlock → Xlsx Drawing XML Emitter
 // 仕様: core/excel/xlsx-emit-spec.md
-
-import JSZip from 'jszip';
+//
+// JSZip dependency: injected via opts to support both Node (test) and
+// browser (stableblock.html / VSCode webview) environments without requiring
+// a bundler. In Node, pass { JSZip } from `import JSZip from 'jszip'`. In
+// the browser, set window.JSZip via <script src="jszip.min.js"> and either
+// pass it explicitly or let packageXlsx fall back to the global.
 
 export function pxToEmu(px) {
   // Banker's rounding (round half to even) so 0.5 px -> 4762 EMU and
@@ -257,8 +261,15 @@ export function buildDrawingXml(ast) {
     `</xdr:wsDr>`;
 }
 
-export async function packageXlsx(templateFiles, drawingXml) {
-  const zip = new JSZip();
+function resolveJSZip(opts) {
+  if (opts && opts.JSZip) return opts.JSZip;
+  if (typeof window !== 'undefined' && window.JSZip) return window.JSZip;
+  throw new Error('JSZip not available; pass via opts.JSZip in Node or load jszip.min.js in browser');
+}
+
+export async function packageXlsx(templateFiles, drawingXml, opts = {}) {
+  const JSZipCls = resolveJSZip(opts);
+  const zip = new JSZipCls();
   for (const [path, content] of Object.entries(templateFiles)) {
     zip.file(path, content);
   }
@@ -269,7 +280,7 @@ export async function packageXlsx(templateFiles, drawingXml) {
 export async function renderXlsx(ast, opts = {}) {
   const templateFiles = opts.templateFiles || (await loadTemplateFilesAsync());
   const drawingXml = buildDrawingXml(ast);
-  return await packageXlsx(templateFiles, drawingXml);
+  return await packageXlsx(templateFiles, drawingXml, opts);
 }
 
 async function loadTemplateFilesAsync() {

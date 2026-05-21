@@ -42,7 +42,7 @@ test('golden: basic AST produces expected drawing.xml', () => {
 });
 
 test('golden: renderXlsx produces valid xlsx zip', async () => {
-  const bytes = await renderXlsx(basicAst());
+  const bytes = await renderXlsx(basicAst(), { JSZip });
   const zip = await JSZip.loadAsync(bytes);
   assert.ok(zip.files['xl/drawings/drawing1.xml']);
   const drawing = await zip.files['xl/drawings/drawing1.xml'].async('string');

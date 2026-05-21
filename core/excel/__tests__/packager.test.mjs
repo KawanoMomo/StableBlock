@@ -7,7 +7,7 @@ import { loadTemplateFiles } from '../template-loader.mjs';
 test('packageXlsx: produces a valid zip with all required entries', async () => {
   const templateFiles = loadTemplateFiles();
   const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>`;
-  const bytes = await packageXlsx(templateFiles, drawingXml);
+  const bytes = await packageXlsx(templateFiles, drawingXml, { JSZip });
   assert.ok(bytes instanceof Uint8Array);
   assert.ok(bytes.length > 100);
 
@@ -22,7 +22,7 @@ test('packageXlsx: produces a valid zip with all required entries', async () => 
 test('packageXlsx: drawing1.xml contains the supplied content', async () => {
   const templateFiles = loadTemplateFiles();
   const drawingXml = `<?xml version="1.0"?><xdr:wsDr xmlns:xdr="x"/>`;
-  const bytes = await packageXlsx(templateFiles, drawingXml);
+  const bytes = await packageXlsx(templateFiles, drawingXml, { JSZip });
   const zip = await JSZip.loadAsync(bytes);
   const content = await zip.files['xl/drawings/drawing1.xml'].async('string');
   assert.equal(content, drawingXml);
