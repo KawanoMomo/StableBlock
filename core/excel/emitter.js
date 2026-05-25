@@ -81,7 +81,7 @@ export function buildBlockShape(block, shapeId, gridPx) {
         borderXml +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
-        `<a:bodyPr wrap="square" anchor="ctr"/>` +
+        `<a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>` +
         `<a:lstStyle/>` +
         paragraphs +
       `</xdr:txBody>` +

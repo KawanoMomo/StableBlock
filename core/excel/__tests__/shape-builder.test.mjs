@@ -151,3 +151,15 @@ test('buildNoteShape: note has note: prefix in name', () => {
   assert.ok(xml.includes('name="note:memo"'));
   assert.ok(xml.includes('val="FEF3C7"'));
 });
+
+test('buildBlockShape: bodyPr includes normAutofit', () => {
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('<a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>'),
+    'bodyPr should contain normAutofit for text auto-shrink');
+});
