@@ -191,6 +191,11 @@ export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
   const posX = midX - tbW / 2;
   const posY = midY - tbH / 2;
 
+  const labelLines = String(conn.label || '').split(/\\n|\r?\n/);
+  const paragraphs = labelLines.map(line =>
+    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
+  ).join('');
+
   return `<xdr:absoluteAnchor>` +
     `<xdr:pos x="${posX}" y="${posY}"/>` +
     `<xdr:ext cx="${tbW}" cy="${tbH}"/>` +
@@ -208,7 +213,7 @@ export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
       `<xdr:txBody>` +
         `<a:bodyPr wrap="square" anchor="ctr"/>` +
         `<a:lstStyle/>` +
-        `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill></a:rPr><a:t>${escapeXml(conn.label || '')}</a:t></a:r></a:p>` +
+        paragraphs +
       `</xdr:txBody>` +
     `</xdr:sp>` +
     `<xdr:clientData/>` +

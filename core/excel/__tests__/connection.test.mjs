@@ -83,3 +83,25 @@ test('buildConnectionLabel: escapes special chars in label', () => {
   assert.ok(xml.includes('&lt;X &amp; Y&gt;'));
   assert.ok(!xml.includes('<X & Y>'));
 });
+
+test('buildConnectionLabel: includes font specs', () => {
+  const xml = buildConnectionLabel(
+    { from: 'a', to: 'b', label: 'request' },
+    0,
+    { x1: 100000, y1: 100000, x2: 500000, y2: 100000 },
+    99
+  );
+  assert.ok(xml.includes('<a:latin typeface="Calibri"/>'));
+  assert.ok(xml.includes('<a:ea typeface="Yu Gothic UI"/>'));
+});
+
+test('buildConnectionLabel: DSL 2-char \\n splits label', () => {
+  const xml = buildConnectionLabel(
+    { from: 'a', to: 'b', label: 'A\\nB' },
+    0,
+    { x1: 0, y1: 0, x2: 100000, y2: 0 },
+    99
+  );
+  const pCount = (xml.match(/<a:p>/g) || []).length;
+  assert.equal(pCount, 2);
+});
