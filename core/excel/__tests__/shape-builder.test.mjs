@@ -70,9 +70,10 @@ test('buildBlockShape: border color produces line solidFill', () => {
   assert.ok(xml.match(/<a:ln>\s*<a:solidFill><a:srgbClr val="FF0000"\/><\/a:solidFill>\s*<\/a:ln>/));
 });
 
-test('buildBlockShape: \\n in label splits into multiple <a:p>', () => {
+test('buildBlockShape: \\n (DSL 2-char backslash-n) splits into multiple <a:p>', () => {
+  // DSL parser keeps "Line1\nLine2" as 12 chars: L,i,n,e,1,\,n,L,i,n,e,2
   const block = {
-    id: 'a', label: 'Line1\nLine2',
+    id: 'a', label: 'Line1\\nLine2',  // JS literal -> 12 chars including backslash-n
     x: 0, y: 0, w: 2, h: 2,
     color: '#FFFFFF', textColor: '#000000',
     borderColor: null, round: 0, style: 'solid'
@@ -80,6 +81,33 @@ test('buildBlockShape: \\n in label splits into multiple <a:p>', () => {
   const xml = buildBlockShape(block, 1, 20);
   const pCount = (xml.match(/<a:p>/g) || []).length;
   assert.equal(pCount, 2);
+  assert.ok(xml.includes('<a:t>Line1</a:t>'));
+  assert.ok(xml.includes('<a:t>Line2</a:t>'));
+  assert.ok(!xml.includes('\\n'), 'literal backslash-n should not appear in output');
+});
+
+test('buildBlockShape: real newline char also splits', () => {
+  const block = {
+    id: 'a', label: 'Line1\nLine2',  // JS literal -> 11 chars with real newline
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  const pCount = (xml.match(/<a:p>/g) || []).length;
+  assert.equal(pCount, 2);
+});
+
+test('buildBlockShape: no newline produces single <a:p>', () => {
+  const block = {
+    id: 'a', label: 'OneLine',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  const pCount = (xml.match(/<a:p>/g) || []).length;
+  assert.equal(pCount, 1);
 });
 
 import { buildGroupShape } from '../emitter.js';
