@@ -268,7 +268,7 @@ Phase 1 で committed した 3 つの期待出力 XML は本修正で全て変�
 - **ラベル幅に応じた強制折り返し**: `wordWrap` で長単語が途中で折れる挙動制御。autoFit で十分実用
 - **`buildGroupShape` の autoFit**: グループラベルは左上に小さく出るだけで原則はみ出さない
 - **Linux/macOS 互換**: Yu Gothic UI は Windows 専用。Mac/Linux で開いた時はフォールバックされる前提（仕様）
-- **接続線端点ルーティング改善 (ECN-006)**: 別 spec の対象、本 PR の修正範囲外
+- **ECN-006 完全互換の接続面選択アルゴリズム移植**: 本修正で 4 辺中点ベースの簡易版を実装。SVG プレビューと完全一致は将来課題
 - **VSCode 拡張の `emitter.browser.js` 利用へのリファクタ**: 現状の inline 変換ロジックを維持。重複削減は将来課題
 
 ## 7. 受け入れ基準

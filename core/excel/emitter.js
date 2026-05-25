@@ -142,13 +142,43 @@ export function centerOfShape(shape, gridPx) {
   return { x: pxToEmu(cxPx), y: pxToEmu(cyPx) };
 }
 
+export function midpointsOfShape(shape, gridPx) {
+  const cxPx = (shape.x + shape.w / 2) * gridPx;
+  const cyPx = (shape.y + shape.h / 2) * gridPx;
+  const leftPx = shape.x * gridPx;
+  const rightPx = (shape.x + shape.w) * gridPx;
+  const topPx = shape.y * gridPx;
+  const bottomPx = (shape.y + shape.h) * gridPx;
+  return {
+    N: { x: pxToEmu(cxPx), y: pxToEmu(topPx) },
+    E: { x: pxToEmu(rightPx), y: pxToEmu(cyPx) },
+    S: { x: pxToEmu(cxPx), y: pxToEmu(bottomPx) },
+    W: { x: pxToEmu(leftPx), y: pxToEmu(cyPx) }
+  };
+}
+
 export function computeConnectionEndpoints(conn, blockMap, gridPx) {
   const from = blockMap[conn.from];
   const to = blockMap[conn.to];
   if (!from || !to) return null;
-  const c1 = centerOfShape(from, gridPx);
-  const c2 = centerOfShape(to, gridPx);
-  return { x1: c1.x, y1: c1.y, x2: c2.x, y2: c2.y };
+  const fromMids = midpointsOfShape(from, gridPx);
+  const toMids = midpointsOfShape(to, gridPx);
+  // Pick the (from-side, to-side) pair with minimum squared distance
+  const SIDES = ['N', 'E', 'S', 'W'];
+  let best = null;
+  for (const fkey of SIDES) {
+    for (const tkey of SIDES) {
+      const f = fromMids[fkey];
+      const t = toMids[tkey];
+      const dx = t.x - f.x;
+      const dy = t.y - f.y;
+      const dist = dx * dx + dy * dy;
+      if (best === null || dist < best.dist) {
+        best = { dist, x1: f.x, y1: f.y, x2: t.x, y2: t.y };
+      }
+    }
+  }
+  return { x1: best.x1, y1: best.y1, x2: best.x2, y2: best.y2 };
 }
 
 export function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
