@@ -101,6 +101,11 @@ export function buildGroupShape(group, shapeId, gridPx) {
   const fillColor = normalizeColor(group.color, 'F3F4F6');
   const borderColor = normalizeColor(group.borderColor, '9CA3AF');
 
+  const labelLines = String(group.label || '').split(/\\n|\r?\n/);
+  const paragraphs = labelLines.map(line =>
+    `<a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
+  ).join('');
+
   return `<xdr:absoluteAnchor>` +
     `<xdr:pos x="${x}" y="${y}"/>` +
     `<xdr:ext cx="${cx}" cy="${cy}"/>` +
@@ -118,7 +123,7 @@ export function buildGroupShape(group, shapeId, gridPx) {
       `<xdr:txBody>` +
         `<a:bodyPr wrap="square" anchor="t"/>` +
         `<a:lstStyle/>` +
-        `<a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill></a:rPr><a:t>${escapeXml(group.label || '')}</a:t></a:r></a:p>` +
+        paragraphs +
       `</xdr:txBody>` +
     `</xdr:sp>` +
     `<xdr:clientData/>` +

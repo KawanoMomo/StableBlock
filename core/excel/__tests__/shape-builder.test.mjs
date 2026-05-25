@@ -203,3 +203,25 @@ test('buildBlockShape: rPr includes Calibri (latin) and Yu Gothic UI (ea) fonts'
   assert.ok(xml.includes('<a:ea typeface="Yu Gothic UI"/>'),
     'rPr should specify Yu Gothic UI for East Asian script');
 });
+
+test('buildGroupShape: rPr includes font specs', () => {
+  const group = {
+    id: 'g', label: 'G',
+    x: 0, y: 0, w: 10, h: 5,
+    color: '#EEEEEE', borderColor: '#999999'
+  };
+  const xml = buildGroupShape(group, 1, 20);
+  assert.ok(xml.includes('<a:latin typeface="Calibri"/>'));
+  assert.ok(xml.includes('<a:ea typeface="Yu Gothic UI"/>'));
+});
+
+test('buildGroupShape: DSL 2-char \\n in label splits into multiple <a:p>', () => {
+  const group = {
+    id: 'g', label: 'Line1\\nLine2',
+    x: 0, y: 0, w: 10, h: 5,
+    color: '#EEEEEE', borderColor: '#999999'
+  };
+  const xml = buildGroupShape(group, 1, 20);
+  const pCount = (xml.match(/<a:p>/g) || []).length;
+  assert.equal(pCount, 2);
+});
