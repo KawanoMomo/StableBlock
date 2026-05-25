@@ -27,9 +27,15 @@
 
 ### HTML版（環境構築不要）
 
-`stableblock.html` をブラウザで開くだけ。オフラインで動作。
+`stableblock.html` をブラウザで開くだけ。オフラインで動作。Excel エクスポートも含めて `file://` で完結。
 
 ### VSCode拡張
+
+```bat
+build-vscode.bat
+```
+
+`build-vscode.bat` は `vsce package` でビルドして `code --install-extension` でインストールまで実行。手動の場合は:
 
 ```bash
 cd vscode-stableblock
@@ -39,6 +45,14 @@ code --install-extension stableblock-0.6.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
+
+### テスト実行
+
+```bat
+run-tests.bat
+```
+
+JS エミッタの単体・golden ファイルテストを実行（Node.js組み込みテストランナー）。
 
 ### MCPサーバー
 
@@ -106,6 +120,7 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **Mermaid変換** — flowchart TD 形式でエクスポート
 - **.sb 保存/読込** — DSLファイルの入出力
 - **@include** — 共通パーツのインクルード
+- **Excel エクスポート** — `.xlsx` 出力。各図形は Excel ネイティブシェイプとして個別に編集可能
 
 ### VSCode拡張
 - **シンタックスハイライト** — キーワード、ID、ラベル、座標、色、矢印
