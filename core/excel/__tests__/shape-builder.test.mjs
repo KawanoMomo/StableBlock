@@ -225,3 +225,39 @@ test('buildGroupShape: DSL 2-char \\n in label splits into multiple <a:p>', () =
   const pCount = (xml.match(/<a:p>/g) || []).length;
   assert.equal(pCount, 2);
 });
+
+test('buildNoteShape: fill has alpha 70000 for transparency', () => {
+  const note = {
+    id: 'memo', label: 'Memo',
+    x: 1, y: 1, w: 5, h: 2,
+    color: '#FEF3C7', textColor: '#92400E',
+    borderColor: null, round: 4, style: 'solid'
+  };
+  const xml = buildNoteShape(note, 10, 20);
+  assert.ok(xml.includes('<a:alpha val="70000"/>'),
+    'note fill should have alpha=70000 (matches SVG opacity 0.7)');
+});
+
+test('buildNoteShape: border is dashed', () => {
+  const note = {
+    id: 'memo', label: 'M',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildNoteShape(note, 1, 20);
+  assert.ok(xml.includes('<a:prstDash val="dash"/>'),
+    'note border should be dashed');
+});
+
+test('buildNoteShape: borderColor null falls back to default D97706', () => {
+  const note = {
+    id: 'memo', label: 'M',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildNoteShape(note, 1, 20);
+  assert.ok(xml.includes('val="D97706"'),
+    'note without explicit border should use SVG default D97706');
+});

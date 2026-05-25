@@ -1,55 +1,86 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { centerOfShape, midpointsOfShape, computeConnectionEndpoints } from '../emitter.js';
+import { centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints } from '../emitter.js';
 
-test('centerOfShape: 1,1 size 5x3 grid=20 -> center at (3.5, 2.5) grid', () => {
+test('centerOfShape: 1,1 size 5x3 grid=20 -> center in EMU', () => {
   const r = centerOfShape({ x: 1, y: 1, w: 5, h: 3 }, 20);
-  // 中心 px = ((1 + 5/2) * 20, (1 + 3/2) * 20) = (70, 50)
-  // EMU = (70*9525, 50*9525) = (666750, 476250)
+  // center px = (70, 50) -> EMU (666750, 476250)
   assert.equal(r.x, 666750);
   assert.equal(r.y, 476250);
 });
 
-test('midpointsOfShape: 1,1 size 5x3 grid=20 returns 4 edge midpoints in EMU', () => {
-  const m = midpointsOfShape({ x: 1, y: 1, w: 5, h: 3 }, 20);
-  // N = top midpoint: ((1 + 5/2) * 20, 1 * 20) = (70, 20) px = (666750, 190500) EMU
-  assert.deepEqual(m.N, { x: 666750, y: 190500 });
-  // E = right midpoint: ((1+5) * 20, (1 + 3/2) * 20) = (120, 50) px = (1143000, 476250) EMU
-  assert.deepEqual(m.E, { x: 1143000, y: 476250 });
-  // S = bottom midpoint: (70, (1+3)*20) = (70, 80) px = (666750, 762000) EMU
-  assert.deepEqual(m.S, { x: 666750, y: 762000 });
-  // W = left midpoint: (1*20, 50) = (20, 50) px = (190500, 476250) EMU
-  assert.deepEqual(m.W, { x: 190500, y: 476250 });
+test('getSide: horizontal layout picks right->left', () => {
+  // a is at left, b is at right with gap
+  const a = { x: 0, y: 0, w: 2, h: 2 };
+  const b = { x: 10, y: 0, w: 2, h: 2 };
+  assert.deepEqual(getSide(a, b), { fs: 'right', ts: 'left' });
 });
 
-test('computeConnectionEndpoints: horizontal layout picks E->W (nearest pair)', () => {
+test('getSide: vertical layout picks bottom->top', () => {
+  const a = { x: 0, y: 0, w: 2, h: 2 };
+  const b = { x: 0, y: 10, w: 2, h: 2 };
+  assert.deepEqual(getSide(a, b), { fs: 'bottom', ts: 'top' });
+});
+
+test('getSide: reversed horizontal picks left->right', () => {
+  const a = { x: 10, y: 0, w: 2, h: 2 };
+  const b = { x: 0, y: 0, w: 2, h: 2 };
+  assert.deepEqual(getSide(a, b), { fs: 'left', ts: 'right' });
+});
+
+test('portPos: single port lands at midpoint', () => {
+  const b = { x: 0, y: 0, w: 4, h: 2 };
+  // grid=20: bx=0, by=0, bw=80, bh=40. side=right, idx=0, total=1, t=0.5
+  // expected x = bx + bw = 80, y = by + bh*0.5 = 20
+  assert.deepEqual(portPos(b, 'right', 0, 1, 20), { x: 80, y: 20 });
+});
+
+test('portPos: 2 ports on top side are distributed at pad=0.2 and 1-pad', () => {
+  const b = { x: 0, y: 0, w: 4, h: 2 };
+  // bx=0, by=0, bw=80, bh=40. side=top: t = 0.2 for idx=0, 0.8 for idx=1
+  const p0 = portPos(b, 'top', 0, 2, 20);
+  const p1 = portPos(b, 'top', 1, 2, 20);
+  // p0.x = 80*0.2 = 16, p0.y = 0
+  // p1.x = 80*0.8 = 64, p1.y = 0
+  assert.deepEqual(p0, { x: 16, y: 0 });
+  assert.deepEqual(p1, { x: 64, y: 0 });
+});
+
+test('computeAllPorts: single horizontal connection -> right and left midpoints', () => {
+  const conns = [{ from: 'a', to: 'b' }];
   const blockMap = {
-    a: { x: 0, y: 0, w: 2, h: 2 },     // E midpoint: (2, 1) grid = (40, 20) px
-    b: { x: 10, y: 0, w: 2, h: 2 }     // W midpoint: (10, 1) grid = (200, 20) px
+    a: { x: 0, y: 0, w: 2, h: 2 },
+    b: { x: 10, y: 0, w: 2, h: 2 }
+  };
+  const ports = computeAllPorts(conns, blockMap, 20);
+  // a.right midpoint: x=2*20=40, y=0+1*20=20
+  // b.left midpoint:  x=10*20=200, y=0+1*20=20
+  assert.deepEqual(ports[0].fp, { x: 40, y: 20 });
+  assert.deepEqual(ports[0].tp, { x: 200, y: 20 });
+  assert.equal(ports[0].fs, 'right');
+  assert.equal(ports[0].ts, 'left');
+});
+
+test('computeAllPorts: missing endpoint -> null', () => {
+  const ports = computeAllPorts([{ from: 'a', to: 'missing' }], { a: { x:0, y:0, w:2, h:2 } }, 20);
+  assert.equal(ports[0], null);
+});
+
+test('computeConnectionEndpoints: legacy single-conn API returns EMU endpoints', () => {
+  const blockMap = {
+    a: { x: 0, y: 0, w: 2, h: 2 },
+    b: { x: 10, y: 0, w: 2, h: 2 }
   };
   const ep = computeConnectionEndpoints({ from: 'a', to: 'b' }, blockMap, 20);
-  // Expect a.E -> b.W = (40,20) -> (200,20) in px
-  // EMU: (40*9525, 20*9525) -> (200*9525, 20*9525)
-  assert.equal(ep.x1, 381000);   // 40 * 9525
-  assert.equal(ep.y1, 190500);   // 20 * 9525
-  assert.equal(ep.x2, 1905000);  // 200 * 9525
+  // a.right (40px, 20px) -> EMU (381000, 190500)
+  // b.left  (200px, 20px) -> EMU (1905000, 190500)
+  assert.equal(ep.x1, 381000);
+  assert.equal(ep.y1, 190500);
+  assert.equal(ep.x2, 1905000);
   assert.equal(ep.y2, 190500);
 });
 
-test('computeConnectionEndpoints: vertical layout picks S->N (nearest pair)', () => {
-  const blockMap = {
-    a: { x: 0, y: 0, w: 2, h: 2 },     // S midpoint: (1, 2) grid = (20, 40) px
-    b: { x: 0, y: 10, w: 2, h: 2 }     // N midpoint: (1, 10) grid = (20, 200) px
-  };
-  const ep = computeConnectionEndpoints({ from: 'a', to: 'b' }, blockMap, 20);
-  assert.equal(ep.x1, 190500);   // 20 * 9525
-  assert.equal(ep.y1, 381000);   // 40 * 9525
-  assert.equal(ep.x2, 190500);
-  assert.equal(ep.y2, 1905000);  // 200 * 9525
-});
-
-test('computeConnectionEndpoints: returns null if endpoint missing', () => {
-  const blockMap = { a: { x: 0, y: 0, w: 2, h: 2 } };
-  const ep = computeConnectionEndpoints({ from: 'a', to: 'missing' }, blockMap, 20);
+test('computeConnectionEndpoints: missing endpoint -> null', () => {
+  const ep = computeConnectionEndpoints({ from: 'a', to: 'missing' }, { a: { x:0,y:0,w:2,h:2 } }, 20);
   assert.equal(ep, null);
 });

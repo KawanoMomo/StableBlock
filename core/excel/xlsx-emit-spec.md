@@ -96,9 +96,16 @@ Emit:
 - 塗りつぶしは alpha=40000 (40% = 透過度 60%)
 - ラベルは左上揃え (`anchor="t"`, `algn="l"`)、太字 (`b="1"`)、9pt、テキスト色 `#475569` 固定
 
-## Note
+## Note (注釈)
 
-Block と同じ構造。ただし `name` プレフィックスは `note:` で、Z-order は最上層。
+Block と同じ矩形シェイプ構造だが、以下の違いを `buildBlockShape` の `opts` で表現:
+
+- `namePrefix: 'note'` — `name="note:..."`
+- `fillAlpha: 70000` — 塗りつぶしに `<a:alpha val="70000"/>` を入れて 70% 透過（SVG `opacity=0.7` に合わせる）
+- `dashedBorder: true` — `<a:ln>` 内に `<a:prstDash val="dash"/>` を追加
+- `defaultBorderColor: 'D97706'` — `borderColor` 未指定時のフォールバック（SVG レンダラのデフォルトと一致）
+
+Z-order は最上層。
 
 ## Connection
 
@@ -164,21 +171,14 @@ DSL: `ui -> core "request"`
 
 ## 端点ルーティング
 
-各ブロックの **4辺中点** (N=上辺中央, E=右辺中央, S=下辺中央, W=左辺中央) を接続候補として持つ。
-接続線ごとに、from ブロックの 4 候補と to ブロックの 4 候補の 16 ペアから、
-**ユークリッド距離 (二乗) が最小になるペア** を選んで端点とする。
+ECN-006 接続面選択アルゴリズムを SVG レンダラからそのまま移植。
 
-これにより矢頭がブロックの辺上に配置され、向きが明確に見える。
+1. **`getSide(from, to)`**: from/to ブロック間の上下左右のギャップを比較し、最大ギャップ方向の辺ペアを選ぶ
+   - 例: 横並びなら `{ fs: 'right', ts: 'left' }`、縦並びなら `{ fs: 'bottom', ts: 'top' }`
+2. **`computeAllPorts(connections, blockMap, gridPx)`**: 全接続を一括処理。同じブロックの同じ辺に複数接続がある場合、相手側の中心座標でソートして辺上に等間隔配置（pad=0.2）
+3. **`portPos(b, side, idx, total)`**: 辺上の port 位置を計算。`total=1` なら中点、複数なら 20%〜80% 区間で等間隔
 
-候補座標 (grid 単位、ブロック (x, y, w, h) に対する):
-- N: ((x + w/2), y)
-- E: ((x + w), (y + h/2))
-- S: ((x + w/2), (y + h))
-- W: (x, (y + h/2))
-
-EMU 変換は `gridToEmu` / `pxToEmu` 経由。
-
-実装: `midpointsOfShape(shape, gridPx)` + `computeConnectionEndpoints` (emitter.js)。
+実装: `getSide`, `portPos`, `computeAllPorts` を `emitter.js` から export。`computeConnectionEndpoints` (legacy 1接続版) も維持。
 
 ## XML エスケープ
 すべてのテキスト値（label, id）は `&` `<` `>` `"` `'` をエスケープする:

@@ -43,16 +43,30 @@ function normalizeColor(value, fallback = '000000') {
   return cleaned;
 }
 
-function buildBlockShape(block, shapeId, gridPx) {
+function buildBlockShape(block, shapeId, gridPx, opts = {}) {
   const x = gridToEmu(block.x, gridPx);
   const y = gridToEmu(block.y, gridPx);
   const cx = gridToEmu(block.w, gridPx);
   const cy = gridToEmu(block.h, gridPx);
   const fillColor = normalizeColor(block.color, 'CCCCCC');
   const textColor = normalizeColor(block.textColor, '000000');
-  const borderXml = block.borderColor
-    ? `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(block.borderColor)}"/></a:solidFill></a:ln>`
-    : `<a:ln><a:noFill/></a:ln>`;
+
+  // Optional fill alpha (for notes)
+  const fillAlpha = opts.fillAlpha;
+  const fillXml = fillAlpha != null
+    ? `<a:solidFill><a:srgbClr val="${fillColor}"><a:alpha val="${fillAlpha}"/></a:srgbClr></a:solidFill>`
+    : `<a:solidFill><a:srgbClr val="${fillColor}"/></a:solidFill>`;
+
+  // Border: explicit borderColor, or opts.defaultBorderColor as fallback, or noFill
+  const dashedXml = opts.dashedBorder ? '<a:prstDash val="dash"/>' : '';
+  let borderXml;
+  if (block.borderColor) {
+    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(block.borderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
+  } else if (opts.defaultBorderColor) {
+    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(opts.defaultBorderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
+  } else {
+    borderXml = `<a:ln><a:noFill/></a:ln>`;
+  }
 
   const round = Number(block.round) || 0;
   let geomXml;
@@ -71,18 +85,20 @@ function buildBlockShape(block, shapeId, gridPx) {
     `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="${textColor}"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
   ).join('');
 
+  const namePrefix = opts.namePrefix || 'block';
+
   return `<xdr:absoluteAnchor>` +
     `<xdr:pos x="${x}" y="${y}"/>` +
     `<xdr:ext cx="${cx}" cy="${cy}"/>` +
     `<xdr:sp macro="" textlink="">` +
       `<xdr:nvSpPr>` +
-        `<xdr:cNvPr id="${shapeId}" name="block:${escapeXml(block.id)}"/>` +
+        `<xdr:cNvPr id="${shapeId}" name="${namePrefix}:${escapeXml(block.id)}"/>` +
         `<xdr:cNvSpPr/>` +
       `</xdr:nvSpPr>` +
       `<xdr:spPr>` +
         `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
         geomXml +
-        `<a:solidFill><a:srgbClr val="${fillColor}"/></a:solidFill>` +
+        fillXml +
         borderXml +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
@@ -133,54 +149,106 @@ function buildGroupShape(group, shapeId, gridPx) {
 }
 
 function buildNoteShape(note, shapeId, gridPx) {
-  // ノートは Block と同じ形だが name プレフィックスが note:
-  const xml = buildBlockShape(note, shapeId, gridPx);
-  return xml.replace(`name="block:${escapeXml(note.id)}"`, `name="note:${escapeXml(note.id)}"`);
+  return buildBlockShape(note, shapeId, gridPx, {
+    namePrefix: 'note',
+    fillAlpha: 70000,        // ~70% (matches SVG opacity 0.7)
+    dashedBorder: true,
+    defaultBorderColor: 'D97706'  // SVG render default note border
+  });
 }
 
+// ─── Connection port computation (ports the SVG renderer's ECN-006 algorithm) ──
+
 function centerOfShape(shape, gridPx) {
+  // Kept for backward compat with tests. Returns center in EMU.
   const cxPx = (shape.x + shape.w / 2) * gridPx;
   const cyPx = (shape.y + shape.h / 2) * gridPx;
   return { x: pxToEmu(cxPx), y: pxToEmu(cyPx) };
 }
 
-function midpointsOfShape(shape, gridPx) {
-  const cxPx = (shape.x + shape.w / 2) * gridPx;
-  const cyPx = (shape.y + shape.h / 2) * gridPx;
-  const leftPx = shape.x * gridPx;
-  const rightPx = (shape.x + shape.w) * gridPx;
-  const topPx = shape.y * gridPx;
-  const bottomPx = (shape.y + shape.h) * gridPx;
-  return {
-    N: { x: pxToEmu(cxPx), y: pxToEmu(topPx) },
-    E: { x: pxToEmu(rightPx), y: pxToEmu(cyPx) },
-    S: { x: pxToEmu(cxPx), y: pxToEmu(bottomPx) },
-    W: { x: pxToEmu(leftPx), y: pxToEmu(cyPx) }
-  };
+// getSide: pick the from/to side pair based on largest gap between blocks
+// Ported from stableblock.html L337
+function getSide(fb, tb) {
+  const gapB = tb.y - (fb.y + fb.h);
+  const gapT = fb.y - (tb.y + tb.h);
+  const gapR = tb.x - (fb.x + fb.w);
+  const gapL = fb.x - (tb.x + tb.w);
+  const vBest = Math.max(gapB, gapT);
+  const hBest = Math.max(gapR, gapL);
+  if (vBest >= hBest) {
+    return gapB >= gapT ? { fs: 'bottom', ts: 'top' } : { fs: 'top', ts: 'bottom' };
+  }
+  return gapR >= gapL ? { fs: 'right', ts: 'left' } : { fs: 'left', ts: 'right' };
 }
 
-function computeConnectionEndpoints(conn, blockMap, gridPx) {
-  const from = blockMap[conn.from];
-  const to = blockMap[conn.to];
-  if (!from || !to) return null;
-  const fromMids = midpointsOfShape(from, gridPx);
-  const toMids = midpointsOfShape(to, gridPx);
-  // Pick the (from-side, to-side) pair with minimum squared distance
-  const SIDES = ['N', 'E', 'S', 'W'];
-  let best = null;
-  for (const fkey of SIDES) {
-    for (const tkey of SIDES) {
-      const f = fromMids[fkey];
-      const t = toMids[tkey];
-      const dx = t.x - f.x;
-      const dy = t.y - f.y;
-      const dist = dx * dx + dy * dy;
-      if (best === null || dist < best.dist) {
-        best = { dist, x1: f.x, y1: f.y, x2: t.x, y2: t.y };
-      }
+// portPos: where on a block's side the port goes, given idx out of total on that side
+// Returns { x, y } in PIXEL units (caller converts to EMU)
+// Ported from stableblock.html L343
+function portPos(b, side, idx, total, gridPx) {
+  const bx = b.x * gridPx, by = b.y * gridPx;
+  const bw = b.w * gridPx, bh = b.h * gridPx;
+  const pad = 0.2;
+  const t = total === 1 ? 0.5 : pad + (1 - 2 * pad) * idx / (total - 1);
+  if (side === 'top')    return { x: bx + bw * t, y: by };
+  if (side === 'bottom') return { x: bx + bw * t, y: by + bh };
+  if (side === 'left')   return { x: bx,          y: by + bh * t };
+  return                       { x: bx + bw,      y: by + bh * t };  // right
+}
+
+// computeAllPorts: compute ports for ALL connections at once (needed for multi-conn distribution)
+// Returns an array (same length as connections) of { fp, tp, fs, ts } in PIXEL units,
+// or null for connections with missing endpoints.
+// Ported from stableblock.html L349
+function computeAllPorts(connections, blockMap, gridPx) {
+  const sides = connections.map(c => {
+    const fb = blockMap[c.from], tb = blockMap[c.to];
+    return fb && tb ? getSide(fb, tb) : null;
+  });
+  const sm = {};
+  connections.forEach((c, i) => {
+    if (!sides[i]) return;
+    const fb = blockMap[c.from], tb = blockMap[c.to];
+    if (!sm[c.from]) sm[c.from] = {};
+    const fs = sides[i].fs;
+    if (!sm[c.from][fs]) sm[c.from][fs] = [];
+    sm[c.from][fs].push({ ci: i, ox: tb.x + tb.w / 2, oy: tb.y + tb.h / 2 });
+    if (!sm[c.to]) sm[c.to] = {};
+    const ts = sides[i].ts;
+    if (!sm[c.to][ts]) sm[c.to][ts] = [];
+    sm[c.to][ts].push({ ci: i, ox: fb.x + fb.w / 2, oy: fb.y + fb.h / 2 });
+  });
+  for (const bid in sm) {
+    for (const side in sm[bid]) {
+      const list = sm[bid][side];
+      list.sort((a, b) => (side === 'left' || side === 'right') ? (a.oy - b.oy) : (a.ox - b.ox));
     }
   }
-  return { x1: best.x1, y1: best.y1, x2: best.x2, y2: best.y2 };
+  return connections.map((c, i) => {
+    if (!sides[i]) return null;
+    const fb = blockMap[c.from], tb = blockMap[c.to];
+    const fl = sm[c.from][sides[i].fs];
+    const tl = sm[c.to][sides[i].ts];
+    return {
+      fp: portPos(fb, sides[i].fs, fl.findIndex(p => p.ci === i), fl.length, gridPx),
+      tp: portPos(tb, sides[i].ts, tl.findIndex(p => p.ci === i), tl.length, gridPx),
+      fs: sides[i].fs,
+      ts: sides[i].ts
+    };
+  });
+}
+
+// Legacy single-conn API (kept for backward compatibility)
+// Note: does NOT account for multi-conn distribution — use computeAllPorts for that.
+function computeConnectionEndpoints(conn, blockMap, gridPx) {
+  const ports = computeAllPorts([conn], blockMap, gridPx);
+  const p = ports[0];
+  if (!p) return null;
+  return {
+    x1: pxToEmu(p.fp.x),
+    y1: pxToEmu(p.fp.y),
+    x2: pxToEmu(p.tp.x),
+    y2: pxToEmu(p.tp.y)
+  };
 }
 
 function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
@@ -269,12 +337,20 @@ function buildDrawingXml(ast) {
 
   (ast.groups || []).forEach((g, i) => items.push({ kind: 'group', data: g, srcIndex: i }));
 
+  // Pre-compute all connection ports together (multi-conn distribution requires it)
+  const allPorts = computeAllPorts(ast.connections || [], ast.blockMap || {}, gridPx);
   (ast.connections || []).forEach((c, i) => {
-    const ep = computeConnectionEndpoints(c, ast.blockMap || {}, gridPx);
-    if (!ep) {
+    const port = allPorts[i];
+    if (!port) {
       console.warn(`[excel-emitter] skipping connection: ${c.from} -> ${c.to} (endpoint missing)`);
       return;
     }
+    const ep = {
+      x1: pxToEmu(port.fp.x),
+      y1: pxToEmu(port.fp.y),
+      x2: pxToEmu(port.tp.x),
+      y2: pxToEmu(port.tp.y)
+    };
     items.push({ kind: 'connection', data: c, srcIndex: i, endpoints: ep, connIndex: i });
     if (c.label) {
       items.push({ kind: 'connlabel', data: c, srcIndex: i, endpoints: ep, connIndex: i });
@@ -337,4 +413,4 @@ async function loadTemplateFilesAsync() {
   return mod.loadTemplateFiles();
 }
 
-;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, midpointsOfShape, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx };
+;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx };
