@@ -102,28 +102,13 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 input[type=number] { -moz-appearance:textfield; }
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 </style>
+<!-- Excel エクスポート: file:// 互換のため <script src> でロード（ES module/fetch は file:// で使えない） -->
 <script src="core/excel/jszip.min.js"></script>
-<script type="module">
-  // Excel エクスポート: emitter.js を ES Module として読み込んで window に公開し、
-  // template-skeleton の 7 ファイルを fetch してグローバル保持する。
-  import * as Emitter from './core/excel/emitter.js';
-  window.StableBlockExcel = Emitter;
-  const PATHS = [
-    '[Content_Types].xml',
-    '_rels/.rels',
-    'xl/workbook.xml',
-    'xl/_rels/workbook.xml.rels',
-    'xl/worksheets/sheet1.xml',
-    'xl/worksheets/_rels/sheet1.xml.rels',
-    'xl/drawings/_rels/drawing1.xml.rels'
-  ];
-  window.StableBlockTemplateFiles = {};
-  Promise.all(PATHS.map(async p => {
-    const r = await fetch('./core/excel/template-skeleton/' + p);
-    if (!r.ok) throw new Error('failed to fetch template: ' + p + ' (' + r.status + ')');
-    window.StableBlockTemplateFiles[p] = await r.text();
-  })).then(() => { window.StableBlockExcelReady = true; console.log('[stableblock] Excel template loaded'); })
-    .catch(e => { console.error('[stableblock] Excel template load failed:', e); });
+<script src="core/excel/template-inline.js"></script>
+<script src="core/excel/emitter.browser.js"></script>
+<script>
+  // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
+  window.StableBlockExcelReady = true;
 </script>
 </head>
 <body>
