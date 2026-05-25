@@ -63,7 +63,7 @@ export function buildBlockShape(block, shapeId, gridPx) {
 
   const labelLines = String(block.label || '').split(/\\n|\r?\n/);
   const paragraphs = labelLines.map(line =>
-    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="${textColor}"/></a:solidFill></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
+    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="${textColor}"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
   ).join('');
 
   return `<xdr:absoluteAnchor>` +

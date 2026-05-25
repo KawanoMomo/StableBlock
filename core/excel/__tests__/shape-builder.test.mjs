@@ -163,3 +163,17 @@ test('buildBlockShape: bodyPr includes normAutofit', () => {
   assert.ok(xml.includes('<a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>'),
     'bodyPr should contain normAutofit for text auto-shrink');
 });
+
+test('buildBlockShape: rPr includes Calibri (latin) and Yu Gothic UI (ea) fonts', () => {
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('<a:latin typeface="Calibri"/>'),
+    'rPr should specify Calibri for Latin script');
+  assert.ok(xml.includes('<a:ea typeface="Yu Gothic UI"/>'),
+    'rPr should specify Yu Gothic UI for East Asian script');
+});
