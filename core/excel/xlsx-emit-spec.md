@@ -44,9 +44,9 @@ Emit:
       <a:ln><a:noFill/></a:ln>
     </xdr:spPr>
     <xdr:txBody>
-      <a:bodyPr wrap="square" anchor="ctr"/>
+      <a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>
       <a:lstStyle/>
-      <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>UI</a:t></a:r></a:p>
+      <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>UI</a:t></a:r></a:p>
     </xdr:txBody>
   </xdr:sp>
   <xdr:clientData/>
@@ -54,9 +54,12 @@ Emit:
 ```
 
 ルール:
-- `round=N` → `<a:gd name="adj" fmla="val M"/>`, M = round * 5000 を上限 50000
+- `round=N` → `<a:gd name="adj" fmla="val M"/>`, M = round(N / min(w*grid, h*grid) * 100000) を上限 50000
+  - SVG の `rx` ピクセル値に対応。短辺ピクセル長に対する比率として OOXML adj を算出
+- `\n`（2 文字: バックスラッシュ + n）または改行コードでラベルを分割し、各行を別々の `<a:p>` に格納
+- `<a:bodyPr>` 内に `<a:normAutofit/>` を入れて、テキスト溢れ時に Excel が自動でフォントサイズ縮小
+- `<a:rPr>` 内に `<a:latin typeface="Calibri"/>` と `<a:ea typeface="Yu Gothic UI"/>` を明示
 - `border=#XXX` がある → `<a:ln><a:solidFill><a:srgbClr val="XXX"/></a:solidFill></a:ln>`
-- `\n` 改行 → 複数の `<a:p>` に分割
 - フォントサイズは固定 1100 (= 11pt * 100)
 
 ## Group
@@ -82,7 +85,7 @@ Emit:
     <xdr:txBody>
       <a:bodyPr wrap="square" anchor="t"/>
       <a:lstStyle/>
-      <a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill></a:rPr><a:t>Application</a:t></a:r></a:p>
+      <a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>Application</a:t></a:r></a:p>
     </xdr:txBody>
   </xdr:sp>
   <xdr:clientData/>
@@ -152,7 +155,7 @@ DSL: `ui -> core "request"`
     </xdr:spPr>
     <xdr:txBody>
       <a:bodyPr wrap="square" anchor="ctr"/>
-      <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill></a:rPr><a:t>LABEL</a:t></a:r></a:p>
+      <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>LABEL</a:t></a:r></a:p>
     </xdr:txBody>
   </xdr:sp>
   <xdr:clientData/>
@@ -185,3 +188,12 @@ DSL: `ui -> core "request"`
 
 ## ID 採番
 `cNvPr id` は 1 から始まる連番。Z-order 順で振る。
+
+## ブラウザ向け派生ファイル
+
+`file://` で `<script type="module">` import と `fetch()` がブロックされるため、HTML 版用に派生ファイルを git にコミットする:
+
+- `core/excel/template-inline.js`: `window.StableBlockTemplateFiles = {...}` を設定（テンプレート 7 ファイル分の文字列を JSON 埋め込み）
+- `core/excel/emitter.browser.js`: emitter.js から `export` キーワードを除去し、末尾に `window.StableBlockExcel = { 全 export 関数名 }` を追加
+
+これらは `core/excel/build-browser.mjs` で自動生成され、`npm run build:browser` で再生成可能。drift 検出テスト (`__tests__/build-browser.test.mjs`) でソースと出力の整合性を CI 担保する。
