@@ -47,16 +47,42 @@ test('buildBlockShape: round=0 produces rect not roundRect', () => {
   assert.ok(!xml.includes('roundRect'));
 });
 
-test('buildBlockShape: round=8 includes adj value', () => {
+test('buildBlockShape: round=4 with shortPx=60 (h=3, gridPx=20) produces adj=6667', () => {
+  // short side = min(w, h) * gridPx = 3 * 20 = 60 px
+  // adj = round(4 / 60 * 100000) = 6667
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 10, h: 3,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 4, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('roundRect'));
+  assert.ok(xml.includes('val 6667'), 'adj should be pixel-based: round(4/60*100000)=6667');
+});
+
+test('buildBlockShape: round=10 with shortPx=100 produces adj=10000 (10%)', () => {
+  // shortPx = 5 * 20 = 100, adj = round(10/100 * 100000) = 10000
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 5, h: 5,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 10, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('val 10000'));
+});
+
+test('buildBlockShape: oversized round clamps adj to 50000 (50%)', () => {
+  // shortPx = 2 * 20 = 40, round=100 would give 250000, clamped to 50000
   const block = {
     id: 'a', label: 'A',
     x: 0, y: 0, w: 2, h: 2,
     color: '#FFFFFF', textColor: '#000000',
-    borderColor: null, round: 8, style: 'solid'
+    borderColor: null, round: 100, style: 'solid'
   };
   const xml = buildBlockShape(block, 1, 20);
-  assert.ok(xml.includes('roundRect'));
-  assert.ok(xml.includes('val 40000'));  // 8 * 5000
+  assert.ok(xml.includes('val 50000'));
 });
 
 test('buildBlockShape: border color produces line solidFill', () => {

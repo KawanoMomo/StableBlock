@@ -55,7 +55,10 @@ export function buildBlockShape(block, shapeId, gridPx) {
   const round = Number(block.round) || 0;
   let geomXml;
   if (round > 0) {
-    const adj = Math.min(round * 5000, 50000);
+    // SVG `rx` (px) と一致させるため、短辺ピクセル長に対する比率として adj を算出
+    const shortPx = Math.min(block.w, block.h) * gridPx;
+    const adjFromPx = shortPx > 0 ? Math.round((round / shortPx) * 100000) : 0;
+    const adj = Math.min(Math.max(adjFromPx, 0), 50000);
     geomXml = `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${adj}"/></a:avLst></a:prstGeom>`;
   } else {
     geomXml = `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`;
