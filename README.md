@@ -27,15 +27,7 @@
 
 ### HTML版（環境構築不要）
 
-`stableblock.html` をブラウザで開くだけ。オフラインで動作。
-
-**Excelエクスポートを使う場合**は `file://` ではfetchがブロックされるためローカルHTTPサーバーが必要：
-
-```bat
-start-html.bat
-```
-
-`start-html.bat` はPython（無ければNode）でポート8000のサーバーを起動し、ブラウザを自動で開く。`Ctrl+C` で停止。
+`stableblock.html` をブラウザで開くだけ。オフラインで動作。Excel エクスポートも含めて `file://` で完結。
 
 ### VSCode拡張
 

@@ -14,11 +14,7 @@
 - [ ] `fixtures/with-group.sb` 同様
 - [ ] `fixtures/with-note.sb` 同様
 
-ローカルサーバー起動方法:
-```bat
-start-html.bat
-```
-（リポジトリルートで実行。Python優先、無ければ npx http-server にフォールバック。ブラウザは自動で開く。）
+ブラウザで `stableblock.html` をダブルクリックして開くだけ。サーバー不要。
 
 ### VSCode 拡張
 
