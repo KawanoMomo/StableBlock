@@ -102,7 +102,7 @@ function buildBlockShape(block, shapeId, gridPx, opts = {}) {
         borderXml +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
-        `<a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>` +
+        `<a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:normAutofit/></a:bodyPr>` +
         `<a:lstStyle/>` +
         paragraphs +
       `</xdr:txBody>` +
@@ -139,7 +139,7 @@ function buildGroupShape(group, shapeId, gridPx) {
         `<a:ln><a:solidFill><a:srgbClr val="${borderColor}"/></a:solidFill></a:ln>` +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
-        `<a:bodyPr wrap="square" anchor="t"/>` +
+        `<a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>` +
         `<a:lstStyle/>` +
         paragraphs +
       `</xdr:txBody>` +
@@ -311,7 +311,7 @@ function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
         `<a:ln><a:noFill/></a:ln>` +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
-        `<a:bodyPr wrap="square" anchor="ctr"/>` +
+        `<a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/>` +
         `<a:lstStyle/>` +
         paragraphs +
       `</xdr:txBody>` +
