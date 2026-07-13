@@ -643,6 +643,8 @@ function renderProps(){
         html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
         html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
         html+=`</div>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" placeholder="(なし)">`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル位置</div><div style="display:flex;gap:4px">${[['right','右'],['left','左'],['top','上'],['bottom','下'],['center','中央']].map(([v,l])=>`<button class="style-btn ${c.lpos===v?'active':''}" onclick="setConnProp('${fa}','${ta}','lpos','${v}')">${l}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線のスタイル</div><div style="display:flex;gap:4px">${["solid","dashed"].map(st=>`<button class="style-btn ${c.style===st?'active':''}" onclick="setConnProp('${fa}','${ta}','style','${st}')">${st}</button>`).join('')}</div>`;
@@ -703,6 +705,7 @@ function renderProps(){
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
 function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
