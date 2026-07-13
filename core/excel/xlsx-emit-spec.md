@@ -44,7 +44,7 @@ Emit:
       <a:ln><a:noFill/></a:ln>
     </xdr:spPr>
     <xdr:txBody>
-      <a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>
+      <a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"><a:normAutofit/></a:bodyPr>
       <a:lstStyle/>
       <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="1100"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>UI</a:t></a:r></a:p>
     </xdr:txBody>
@@ -58,6 +58,7 @@ Emit:
   - SVG の `rx` ピクセル値に対応。短辺ピクセル長に対する比率として OOXML adj を算出
 - `\n`（2 文字: バックスラッシュ + n）または改行コードでラベルを分割し、各行を別々の `<a:p>` に格納
 - `<a:bodyPr>` 内に `<a:normAutofit/>` を入れて、テキスト溢れ時に Excel が自動でフォントサイズ縮小
+- `<a:bodyPr>` は `wrap="none"`（自動折り返し無効。SVG レンダラと同じく明示的 `\n` のみで改行）かつ `lIns="0" tIns="0" rIns="0" bIns="0"`（OOXML 既定の内側マージン 91440 EMU が幅を食って早期折り返しするのを防ぐ）
 - `<a:rPr>` 内に `<a:latin typeface="Calibri"/>` と `<a:ea typeface="Yu Gothic UI"/>` を明示
 - `border=#XXX` がある → `<a:ln><a:solidFill><a:srgbClr val="XXX"/></a:solidFill></a:ln>`
 - フォントサイズは固定 1100 (= 11pt * 100)
@@ -83,7 +84,7 @@ Emit:
       <a:ln><a:solidFill><a:srgbClr val="818CF8"/></a:solidFill></a:ln>
     </xdr:spPr>
     <xdr:txBody>
-      <a:bodyPr wrap="square" anchor="t"/>
+      <a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="t"/>
       <a:lstStyle/>
       <a:p><a:pPr algn="l"/><a:r><a:rPr lang="ja-JP" sz="900" b="1"><a:solidFill><a:srgbClr val="475569"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>Application</a:t></a:r></a:p>
     </xdr:txBody>
@@ -161,7 +162,7 @@ DSL: `ui -> core "request"`
       <a:ln><a:noFill/></a:ln>
     </xdr:spPr>
     <xdr:txBody>
-      <a:bodyPr wrap="square" anchor="ctr"/>
+      <a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/>
       <a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>LABEL</a:t></a:r></a:p>
     </xdr:txBody>
   </xdr:sp>

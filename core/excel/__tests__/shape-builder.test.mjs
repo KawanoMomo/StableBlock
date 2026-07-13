@@ -186,8 +186,36 @@ test('buildBlockShape: bodyPr includes normAutofit', () => {
     borderColor: null, round: 0, style: 'solid'
   };
   const xml = buildBlockShape(block, 1, 20);
-  assert.ok(xml.includes('<a:bodyPr wrap="square" anchor="ctr"><a:normAutofit/></a:bodyPr>'),
+  assert.ok(xml.includes('<a:normAutofit/>'),
     'bodyPr should contain normAutofit for text auto-shrink');
+});
+
+test('buildBlockShape: bodyPr disables auto-wrap (matches SVG which never auto-wraps)', () => {
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('wrap="none"'),
+    'bodyPr should use wrap="none" so text only breaks on explicit \\n');
+  assert.ok(!xml.includes('wrap="square"'),
+    'bodyPr should not auto-wrap');
+});
+
+test('buildBlockShape: bodyPr zeroes text insets so wrap point matches SVG (no margin)', () => {
+  const block = {
+    id: 'a', label: 'A',
+    x: 0, y: 0, w: 2, h: 2,
+    color: '#FFFFFF', textColor: '#000000',
+    borderColor: null, round: 0, style: 'solid'
+  };
+  const xml = buildBlockShape(block, 1, 20);
+  assert.ok(xml.includes('lIns="0"') && xml.includes('rIns="0"'),
+    'left/right insets must be 0 (OOXML default 91440 EMU eats width and wraps early)');
+  assert.ok(xml.includes('tIns="0"') && xml.includes('bIns="0"'),
+    'top/bottom insets must be 0');
 });
 
 test('buildBlockShape: rPr includes Calibri (latin) and Yu Gothic UI (ea) fonts', () => {
