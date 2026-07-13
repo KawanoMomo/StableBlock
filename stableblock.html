@@ -107,6 +107,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/excel/jszip.min.js"></script>
 <script src="core/excel/template-inline.js"></script>
 <script src="core/excel/emitter.browser.js"></script>
+<script src="core/label/label-core.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -250,7 +251,7 @@ function parseDSL(text){
       m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
-      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,bidir:arrow==="-->",line:ln});continue;}
+      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
     }catch(e){errors.push({line:ln,msg:e.message});}
   }
@@ -370,30 +371,22 @@ function computePorts(connections,blockMap,g){
     return{fp:portPos(fb,sides[i].fs,fl.findIndex(p=>p.ci===i),fl.length,g),tp:portPos(tb,sides[i].ts,tl.findIndex(p=>p.ci===i),tl.length,g),fs:sides[i].fs,ts:sides[i].ts};
   });
 }
-function extPt(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
-function bpath(fp,tp,fs,ts){
-  const dx=tp.x-fp.x,dy=tp.y-fp.y,dist=Math.sqrt(dx*dx+dy*dy);
-  const cpd=Math.max(30,dist*0.4);
-  const c1=extPt(fp,fs,cpd),c2=extPt(tp,ts,cpd);
-  return`M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`;
-}
-function straightPath(fp,tp){return`M${fp.x},${fp.y} L${tp.x},${tp.y}`;}
-function orthoPath(fp,tp,fs,ts){
-  const gap=20;
-  const e1=extPt(fp,fs,gap),e2=extPt(tp,ts,gap);
-  const isVF=fs==='top'||fs==='bottom', isVT=ts==='top'||ts==='bottom';
-  if(isVF&&isVT){const my=(e1.y+e2.y)/2;return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e1.x},${my} L${e2.x},${my} L${e2.x},${e2.y} L${tp.x},${tp.y}`;}
-  if(!isVF&&!isVT){const mx=(e1.x+e2.x)/2;return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${mx},${e1.y} L${mx},${e2.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;}
-  if(isVF&&!isVT)return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e1.x},${e2.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;
-  return`M${fp.x},${fp.y} L${e1.x},${e1.y} L${e2.x},${e1.y} L${e2.x},${e2.y} L${tp.x},${tp.y}`;
-}
-function connPath(fp,tp,fs,ts,route){
+function connPathInfo(fp,tp,fs,ts,route){
   const m=route||lineMode;
-  if(m==='straight')return straightPath(fp,tp);
-  if(m==='ortho')return orthoPath(fp,tp,fs,ts);
-  return bpath(fp,tp,fs,ts);
+  const SBL=window.StableBlockLabel;
+  if(m==='straight')return{d:`M${fp.x},${fp.y} L${tp.x},${tp.y}`,mid:{x:(fp.x+tp.x)/2,y:(fp.y+tp.y)/2}};
+  if(m==='ortho'){const pts=SBL.orthoPoints(fp,tp,fs,ts);return{d:'M'+pts.map(p=>`${p.x},${p.y}`).join(' L'),mid:SBL.polylineMidpoint(pts)};}
+  const{c1,c2}=SBL.bezierControls(fp,tp,fs,ts);
+  return{d:`M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`,mid:SBL.bezierMidpoint(fp,c1,c2,tp)};
 }
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+const _measureCtx=document.createElement('canvas').getContext('2d');
+function measureLabel(t){_measureCtx.font='500 10px "IBM Plex Sans","Noto Sans JP",sans-serif';return _measureCtx.measureText(t).width;}
+function connLabelSvg(c,mid){
+  const L=window.StableBlockLabel.labelLayout(mid,c.lpos,measureLabel(c.label));
+  return`<rect x="${L.bg.x}" y="${L.bg.y}" width="${L.bg.w}" height="${L.bg.h}" rx="${L.bg.rx}" fill="#FFFFFF" style="pointer-events:none"/>`+
+    `<text x="${L.tx}" y="${L.ty}" font-size="10" fill="${c.color}" text-anchor="${L.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${esc(c.label)}</text>`;
+}
 
 function renderSVG(){
   if(!parsed)return;
@@ -419,9 +412,10 @@ function renderSVG(){
   const ports=computePorts(normalConns,blockMap,g);
   normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:annotationEdit?annoDim:null;
     const ci=connections.indexOf(c);
+    const pi=connPathInfo(fp,tp,fs,ts,c.route);
     s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
-    s+=`<path d="${connPath(fp,tp,fs,ts,c.route)}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
-    if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
+    s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
+    if(c.label)s+=connLabelSvg(c,pi.mid);
     s+=`</g>`;});
   // Blocks
   blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bHl=hlIds&&!hlIds.has(b.id);const bSrch=searchQuery&&!matchesSearch(b);const bop=bHl?dim:annotationEdit?annoDim:bSrch?0.2:null;
@@ -435,9 +429,10 @@ function renderSVG(){
     const annoPorts=computePorts(annoConns,allItems,g);
     annoConns.forEach((c,i)=>{const p=annoPorts[i];if(!p)return;const{fp,tp,fs,ts}=p;
       const ci=connections.indexOf(c);
+      const pi=connPathInfo(fp,tp,fs,ts,c.route);
       s+=`<g opacity="${annotationEdit?1:0.7}">`;
-      s+=`<path d="${connPath(fp,tp,fs,ts,c.route)}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
-      if(c.label)s+=`<text x="${(fp.x+tp.x)/2}" y="${(fp.y+tp.y)/2-5}" font-size="10" fill="${c.color}" text-anchor="middle" font-weight="500">${esc(c.label)}</text>`;
+      s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
+      if(c.label)s+=connLabelSvg(c,pi.mid);
       s+=`</g>`;});
     notes.forEach(n=>{const sl=isSel(n.id);
       s+=`<g data-type="note" data-id="${n.id}" style="cursor:${annotationEdit?'grab':'default'}" opacity="${annotationEdit?1:0.7}">`;
