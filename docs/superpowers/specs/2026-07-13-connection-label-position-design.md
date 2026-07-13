@@ -56,9 +56,11 @@ ui -> comm "payload" lpos=top     # 5値: right / left / top / bottom / center
 |---|---|---|---|
 | right | x +10px | start | central |
 | left | x −10px | end | central |
-| top | y −10px | middle | auto(下端基準) |
-| bottom | y +10px | middle | hanging |
+| top | y −10px | middle | central |
+| bottom | y +10px | middle | central |
 | center | なし | middle | central |
+
+全位置で `dominant-baseline=central`(テキスト垂直中心=ty)に統一し、top/bottom は ty 自体をオフセットする。背景矩形の座標計算が全位置で同一式になる。
 
 - 現行の中央モードにある「y−5px」の小細工は廃止し、真の中点+背景矩形に置き換える
 - フォントは現状踏襲: `font-size:10px, font-weight:500, fill=接続線色`
