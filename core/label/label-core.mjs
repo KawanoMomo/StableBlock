@@ -61,6 +61,28 @@ export function labelLayout(mid, lpos, textW) {
   return { tx, ty, anchor, bg: { x, y: ty - h / 2, w, h, rx: 2 } };
 }
 
+// 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。
+export function setConnLabelInDsl(dsl, from, to, label) {
+  const clean = String(label).replace(/"/g, '');
+  const lines = dsl.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
+    if (!m) continue;
+    if (!((m[1] === from && m[3] === to) || (m[1] === to && m[3] === from))) continue;
+    const line = lines[i];
+    const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"[^"]*"/.test(line);
+    if (hasLabel && clean) {
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"[^"]*"/, (_, head) => head + '"' + clean + '"');
+    } else if (hasLabel) {
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"[^"]*"/, (_, head) => head);
+    } else if (clean) {
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' "' + clean + '"');
+    }
+    break;
+  }
+  return lines.join('\n');
+}
+
 export function polylineMidpoint(pts) {
   let total = 0;
   const segs = [];

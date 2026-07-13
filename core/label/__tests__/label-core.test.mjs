@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
-  parseLpos, labelLayout,
+  parseLpos, labelLayout, setConnLabelInDsl,
 } from '../label-core.mjs';
 
 test('extendPoint moves point in side direction', () => {
@@ -121,4 +121,44 @@ test('labelLayout center: no offset', () => {
   assert.equal(L.ty, 50);
   assert.equal(L.anchor, 'middle');
   assert.deepEqual(L.bg, { x: 81, y: 43, w: 38, h: 14, rx: 2 });
+});
+
+test('setConnLabelInDsl replaces existing label', () => {
+  const dsl = 'block a "A" at 1,1 size 4x2\na -> b "old" color=#fff';
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', 'new'),
+    'block a "A" at 1,1 size 4x2\na -> b "new" color=#fff');
+});
+
+test('setConnLabelInDsl inserts label before existing attributes', () => {
+  assert.equal(setConnLabelInDsl('a -> b color=#fff', 'a', 'b', 'x'),
+    'a -> b "x" color=#fff');
+  assert.equal(setConnLabelInDsl('a --> b', 'a', 'b', 'x'), 'a --> b "x"');
+});
+
+test('setConnLabelInDsl removes label on empty string (ECN-002: 行は残す)', () => {
+  assert.equal(setConnLabelInDsl('a -> b "old" width=2', 'a', 'b', ''),
+    'a -> b width=2');
+  assert.equal(setConnLabelInDsl('a -> b "old"', 'a', 'b', ''), 'a -> b');
+});
+
+test('setConnLabelInDsl matches direction-agnostically like setConnProp', () => {
+  assert.equal(setConnLabelInDsl('b -> a "old"', 'a', 'b', 'new'), 'b -> a "new"');
+});
+
+test('setConnLabelInDsl strips double quotes from input', () => {
+  assert.equal(setConnLabelInDsl('a -> b', 'a', 'b', 'say "hi"'), 'a -> b "say hi"');
+});
+
+test('setConnLabelInDsl is safe with $ patterns in label', () => {
+  assert.equal(setConnLabelInDsl('a -> b "old"', 'a', 'b', 'cost $1 $& $$'),
+    'a -> b "cost $1 $& $$"');
+});
+
+test('setConnLabelInDsl no-op when no matching connection', () => {
+  assert.equal(setConnLabelInDsl('a -> b "old"', 'x', 'y', 'new'), 'a -> b "old"');
+});
+
+test('setConnLabelInDsl preserves leading whitespace and touches first match only', () => {
+  const dsl = '  a -> b "one"\na -> b "two"';
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', 'z'), '  a -> b "z"\na -> b "two"');
 });
