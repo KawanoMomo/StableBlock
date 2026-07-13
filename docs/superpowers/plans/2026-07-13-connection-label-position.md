@@ -1004,7 +1004,7 @@ git commit -m "docs: 接続ラベル機能のCHANGELOG追記"
 
 ## 実施ログ
 
-(実装時に記録を追記する)
+- Task 9 (2026-07-14): `mcp-server/` は main・本ブランチに存在せず(未マージの `feature/mcp-server` ブランチのみ)→ **本ブランチへの影響なし**。参考: 同ブランチの `core/parser.py` は接続行を同一正規表現で解析し `lpos=` は rest として無害に許容(エラーなし)。ただし parser↔generator の round-trip 生成があるため、将来同ブランチをマージする際は lpos 属性が round-trip で脱落しないかの確認が必要(ECN横展開対象として申し送り)。
 
 ## Self-Review 結果
 
