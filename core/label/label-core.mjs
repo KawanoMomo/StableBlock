@@ -39,6 +39,28 @@ export function orthoPoints(fp, tp, fs, ts) {
   return [fp, e1, { x: e2.x, y: e1.y }, e2, tp];
 }
 
+const LPOS_VALUES = ['right', 'left', 'top', 'bottom', 'center'];
+
+export function parseLpos(rest) {
+  const v = ((rest || '').match(/lpos=(\S+)/) || [])[1];
+  return LPOS_VALUES.includes(v) ? v : 'right';
+}
+
+// 配置定数はスペック§3/§4 の QAログ決定値。テキストは全位置 dominant-baseline=central 前提。
+export function labelLayout(mid, lpos, textW) {
+  const OFFSET = 10, PAD_X = 4, PAD_Y = 2, FONT_H = 10;
+  let tx = mid.x, ty = mid.y, anchor = 'middle';
+  if (lpos === 'right') { tx = mid.x + OFFSET; anchor = 'start'; }
+  else if (lpos === 'left') { tx = mid.x - OFFSET; anchor = 'end'; }
+  else if (lpos === 'top') { ty = mid.y - OFFSET; }
+  else if (lpos === 'bottom') { ty = mid.y + OFFSET; }
+  const w = textW + PAD_X * 2, h = FONT_H + PAD_Y * 2;
+  const x = anchor === 'start' ? tx - PAD_X
+    : anchor === 'end' ? tx - textW - PAD_X
+    : tx - textW / 2 - PAD_X;
+  return { tx, ty, anchor, bg: { x, y: ty - h / 2, w, h, rx: 2 } };
+}
+
 export function polylineMidpoint(pts) {
   let total = 0;
   const segs = [];
