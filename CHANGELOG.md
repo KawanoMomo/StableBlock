@@ -9,6 +9,9 @@ All notable changes to StableBlock will be documented in this file.
   - ブロック・接続線・グループ・注釈をネイティブ Excel シェイプとして出力
   - 各シェイプを Excel 上で個別にテキスト・色・位置・サイズ編集可能
   - 既存設計書へのコピー＆貼り付け用途を想定
+- 接続線ラベルをプロパティパネルから入力可能に(HTML版/VSCode拡張)
+- 接続線ラベルの位置指定 `lpos=right|left|top|bottom|center` を追加(デフォルト: 右)
+- 接続線ラベルに白背景矩形を追加、曲線・直角経路でも線上の幾何中点に配置
 
 ## [0.6.0] - 2026-03-23
 
