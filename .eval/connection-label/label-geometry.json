@@ -1,0 +1,30 @@
+{
+  "note": "SVG から抽出したラベル配置とパス幾何中点の解析証拠 (curve モード / 検証用DSL)。座標は SVG user unit = grid*20px。",
+  "labels": [
+    { "text": "デフォルト右", "lpos": "right(未指定)", "textX": 410, "textY": 70, "anchor": "start", "baseline": "central", "impliedMid": [400, 70], "bgRect": { "x": 406, "y": 63, "w": 68, "h": 14, "rx": 2 } },
+    { "text": "中央ラベル",   "lpos": "center",       "textX": 400, "textY": 270, "anchor": "middle", "baseline": "central", "impliedMid": [400, 270], "bgRect": { "x": 371, "y": 263, "w": 58, "h": 14, "rx": 2 } },
+    { "text": "左",           "lpos": "left",         "textX": 110, "textY": 170, "anchor": "end",    "baseline": "central", "impliedMid": [120, 170], "bgRect": { "x": 96, "y": 163, "w": 18, "h": 14, "rx": 2 } },
+    { "text": "上",           "lpos": "top",          "textX": 680, "textY": 160, "anchor": "middle", "baseline": "central", "impliedMid": [680, 170], "bgRect": { "x": 671, "y": 153, "w": 18, "h": 14, "rx": 2 } },
+    { "text": "下です",       "lpos": "bottom",       "textX": 260, "textY": 380, "anchor": "middle", "baseline": "central", "impliedMid": [260, 370], "bgRect": { "x": 241, "y": 373, "w": 38, "h": 14, "rx": 2 } }
+  ],
+  "pathGeometricMidpoints": {
+    "a->b (curve, 未指定)":    { "d": "M200,70 C360,70 440,70 600,70",              "bezierMid": [400, 70] },
+    "c->d (curve, center)":    { "d": "M200,270 C360,270 440,270 600,270",          "bezierMid": [400, 270] },
+    "a->c (curve, left)":      { "d": "M120,100 C120,156 120,184 120,240",          "bezierMid": [120, 170] },
+    "b->d (straight route)":   { "d": "M680,100 L680,240",                          "chordMid": [680, 170] },
+    "c->e (ortho route)":      { "d": "M120,300 L120,320 L120,370 L400,370 L400,420 L400,440", "polylineHalfLenMid": [260, 370], "segLengths": [20,50,280,50,20], "totalLen": 420, "halfLen": 210, "onMiddleSegment": true }
+  },
+  "backgroundWidthCheck_getBBox_vs_rect": [
+    { "text": "デフォルト右", "textBBoxW": 60, "rectW": 68, "leftPad": 4, "rightPad": 4 },
+    { "text": "中央ラベル",   "textBBoxW": 50, "rectW": 58, "leftPad": 4, "rightPad": 4 },
+    { "text": "左",           "textBBoxW": 11, "rectW": 18, "leftPad": 3, "rightPad": 4 },
+    { "text": "上",           "textBBoxW": 10, "rectW": 18, "leftPad": 4, "rightPad": 4 },
+    { "text": "下です",       "textBBoxW": 30, "rectW": 38, "leftPad": 4, "rightPad": 4 }
+  ],
+  "lineModeToggle_routeGeometricMid_follow": {
+    "curve":    { "a->b": [400,70], "c->d": [400,270], "a->c": [120,170] },
+    "straight": { "a->b": [400,70], "c->d": [400,270], "a->c": [120,170], "paths": ["M200,70 L600,70", "M200,270 L600,270", "M120,100 L120,240"] },
+    "ortho":    { "a->b": [400,70], "c->d": [400,270], "a->c": [120,170], "paths": ["M200,70 L220,70 L400,70 L400,70 L580,70 L600,70", "M120,100 L120,120 L120,170 L120,170 L120,220 L120,240"] },
+    "explicitRoutesUnaffectedByGlobalToggle": { "b->d": "straight維持", "c->e": "ortho維持" }
+  }
+}
