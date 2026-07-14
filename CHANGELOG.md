@@ -13,6 +13,11 @@ All notable changes to StableBlock will be documented in this file.
 - 接続線ラベルの位置指定 `lpos=right|left|top|bottom|center` を追加(デフォルト: 右)
 - 接続線ラベルに白背景矩形を追加、曲線・直角経路でも線上の幾何中点に配置
 
+### Fixed
+- VSCode拡張: VSIX に `core/` ランタイム資産を同梱(パッケージング前に自動コピー)し、
+  インストール版でのExcelエクスポート・接続ラベル動作(接続線描画そのもの)が
+  機能しない不具合を修正
+
 ## [0.6.0] - 2026-03-23
 
 ### Added

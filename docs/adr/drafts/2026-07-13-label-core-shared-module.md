@@ -20,3 +20,14 @@
 - stableblock.html は core/label/label-core.browser.js への <script src> 依存が増える
   (Excel エクスポートで既に sibling ファイル依存があり、単一ファイル性は既に失われている)
 - vsce パッケージング: extension.js は実行時に REPO_ROOT から読むため core/excel と同条件
+- **[2026-07-14 追記]** label-core は core/excel(Excelエクスポート機能、任意操作)と異なり
+  **critical path 依存**: Webview の `parseDSL` が接続行ごとに `window.StableBlockLabel.parseLpos`
+  を呼ぶため、読込失敗(=undefined)は接続線の描画そのものを停止させる(接続線全滅)。
+  VSIXには `core/` が同梱されないため、インストール済み拡張(`code --install-extension`)では
+  従来の `REPO_ROOT = path.resolve(__dirname,'..','..')` 固定解決が必ず失敗していた
+  (全ブランチレビューで Critical 指摘、`feature/connection-label-position` で修正)。
+  対策: `vscode-stableblock/scripts/prepackage-core.js` が `vsce package` 前(`vscode:prepublish`
+  フック)に `core/label/label-core.mjs` ・ `core/excel/emitter.js` ・ `core/excel/jszip.min.js` ・
+  `core/excel/template-skeleton/` を `vscode-stableblock/core/` へコピーして同梱し、
+  `extension.js` 側の `REPO_ROOT` 解決もリポジトリ内レイアウト/VSIX同梱レイアウトの
+  候補パス方式(`fs.existsSync` 判定)に変更した。

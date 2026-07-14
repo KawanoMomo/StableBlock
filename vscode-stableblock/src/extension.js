@@ -195,7 +195,18 @@ function getWebviewContent(dslText) {
   // 剥がして window.StableBlockExcel に集約する。
   const path = require('path');
   const fs = require('fs');
-  const REPO_ROOT = path.resolve(__dirname, '..', '..');
+  // REPO_ROOT 候補: (1) リポジトリ内レイアウト(vscode-stableblock/src → repo root)
+  //                 (2) VSIX同梱レイアウト(拡張ルート直下に core/ をコピー。
+  //                     vscode-stableblock/scripts/prepackage-core.js が package 前にコピーする)
+  // core/label/label-core.mjs の存在有無で判定。どちらにも無ければ(1)にフォールバックし、
+  // 以降の try/catch が従来通りログを出して機能を無効化する。
+  const REPO_ROOT_CANDIDATES = [
+    path.resolve(__dirname, '..', '..'),
+    path.resolve(__dirname, '..'),
+  ];
+  const REPO_ROOT = REPO_ROOT_CANDIDATES.find((r) =>
+    fs.existsSync(path.join(r, 'core', 'label', 'label-core.mjs'))
+  ) || REPO_ROOT_CANDIDATES[0];
   let emitterScript = '';
   let jszipScript = '';
   const templateFiles = {};
