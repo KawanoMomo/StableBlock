@@ -4,8 +4,8 @@
   "private": true,
   "description": "StableBlock — text-based block diagram editor",
   "scripts": {
-    "test": "node --test \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\"",
-    "test:watch": "node --test --watch \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\"",
+    "test": "node --test \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\" \"core/canvas/__tests__/*.test.mjs\"",
+    "test:watch": "node --test --watch \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\" \"core/canvas/__tests__/*.test.mjs\"",
     "build:browser": "node core/excel/build-browser.mjs"
   },
   "devDependencies": {

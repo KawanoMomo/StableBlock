@@ -1,0 +1,86 @@
+// StableBlock parsed オブジェクト → JSON Canvas 1.0 (https://jsoncanvas.org/spec/1.0/)。
+// 純粋関数のみ(DOM API 禁止)。browser 版は core/excel/build-browser.mjs が
+// emitter.browser.js を生成する(window.StableBlockCanvas)。
+// 依存は parsed の配列(blocks/groups/notes/connections)と canvas.grid のみ
+// (blockMap/noteMap の形が HTML版と拡張版で異なるため、マップは内部で構築する)。
+// 座標は grid × gridSize × scale(既定2)。Obsidianの既定フォントに対する可読性確保のため(spec §1)。
+
+// 既存レンダラの getSide()/gSide() と同一のギャップ比較式。
+// ポート按分(cPorts)は Canvas に表現手段がないため移植しない。
+export function chooseSides(fromItem, toItem) {
+  const gapB = toItem.y - (fromItem.y + fromItem.h);
+  const gapT = fromItem.y - (toItem.y + toItem.h);
+  const gapR = toItem.x - (fromItem.x + fromItem.w);
+  const gapL = fromItem.x - (toItem.x + toItem.w);
+  const vBest = Math.max(gapB, gapT), hBest = Math.max(gapR, gapL);
+  if (vBest >= hBest) {
+    return gapB >= gapT
+      ? { fromSide: 'bottom', toSide: 'top' }
+      : { fromSide: 'top', toSide: 'bottom' };
+  }
+  return gapR >= gapL
+    ? { fromSide: 'right', toSide: 'left' }
+    : { fromSide: 'left', toSide: 'right' };
+}
+
+function toText(label) {
+  return String(label).replace(/\\n/g, '\n');
+}
+
+export function buildCanvas(parsed, opts) {
+  const showAnnotations = !!(opts && opts.showAnnotations);
+  const scale = (opts && opts.scale) || 2;
+  const g = parsed.canvas.grid * scale;
+  const blockMap = {};
+  for (const b of parsed.blocks) blockMap[b.id] = b;
+  const noteMap = {};
+  for (const n of parsed.notes) noteMap[n.id] = n;
+
+  const nodes = [];
+  for (const gr of parsed.groups) {
+    nodes.push({ id: gr.id, type: 'group', label: gr.label, x: gr.x * g, y: gr.y * g, width: gr.w * g, height: gr.h * g, color: gr.color });
+  }
+  for (const b of parsed.blocks) {
+    nodes.push({ id: b.id, type: 'text', text: toText(b.label), x: b.x * g, y: b.y * g, width: b.w * g, height: b.h * g, color: b.color });
+  }
+  if (showAnnotations) {
+    for (const n of parsed.notes) {
+      nodes.push({ id: n.id, type: 'text', text: toText(n.label), x: n.x * g, y: n.y * g, width: n.w * g, height: n.h * g, color: n.color });
+    }
+  }
+
+  // 注釈接続=端点のどちらかが note(既存 isAnnotationConn と同一基準)
+  const isAnno = (c) => !!(noteMap[c.from] || noteMap[c.to]);
+  const edges = [];
+  let seq = 0;
+  const emit = (c, endpointMap) => {
+    const from = endpointMap[c.from], to = endpointMap[c.to];
+    if (!from || !to) return;
+    const sides = chooseSides(from, to);
+    const edge = {
+      id: 'e-' + c.from + '-' + c.to + '-' + seq,
+      fromNode: c.from, fromSide: sides.fromSide,
+      toNode: c.to, toSide: sides.toSide,
+      color: c.color,
+    };
+    if (c.bidir) edge.fromEnd = 'arrow';
+    if (c.label) edge.label = c.label;
+    edges.push(edge);
+    seq++;
+  };
+  // 通常接続(端点=blocksのみ)→ 注釈接続(端点=blocks+notes)の順(現行レンダラと同じ扱い)
+  const annoMap = Object.assign({}, blockMap, noteMap);
+  for (const c of parsed.connections) {
+    if (!isAnno(c)) emit(c, blockMap);
+  }
+  if (showAnnotations) {
+    for (const c of parsed.connections) {
+      if (isAnno(c)) emit(c, annoMap);
+    }
+  }
+  return { nodes, edges };
+}
+
+export function canvasJson(parsed, opts) {
+  return JSON.stringify(buildCanvas(parsed, opts), null, '\t');
+}

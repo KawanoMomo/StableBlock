@@ -1,0 +1,101 @@
+{
+	"nodes": [
+		{
+			"id": "g1",
+			"type": "group",
+			"label": "グループ",
+			"x": 40,
+			"y": 40,
+			"width": 1600,
+			"height": 240,
+			"color": "#EEF2FF"
+		},
+		{
+			"id": "a",
+			"type": "text",
+			"text": "A\n日本語",
+			"x": 80,
+			"y": 80,
+			"width": 320,
+			"height": 120,
+			"color": "#6366F1"
+		},
+		{
+			"id": "b",
+			"type": "text",
+			"text": "B",
+			"x": 1200,
+			"y": 80,
+			"width": 320,
+			"height": 120,
+			"color": "#3B82F6"
+		},
+		{
+			"id": "c",
+			"type": "text",
+			"text": "C",
+			"x": 80,
+			"y": 480,
+			"width": 320,
+			"height": 120,
+			"color": "#3B82F6"
+		},
+		{
+			"id": "longtext",
+			"type": "text",
+			"text": "これは長い日本語のラベルです\n2行目もあります",
+			"x": 560,
+			"y": 720,
+			"width": 320,
+			"height": 120,
+			"color": "#22C55E"
+		},
+		{
+			"id": "memo",
+			"type": "text",
+			"text": "注釈メモ",
+			"x": 640,
+			"y": 480,
+			"width": 320,
+			"height": 80,
+			"color": "#FEF3C7"
+		}
+	],
+	"edges": [
+		{
+			"id": "e-a-b-0",
+			"fromNode": "a",
+			"fromSide": "right",
+			"toNode": "b",
+			"toSide": "left",
+			"color": "#64748B",
+			"label": "payload"
+		},
+		{
+			"id": "e-b-c-1",
+			"fromNode": "b",
+			"fromSide": "left",
+			"toNode": "c",
+			"toSide": "right",
+			"color": "#64748B",
+			"fromEnd": "arrow"
+		},
+		{
+			"id": "e-c-longtext-2",
+			"fromNode": "c",
+			"fromSide": "right",
+			"toNode": "longtext",
+			"toSide": "left",
+			"color": "#64748B",
+			"label": "接続"
+		},
+		{
+			"id": "e-memo-a-3",
+			"fromNode": "memo",
+			"fromSide": "top",
+			"toNode": "a",
+			"toSide": "bottom",
+			"color": "#64748B"
+		}
+	]
+}

@@ -99,6 +99,10 @@ export function buildLabelCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockLabel', 'label-core.mjs');
 }
 
+export function buildCanvasEmitterBrowser(source) {
+  return buildBrowserGlobal(source, 'StableBlockCanvas', 'core/canvas/emitter.mjs');
+}
+
 /**
  * CLI entry point.
  */
@@ -115,6 +119,12 @@ function main() {
   const labelSource = readFileSync(LABEL_SRC, 'utf8');
   writeFileSync(OUT_LABEL_BROWSER, buildLabelCoreBrowser(labelSource));
   console.log(`Wrote: ${OUT_LABEL_BROWSER}`);
+
+  const CANVAS_SRC = join(__dirname, '..', 'canvas', 'emitter.mjs');
+  const OUT_CANVAS_BROWSER = join(__dirname, '..', 'canvas', 'emitter.browser.js');
+  const canvasSource = readFileSync(CANVAS_SRC, 'utf8');
+  writeFileSync(OUT_CANVAS_BROWSER, buildCanvasEmitterBrowser(canvasSource));
+  console.log(`Wrote: ${OUT_CANVAS_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script

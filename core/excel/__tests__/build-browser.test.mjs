@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
-import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser } from '../build-browser.mjs';
+import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser, buildCanvasEmitterBrowser } from '../build-browser.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -72,4 +72,12 @@ test('label-core.browser.js is up to date (drift detection)', () => {
   const norm = (s) => s.replace(/\r\n/g, '\n');
   assert.equal(norm(built), norm(buildLabelCoreBrowser(norm(src))),
     'Run `npm run build:browser` to regenerate label-core.browser.js');
+});
+
+test('canvas emitter.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../canvas/emitter.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../canvas/emitter.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildCanvasEmitterBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate canvas emitter.browser.js');
 });

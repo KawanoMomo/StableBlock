@@ -31,3 +31,10 @@
   `core/excel/template-skeleton/` を `vscode-stableblock/core/` へコピーして同梱し、
   `extension.js` 側の `REPO_ROOT` 解決もリポジトリ内レイアウト/VSIX同梱レイアウトの
   候補パス方式(`fs.existsSync` 判定)に変更した。
+- **[2026-07-14 追記2: 辺選択ロジックの3箇所目の複製]** Obsidian Canvas エクスポート
+  (`feature/jsoncanvas-export`)の `core/canvas/emitter.mjs` に `chooseSides()` を新設した。
+  これは既存の `getSide()`(stableblock.html)/`gSide()`(extension.js Webview)と同一の
+  ギャップ比較式の**意図的な3箇所目の複製**(約10行、spec §2 で決定)。
+  Canvas 側にポート按分の表現手段がないため cPorts 相当は移植していない。
+  将来この辺選択ロジックを core/label(または core/geometry)へ統合し、
+  3実装が同一関数を参照する形にする選択肢を残す(採番時の検討事項)。
