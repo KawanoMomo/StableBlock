@@ -72,6 +72,7 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "node scripts/prepackage-core.js",
     "package": "vsce package"
   },
   "devDependencies": {

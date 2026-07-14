@@ -1,2 +1,4 @@
 node_modules/
 *.vsix
+# prepackage-core.js コピー先(vsce package 前に core/ から都度コピー、git管理外)
+core/

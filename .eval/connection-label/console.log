@@ -1,0 +1,10 @@
+# StableBlock 接続線ラベル 視覚検証 — コンソールログ
+# 取得元: http://localhost:8931/stableblock.html
+# 取得日時: 2026-07-14
+
+Total messages: 1 (Errors: 1, Warnings: 0)
+
+[ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://localhost:8931/favicon.ico:0
+
+# 判定: favicon.ico 404 のみ (既知・無害・タスク指定により除外対象)。
+# 機能由来の error / warning は 0 件。

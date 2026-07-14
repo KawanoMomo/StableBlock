@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-07-14",
+  "source": "http://localhost:8931/stableblock.html",
+  "requests": [
+    { "method": "GET", "url": "http://localhost:8931/stableblock.html", "status": 200, "ok": true },
+    { "method": "GET", "url": "http://localhost:8931/core/label/label-core.browser.js", "status": 200, "ok": true },
+    { "method": "GET", "url": "http://localhost:8931/favicon.ico", "status": 404, "ok": false, "note": "既知・無害 (ブラウザ既定要求)。除外対象" }
+  ],
+  "summary": {
+    "featureModuleLoaded": "core/label/label-core.browser.js => 200 OK",
+    "failuresExcludingFavicon": 0
+  }
+}
