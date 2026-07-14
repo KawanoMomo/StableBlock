@@ -21,9 +21,10 @@ Obsidian の Canvas 機能(オープン仕様 [JSON Canvas 1.0](https://jsoncanv
 
 `buildCanvas(parsed, opts)` — パース済みオブジェクトから JSON Canvas 1.0 準拠のオブジェクトを返す**純粋関数**(DOM API 使用禁止、node --test で検証)。
 
-- 入力: `parsed`(parseDSL の返却値: canvas/blocks/groups/notes/connections/blockMap)、`opts = { showAnnotations: boolean }`
+- 入力: `parsed`(parseDSL の返却値: canvas/blocks/groups/notes/connections/blockMap)、`opts = { showAnnotations: boolean, scale?: number }`
 - 出力: `{ nodes: [...], edges: [...] }`(JSON Canvas 1.0 トップレベル構造)
-- 座標系: 両者ともピクセル・左上原点。グリッド座標 × `parsed.canvas.grid` で直変換
+- 座標系: 両者ともピクセル・左上原点。グリッド座標 × `parsed.canvas.grid` × **scale(既定2)** で変換
+- **scale の根拠(2026-07-14 実測)**: Obsidian は既定 Markdown フォント(~16px)で text ノードを描画し、ノード単位のフォント指定は仕様に存在しない。1x では長め日本語2行ラベル(160×60px)が +13px はみ出すことを DOM 実測で確認。2x でテキストは -71px の余裕、グループ名の枠外張り出し(~31px 固定)も標準配置(上に1グリッド=2xで40px)で回避できる。Canvas はズーム自在のため絶対サイズ拡大の副作用はない。UIからの変更手段は設けない(opts のみ)
 
 ### マッピング
 
@@ -48,6 +49,8 @@ JSON Canvas 1.0 に対応フィールドが存在しないため、以下は**�
 - 同一辺上の複数接続のポート按分位置(Canvas は辺単位のみ)
 - block/note の `textColor`・`borderColor`・`round`・`style`(dashed/bold)
 - 色の意味論差: StableBlock の color は塗り潰し、Canvas の color は枠線アクセント寄りにレンダリングされる(値は正確に渡すが見た目は変わる)
+- **グループ名の表示位置**: Obsidian はグループ名を枠の外側上部(~31px、フォント由来の固定高)に表示し、JSON Canvas に位置制御フィールドはない(枠内表示は不可能)。scale=2 では上に1グリッドの隙間がある標準配置でかぶりを回避できるが、**上隙間ゼロの配置では上のグループ/ノードにかぶる**(既知の制限)。運用ガイド: グループの上は1グリッド以上空ける
+- テキスト/グループ名のフォントサイズ調整は vault 全体の CSS スニペット(`.canvas-node-container` / `.canvas-group-label`)でのみ可能(本機能からは関与しない)
 
 ## 2. 辺選択(fromSide/toSide)
 
