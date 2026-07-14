@@ -85,6 +85,13 @@ function activate(context) {
             vscode.window.showInformationMessage("Mermaid saved: " + uri.fsPath);
           }
         }
+        if (msg.type === "exportCanvas") {
+          const uri = await vscode.window.showSaveDialog({ filters: { "Canvas": ["canvas"] }, defaultUri: vscode.Uri.file("diagram.canvas") });
+          if (uri) {
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.data, "utf-8"));
+            vscode.window.showInformationMessage("Canvas saved: " + uri.fsPath);
+          }
+        }
         if (msg.type === "info") {
           vscode.window.showInformationMessage(msg.text);
         }
@@ -247,6 +254,17 @@ function getWebviewContent(dslText) {
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
     + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl };';
 
+  // ───── Obsidian JSON Canvas エクスポート(canvas/emitter.mjs)をインライン埋め込み ─────
+  let canvasEmitterScript = '';
+  try {
+    canvasEmitterScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'canvas', 'emitter.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load canvas emitter:', e.message);
+  }
+  const canvasEmitterAsGlobals = canvasEmitterScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockCanvas = { chooseSides, buildCanvas, canvasJson };';
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -286,6 +304,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>${jszipScript}<\/script>
 <script>${emitterAsGlobals}<\/script>
 <script>${labelCoreAsGlobals}<\/script>
+<script>${canvasEmitterAsGlobals}<\/script>
 <script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
 </head><body>
 <div class="toolbar">
@@ -294,7 +313,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
   <div class="sep"></div><button class="tb" id="anno-btn" onclick="toggleAnno()" title="N key">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation edit mode" style="opacity:0.4;pointer-events:none">&#x270E; Edit</button>
   <div class="sep"></div><button class="tb" onclick="fixN(event.shiftKey)" title="Rename __new_ IDs from labels">Fix ID</button>
-  <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button><button class="tb" onclick="exportPNGT()">PNG&#x2205;</button><button class="tb" onclick="copyPNG()">&#x2398; Copy</button><button class="tb" onclick="exportXlsx()">Excel</button>
+  <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button><button class="tb" onclick="exportPNGT()">PNG&#x2205;</button><button class="tb" onclick="copyPNG()">&#x2398; Copy</button><button class="tb" onclick="exportXlsx()">Excel</button><button class="tb" onclick="exportCanvas()">Canvas</button>
   <div class="sep"></div><button class="tb" onclick="exportMmd()">Mermaid</button>
   <div class="sep"></div><input class="pi" id="search-input" placeholder="Search..." style="width:100px;font-size:10px" oninput="doSearch(this.value)">
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
@@ -640,6 +659,7 @@ function go(){parsed=parseDSL(dsl);render();props();
 
 // Export
 function exportSVG(){var svg=document.querySelector('#wrap svg');if(!svg)return;var clone=svg.cloneNode(true);clone.setAttribute('xmlns','http://www.w3.org/2000/svg');vscodeApi.postMessage({type:'exportSVG',data:clone.outerHTML});}
+function exportCanvas(){if(!parsed)return;vscodeApi.postMessage({type:'exportCanvas',data:window.StableBlockCanvas.canvasJson(parsed,{showAnnotations:showAnno})});}
 function pngCanvas(transparent,cb){var svg=document.querySelector('#wrap svg');if(!svg)return;var d=new XMLSerializer().serializeToString(svg),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=parsed.canvas.width*zm*2;c.height=parsed.canvas.height*zm*2;var ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);cb(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function exportPNG(){pngCanvas(false,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});});}
 function exportPNGT(){pngCanvas(true,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});});}

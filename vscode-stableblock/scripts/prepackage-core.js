@@ -23,6 +23,7 @@ const ASSETS = [
   path.join("core", "excel", "emitter.js"),
   path.join("core", "excel", "jszip.min.js"),
   path.join("core", "excel", "template-skeleton"),
+  path.join("core", "canvas", "emitter.mjs"),
 ];
 
 function copyAsset(relPath) {
