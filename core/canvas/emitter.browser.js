@@ -5,6 +5,7 @@
 // emitter.browser.js を生成する(window.StableBlockCanvas)。
 // 依存は parsed の配列(blocks/groups/notes/connections)と canvas.grid のみ
 // (blockMap/noteMap の形が HTML版と拡張版で異なるため、マップは内部で構築する)。
+// 座標は grid × gridSize × scale(既定2)。Obsidianの既定フォントに対する可読性確保のため(spec §1)。
 
 // 既存レンダラの getSide()/gSide() と同一のギャップ比較式。
 // ポート按分(cPorts)は Canvas に表現手段がないため移植しない。
@@ -30,7 +31,8 @@ function toText(label) {
 
 function buildCanvas(parsed, opts) {
   const showAnnotations = !!(opts && opts.showAnnotations);
-  const g = parsed.canvas.grid;
+  const scale = (opts && opts.scale) || 2;
+  const g = parsed.canvas.grid * scale;
   const blockMap = {};
   for (const b of parsed.blocks) blockMap[b.id] = b;
   const noteMap = {};

@@ -44,13 +44,27 @@ test('chooseSides matches legacy getSide gap comparison', () => {
     { fromSide: 'bottom', toSide: 'top' });
 });
 
-test('buildCanvas: nodes are groups then blocks, grid*20 px, \\n converted', () => {
+test('buildCanvas: nodes are groups then blocks, grid*20*scale(2) px, \\n converted', () => {
   const { nodes } = buildCanvas(fixture(), { showAnnotations: false });
   assert.deepEqual(nodes, [
-    { id: 'app', type: 'group', label: 'App', x: 20, y: 20, width: 800, height: 120, color: '#F3F4F6' },
-    { id: 'a', type: 'text', text: 'A\nsub', x: 40, y: 40, width: 160, height: 60, color: '#6366F1' },
-    { id: 'b', type: 'text', text: 'B', x: 600, y: 40, width: 160, height: 60, color: '#3B82F6' },
+    { id: 'app', type: 'group', label: 'App', x: 40, y: 40, width: 1600, height: 240, color: '#F3F4F6' },
+    { id: 'a', type: 'text', text: 'A\nsub', x: 80, y: 80, width: 320, height: 120, color: '#6366F1' },
+    { id: 'b', type: 'text', text: 'B', x: 1200, y: 80, width: 320, height: 120, color: '#3B82F6' },
   ]);
+});
+
+test('buildCanvas: default scale is 2', () => {
+  const { nodes } = buildCanvas(fixture(), { showAnnotations: false });
+  const a = nodes.find((n) => n.id === 'a');
+  assert.equal(a.x, 2 * 20 * 2);
+  assert.equal(a.width, 8 * 20 * 2);
+});
+
+test('buildCanvas: explicit scale=1 restores raw grid pixels', () => {
+  const { nodes } = buildCanvas(fixture(), { showAnnotations: false, scale: 1 });
+  const a = nodes.find((n) => n.id === 'a');
+  assert.equal(a.x, 40);
+  assert.equal(a.width, 160);
 });
 
 test('buildCanvas: normal edges with sides, label omitted when empty, bidir fromEnd', () => {
@@ -70,7 +84,7 @@ test('buildCanvas: missing-endpoint connection is dropped and does not consume s
 test('buildCanvas: showAnnotations=true adds note node and annotation edge at the end', () => {
   const { nodes, edges } = buildCanvas(fixture(), { showAnnotations: true });
   assert.deepEqual(nodes[3],
-    { id: 'memo', type: 'text', text: 'メモ', x: 40, y: 200, width: 120, height: 40, color: '#FEF3C7' });
+    { id: 'memo', type: 'text', text: 'メモ', x: 80, y: 400, width: 240, height: 80, color: '#FEF3C7' });
   assert.deepEqual(edges[2],
     { id: 'e-memo-a-2', fromNode: 'memo', fromSide: 'top', toNode: 'a', toSide: 'bottom', color: '#F59E0B' });
 });
