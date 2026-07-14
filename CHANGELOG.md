@@ -12,7 +12,7 @@ All notable changes to StableBlock will be documented in this file.
 - 接続線ラベルをプロパティパネルから入力可能に(HTML版/VSCode拡張)
 - 接続線ラベルの位置指定 `lpos=right|left|top|bottom|center` を追加(デフォルト: 右)
 - 接続線ラベルに白背景矩形を追加、曲線・直角経路でも線上の幾何中点に配置
-- Obsidian Canvas(JSON Canvas 1.0、.canvas)エクスポートを追加(HTML版/VSCode拡張)。注釈レイヤーは表示状態に従い出力
+- Obsidian Canvas(JSON Canvas 1.0、.canvas)エクスポートを追加(HTML版/VSCode拡張)。注釈レイヤーは表示状態に従い出力。Obsidianの既定フォントで文字がはみ出さないよう座標を2倍スケールで出力
 
 ### Fixed
 - VSCode拡張: VSIX に `core/` ランタイム資産を同梱(パッケージング前に自動コピー)し、
