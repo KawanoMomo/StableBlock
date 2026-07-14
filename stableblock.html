@@ -108,6 +108,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/excel/template-inline.js"></script>
 <script src="core/excel/emitter.browser.js"></script>
 <script src="core/label/label-core.browser.js"></script>
+<script src="core/canvas/emitter.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -143,6 +144,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-accent" onclick="copyPNG()" title="クリップボードにコピー">📋</button>
     <button class="tb tb-accent" onclick="exportXlsx()" title="Excel エクスポート">Excel</button>
     <button class="tb tb-accent" onclick="exportMermaid()" title="Mermaid形式で保存">Mermaid</button>
+    <button class="tb tb-accent" onclick="exportCanvas()" title="Obsidian Canvas形式で保存">Canvas</button>
     <div class="sep"></div>
     <button class="tb tb-green" onclick="exportSB()">.sb 保存</button>
     <button class="tb tb-green" onclick="document.getElementById('file-input').click()">.sb 読込</button>
@@ -812,6 +814,7 @@ function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{naviga
 async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh();};reader.readAsText(file);input.value='';}
 function exportMermaid(){if(!parsed)return;let m='graph TD\n';const inGroup={};parsed.groups.forEach(gr=>{const children=parsed.blocks.filter(b=>isInside(b,gr));if(children.length){m+=`  subgraph ${gr.id}["${gr.label}"]\n`;children.forEach(b=>{m+=`    ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;inGroup[b.id]=true;});m+=`  end\n`;}});parsed.blocks.filter(b=>!inGroup[b.id]).forEach(b=>{m+=`  ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;});parsed.connections.filter(c=>!isAnnotationConn(c)).forEach(c=>{const arrow=c.bidir?'<-->':'-->';const lbl=c.label?`|${c.label}|`:'';m+=`  ${c.from} ${arrow}${lbl} ${c.to}\n`;});download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(m));}
+function exportCanvas(){if(!parsed)return;download('diagram.canvas','data:application/json;charset=utf-8,'+encodeURIComponent(window.StableBlockCanvas.canvasJson(parsed,{showAnnotations})));}
 function setZoom(dir){zoom=Math.max(0.25,Math.min(3,zoom+dir*0.25));document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
 
 // ═══════════════════════════════════════════════
