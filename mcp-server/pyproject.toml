@@ -1,0 +1,24 @@
+[project]
+name = "stableblock-mcp"
+version = "0.1.0"
+description = "MCP server for StableBlock deterministic block diagrams"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+stableblock-mcp = "stableblock_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
