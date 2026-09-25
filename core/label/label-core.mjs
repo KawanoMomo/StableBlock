@@ -150,7 +150,7 @@ export function uniqueId(base, used) {
 }
 
 // oldId を newId に改名する。書き換えるのは定義行(line: 1 始まり。省略時は最初の定義)と、接続行の from / to だけ。
-// ラベル・属性・コメントの中の同じ文字列には触れない。同じ ID の定義が他に残るとき(重複 ID)は接続行を書き換えない。
+// ラベル・属性・コメントの中の同じ文字列には触れない(ラベル全体が旧 ID と同じ文字列のときだけ新 ID に揃える)。同じ ID の定義が他に残るとき(重複 ID)は接続行を書き換えない。
 export function renameIdInDsl(dsl, oldId, newId, line) {
   const lines = dsl.split('\n');
   const defRe = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
@@ -164,6 +164,8 @@ export function renameIdInDsl(dsl, oldId, newId, line) {
   }
   if (target < 0) return dsl;
   lines[target] = lines[target].replace(defRe, (_, head, _id, sp) => head + newId + sp);
+  // ラベルが ID と同じ文字列(ID をそのまま表示名にしている)なら、表示名も新しい ID に揃える(ID と表示名の食い違いを作らない)
+  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"([^"]*)"/, (all, head, label) => (label === oldId ? `${head}"${newId}"` : all));
   if (others === 0) {
     const connRe = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
     for (let i = 0; i < lines.length; i++) {
@@ -217,6 +219,30 @@ export function renameIdAcrossDsl(dsl, oldId, newId) {
       ind + (from === oldId ? newId : from) + s1 + arrow + s2 + (to === oldId ? newId : to));
   }
   return lines.join('\n');
+}
+
+// 一緒に読み込んだ複数の図(files: [{ path, text }])から、ID かラベルに query を含む定義行と、from / to に含む接続行を探す(大文字小文字を区別しない)。
+// 戻り値 [{ path, line(1 始まり), kind: 'def' | 'ref', id, text(行末の \r を除く) }]。HTML 版のツールバーの検索が、表示中でない図の当たりを並べるのに使う
+export function searchIdsInFiles(files, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!q) return [];
+  const out = [];
+  for (const f of files) {
+    String(f.text).split('\n').forEach((raw, i) => {
+      const text = raw.replace(/\r$/, '');
+      const d = text.match(ID_DEF_RE);
+      if (d) {
+        const lm = text.slice(d[0].length).match(/^\s*"((?:[^"\\]|\\.)*)"/);
+        if (d[2].toLowerCase().includes(q) || (lm && lm[1].toLowerCase().includes(q))) out.push({ path: f.path, line: i + 1, kind: 'def', id: d[2], text });
+        return;
+      }
+      const c = text.match(ID_CONN_RE);
+      if (!c) return;
+      const id = [c[2], c[6]].find(x => x.toLowerCase().includes(q));
+      if (id) out.push({ path: f.path, line: i + 1, kind: 'ref', id, text });
+    });
+  }
+  return out;
 }
 
 // 複数の図(files: [{ path, text }])にまたがる改名の計画。書き込みは呼び出し側。
