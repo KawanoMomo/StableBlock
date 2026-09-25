@@ -69,11 +69,11 @@ export function findRefs(paths, id) {
 }
 
 // 図をまたいで改名する(定義行と接続の from / to だけ。改行・BOM・他の行はそのまま)。dryRun なら書き込まない
-// 戻り値は planRename と同じ({ error } か { changes, defs })。changes の path は絶対パス
+// 戻り値は planRename と同じ({ error } か { changes, defs })。path は作業フォルダからの相対パス
 export function renameAcross(paths, oldId, newId, dryRun = false) {
-  const files = collectWithIncludes(paths).map(path => ({ path, text: readFileSync(path, 'utf8') }));
+  const files = collectWithIncludes(paths).map(abs => ({ path: relative(process.cwd(), abs) || abs, text: readFileSync(abs, 'utf8') }));
   const plan = planRename(files, oldId, newId);
-  if (!plan.error && !dryRun) for (const c of plan.changes) writeFileSync(c.path, c.text, 'utf8');
+  if (!plan.error && !dryRun) for (const c of plan.changes) writeFileSync(resolve(c.path), c.text, 'utf8');
   return plan;
 }
 
