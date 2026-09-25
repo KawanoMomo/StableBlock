@@ -156,3 +156,83 @@ export function renameIdInDsl(dsl, oldId, newId, line) {
   }
   return lines.join('\n');
 }
+
+// ─── 接続の端点(ポート)と経路の点列。描画(HTML版 / VSCode拡張)と検査(core/check)が同じ計算を使う ───
+// 座標: 要素は grid 単位、戻り値は px(grid * g)。
+
+// 2 つの要素の向き合う辺。縦の隙間が横の隙間以上なら上下で結ぶ
+export function getSide(fb, tb) {
+  const gapB = tb.y - (fb.y + fb.h), gapT = fb.y - (tb.y + tb.h), gapR = tb.x - (fb.x + fb.w), gapL = fb.x - (tb.x + tb.w);
+  const vBest = Math.max(gapB, gapT), hBest = Math.max(gapR, gapL);
+  if (vBest >= hBest) return gapB >= gapT ? { fs: 'bottom', ts: 'top' } : { fs: 'top', ts: 'bottom' };
+  return gapR >= gapL ? { fs: 'right', ts: 'left' } : { fs: 'left', ts: 'right' };
+}
+
+// 辺 side の上で、total 本のうち idx 本目のポート位置
+export function portPos(b, side, idx, total, g) {
+  const bx = b.x * g, by = b.y * g, bw = b.w * g, bh = b.h * g, pad = 0.2;
+  const t = total === 1 ? 0.5 : pad + (1 - 2 * pad) * idx / (total - 1);
+  if (side === 'top') return { x: bx + bw * t, y: by };
+  if (side === 'bottom') return { x: bx + bw * t, y: by + bh };
+  if (side === 'left') return { x: bx, y: by + bh * t };
+  return { x: bx + bw, y: by + bh * t };
+}
+
+// 接続ごとの {fp, tp, fs, ts}。同じ辺の複数ポートは相手の中心の並びで配る。端点が itemMap に無い接続は null
+export function computePorts(connections, itemMap, g) {
+  const sides = connections.map(c => { const fb = itemMap[c.from], tb = itemMap[c.to]; return fb && tb ? getSide(fb, tb) : null; });
+  const sm = {};
+  connections.forEach((c, i) => {
+    if (!sides[i]) return;
+    const fb = itemMap[c.from], tb = itemMap[c.to];
+    const fs = sides[i].fs, ts = sides[i].ts;
+    if (!sm[c.from]) sm[c.from] = {};
+    if (!sm[c.from][fs]) sm[c.from][fs] = [];
+    sm[c.from][fs].push({ ci: i, ox: tb.x + tb.w / 2, oy: tb.y + tb.h / 2 });
+    if (!sm[c.to]) sm[c.to] = {};
+    if (!sm[c.to][ts]) sm[c.to][ts] = [];
+    sm[c.to][ts].push({ ci: i, ox: fb.x + fb.w / 2, oy: fb.y + fb.h / 2 });
+  });
+  for (const bid in sm) for (const side in sm[bid]) {
+    sm[bid][side].sort((a, b) => (side === 'left' || side === 'right') ? (a.oy - b.oy) : (a.ox - b.ox));
+  }
+  return connections.map((c, i) => {
+    if (!sides[i]) return null;
+    const fb = itemMap[c.from], tb = itemMap[c.to];
+    const fl = sm[c.from][sides[i].fs], tl = sm[c.to][sides[i].ts];
+    return {
+      fp: portPos(fb, sides[i].fs, fl.findIndex(p => p.ci === i), fl.length, g),
+      tp: portPos(tb, sides[i].ts, tl.findIndex(p => p.ci === i), tl.length, g),
+      fs: sides[i].fs, ts: sides[i].ts,
+    };
+  });
+}
+
+// 描かれる経路を折れ線で近似した点列(mode: curved / straight / ortho)。曲線は steps 分割
+export function pathPoints(fp, tp, fs, ts, mode, steps = 24) {
+  if (mode === 'straight') return [fp, tp];
+  if (mode === 'ortho') return orthoPoints(fp, tp, fs, ts);
+  const { c1, c2 } = bezierControls(fp, tp, fs, ts);
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, u = 1 - t;
+    pts.push({
+      x: u * u * u * fp.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * tp.x,
+      y: u * u * u * fp.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * tp.y,
+    });
+  }
+  return pts;
+}
+
+// block 同士の接続(note が端の注釈線を除く)の経路。mode は接続に route が無いときの線モード
+export function connectionPaths(parsed, mode) {
+  const g = parsed.canvas.grid;
+  const conns = parsed.connections.filter(c => !(parsed.noteMap[c.from] || parsed.noteMap[c.to]));
+  const ports = computePorts(conns, parsed.blockMap, g);
+  const out = [];
+  conns.forEach((c, i) => {
+    const p = ports[i];
+    if (p) out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, c.route || mode) });
+  });
+  return out;
+}

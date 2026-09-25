@@ -14,7 +14,9 @@ test('junior-01: 先輩の .sb を Import で開くと、ブロック数が DSL 
   await importSb(page, SENPAI);
 
   expect(await getEditorText(page)).toBe(text.replace(/\r\n/g, '\n'));
-  await expect(page.locator('#error-bar')).toBeHidden();
+  // 読めない行・存在しない参照(error)は無い。手本には線の横切りの warn があるのでエラー表示欄そのものは出うる
+  await expect(page.locator('#error-bar .diag-error')).toHaveCount(0);
+  await expect(page.locator('#status')).not.toContainText('Err:');
   const svg = page.locator('#svg-wrap svg');
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(count('block'));
   await expect(svg.locator('g[data-type="group"]')).toHaveCount(count('group'));
