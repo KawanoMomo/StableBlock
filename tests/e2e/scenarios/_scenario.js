@@ -29,14 +29,16 @@ async function bootPlain(page) {
   await expect(page.locator('#svg-wrap svg')).toBeVisible();
 }
 
-// Import(ツールバーの「.sb 読込」)の filechooser で .sb を開き、読込が終わるまで待つ
+// Import(ツールバーの「.sb 読込」)の filechooser で .sb を開き、読込が終わるまで待つ。
+// file に配列を渡すと一緒に選ぶ(先頭が本体、残りは @include 先)
 async function importSb(page, file) {
-  const expected = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');   // FileReader.readAsText は BOM を落とす
+  const files = [].concat(file);
+  const expected = fs.readFileSync(files[0], 'utf8').replace(/^﻿/, '');   // FileReader.readAsText は BOM を落とす
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByRole('button', { name: '.sb 読込' }).click(),
   ]);
-  await chooser.setFiles(file);
+  await chooser.setFiles(files);
   await page.waitForFunction(e => typeof dsl === 'string' && dsl === e, expected);   // eslint-disable-line no-undef
 }
 

@@ -8,6 +8,7 @@ All notable changes to StableBlock will be documented in this file.
 - BLK-owner-20260926-0451-1: 入れ子の group を作図 UI だけで組める(親の中で「選択をグループ化」「+ グループ内にブロック追加」・矢印キー/ドラッグ/リサイズで動かしても子は親の内側に収まり、足りなければ親が広がって兄弟は押し出される。ラベルを変えた直後の「+ グループ内にブロック追加」も効く。group の枠をまたぐ配置は警告に出る)
 - BLK-primary-20260926-0451: ID の参照元を図を開かずに一覧でき(`npm run check -- --refs <ID> <フォルダ>`、@include 先を含む)、全図の改名を 1 操作でできる(`npm run check -- --rename <旧> <新> <フォルダ>`、VSCode 拡張は F2 / Shift+F12)。変わるのは定義行と接続の from / to だけ
 - BLK-owner-20260926-0451-2: 接続のラベルが block の下に隠れなくなった(画面・SVG・PNG・Excel でラベルを block より上に白地で描き、本文に lpos= が無いラベルは block の名前・note・他のラベルを避けた位置に置く。避けきれないと警告に出る)
+- BLK-porter-20260926-0451: @include の図を「.sb 読込」で本体と include 先を一緒に選んで開ける(複数選択。include 先は本体からの相対パス、フォルダ情報が無ければ同じ名前)。読めない include はその行に理由を出し、参照する接続・書き出しでも知らせる。VSCode 拡張・npm run check も同じ core で解決する
 - BLK-owner-20260926-0451-prune: 線の形の既定を本文の `@canvas` 行の `route=` に持たせた。ツールバー「⌇ 線の形」/ L キーはその 1 行を書き換え(曲線に戻すと消える)、開き直しても・SVG/PNG・検査・VSCode 拡張でも同じ形になる。接続ごとの `route=` が優先
 - BLK-owner-20260925-1921-7: ツールバーとプロパティ欄の入口が「何をするか」の名前と動詞のツールチップを持つ(「◎ 未接続を薄く」「PNGをコピー」「透過PNG」「⌇ 線の形: 曲線」、スタイルは 実線/破線/太線、グループ欄は「+ グループ内にブロック追加」)。語彙は core/terms に 1 か所で、VSCode 拡張も同じ意味の英語。README から実在しない mcp-server/・examples/ の案内を消し、ファイル構成を実在に合わせた
 - BLK-junior-20260925-1921-friction: 「+ ブロック追加」(ツール欄・group 欄)と貼り付け(Ctrl+V)が、直前に置いた block の右隣の空き位置に置き、大きさ・色を引き継ぐ(group の端・キャンバスの端で折り返し、group は下へ伸ばす)。Ctrl+V を続けて押すと複製が格子に並ぶ。block を選ぶとプロパティ欄の先頭に複製のキーを示す(HTML 版 / VSCode 拡張、置き場所は `core/layout` の placeNext)

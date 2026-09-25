@@ -116,8 +116,10 @@ function findCrossings(paths, blocks, g, inset = 2) {
 
 const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 
-// 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)
-function checkDiagram(parsed, lines, paths, labelIssues) {
+// 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)。
+// where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)
+function checkDiagram(parsed, lines, paths, labelIssues, where) {
+  const ref = where || (n => `L${n}`);
   const out = [];
   for (const e of parsed.errors || []) {
     const raw = lines && lines[e.line - 1] !== undefined ? lines[e.line - 1].trim() : null;
@@ -135,32 +137,110 @@ function checkDiagram(parsed, lines, paths, labelIssues) {
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
     if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
     const key = [c.from, c.to].sort().join('\u0000');
-    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は L${seen[key]} と同じ組の 2 本目` });
+    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[key])} と同じ組の 2 本目` });
     else seen[key] = c.line;
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
-    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(L${p.line})に重なっている` });
+    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている` });
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
-    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(L${group.line})の枠をまたいでいる` });
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる` });
   }
   if (paths) {
     const g = parsed.canvas.grid;
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
-      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(L${block.line})の上を横切る` });
+      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る` });
     }
   }
   for (const { conn, kind, item } of labelIssues || []) {
     const head = `接続「${connText(conn)}」のラベル「${conn.label}」`;
-    const msg = kind === 'text' ? `${head}が block「${item.id}」(L${item.line})の名前に重なる`
-      : kind === 'title' ? `${head}が group「${item.id}」(L${item.line})の見出しに重なる`
-      : kind === 'note' ? `${head}が note「${item.id}」(L${item.line})の下に隠れる`
-      : `${head}が接続「${connText(item)}」(L${item.line})のラベルに重なる`;
+    const msg = kind === 'text' ? `${head}が block「${item.id}」(${ref(item.line)})の名前に重なる`
+      : kind === 'title' ? `${head}が group「${item.id}」(${ref(item.line)})の見出しに重なる`
+      : kind === 'note' ? `${head}が note「${item.id}」(${ref(item.line)})の下に隠れる`
+      : `${head}が接続「${connText(item)}」(${ref(item.line)})のラベルに重なる`;
     out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)` });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
 }
 
-;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, segmentHitsRect, findCrossings, checkDiagram };
+// ── @include ──────────────────────────────────────────────
+// 本文と include 先はファイルのパス(区切りは /)で呼ぶ。HTML 版は「.sb 読込」で一緒に選んだファイル、VSCode 拡張は
+// 拡張ホストが読んだファイル、CLI は fs から読み、同じ expandIncludes / checkIncluded を通す(同じ診断になる)。
+
+function normPath(p) {
+  const out = [];
+  p.split('/').forEach((seg, i) => {
+    if (seg === '.' || (seg === '' && i > 0)) return;
+    const last = out[out.length - 1];
+    if (seg === '..' && out.length && last !== '..' && last !== '' && !/^[a-zA-Z]:$/.test(last)) out.pop();
+    else out.push(seg);
+  });
+  return out.join('/');
+}
+
+// include 元のファイル from(無ければ '')から見た相対パス rel を、/ 区切りのパスにする
+function resolveIncludePath(from, rel) {
+  const r = String(rel).split('\\').join('/');
+  if (/^([a-zA-Z]:)?\//.test(r)) return normPath(r);
+  const f = String(from || '').split('\\').join('/');
+  return normPath(f.slice(0, f.lastIndexOf('/') + 1) + r);
+}
+
+// 本文 text の @include を展開する。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
+// 返り値: text / lines(展開後)、origin[i] = { file, line, at }(展開後の i+1 行目がどのファイルの何行目か。at は本文の何行目から来たか)、
+// missing = [{ at, file, line, path, resolved, cycle }](読めない @include。その行は展開後に残さない)。include の無い本文はそのまま返る
+function expandIncludes(text, read, file = '') {
+  const lines = [], origin = [], missing = [];
+  const walk = (src, f, at, chain) => {
+    String(src).replace(/^\uFEFF/, '').split('\n').forEach((line, i) => {
+      const top = at === undefined ? i + 1 : at;
+      const m = line.trim().match(/^@include\s+"([^"]+)"/);
+      if (m) {
+        const p = resolveIncludePath(f, m[1]);
+        const cycle = chain.includes(p);
+        const sub = cycle ? null : read(p);
+        if (sub !== null && sub !== undefined) { walk(sub, p, top, [...chain, p]); return; }
+        missing.push({ at: top, file: f, line: i + 1, path: m[1], resolved: p, cycle });
+        return;
+      }
+      lines.push(line);
+      origin.push({ file: f, line: i + 1, at: top });
+    });
+  };
+  walk(text, file, undefined, [resolveIncludePath('', file)]);
+  return { text: lines.join('\n'), lines, origin, missing, file };
+}
+
+// 展開した図(parsed は exp.text を parse したもの)の診断を、本文の行番号(line)で返す。include 先の行から出た診断は
+// @include 行に寄せ、どのファイルの何行目かを書き添える(file / fileLine にも持つ)。読めない @include はその行のエラーにし、
+// ID が無い接続には読めていない include 先を示す。opts.hint: 読めない include に添える案内。opts.name(path): 文中のファイル名。
+// opts.inline === false なら include 先の場所を文に添えない(CLI は file:line で示す)。opts.labelIssues は checkDiagram と同じ
+function checkIncluded(parsed, exp, paths, opts = {}) {
+  const name = opts.name || (p => p);
+  const org = n => exp.origin[n - 1] || { file: exp.file, line: n, at: n };
+  const where = n => { const r = org(n); return r.file === exp.file ? `L${r.line}` : `${name(r.file)} L${r.line}`; };
+  const out = [];
+  for (const m of exp.missing) {
+    const in_ = m.file === exp.file ? '' : `(${name(m.file)} L${m.line})`;
+    out.push({ line: m.at, level: 'error', msg: `include 先「${m.path}」を読めない${m.cycle ? '(自分自身を include している)' : opts.hint || ''}${in_}`, file: m.file, fileLine: m.line });
+  }
+  const unread = exp.missing.length ? `(読めていない include 先: ${exp.missing.map(m => `L${m.at}「${m.path}」`).join('、')})` : '';
+  for (const d of checkDiagram(parsed, exp.lines, paths, opts.labelIssues, where)) {
+    const r = org(d.line);
+    let msg = d.msg;
+    if (unread && /という ID の block \/ note が無い$/.test(msg)) msg += unread;
+    if (r.file !== exp.file && opts.inline !== false) msg += `(${name(r.file)} L${r.line})`;
+    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line });
+  }
+  const rank = { error: 0, warn: 1 };
+  return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
+}
+
+// 書き出しの知らせに足す行: 読めない include 先の要素は書き出しにも入っていない
+function includeDrops(exp) {
+  return ((exp && exp.missing) || []).map(m => `include 先「${m.path}」(L${m.at})を読めず、その中の要素は入っていない`);
+}
+
+;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };
