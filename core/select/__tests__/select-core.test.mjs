@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -66,4 +66,18 @@ test('sameSelection', () => {
   assert.equal(sameSelection([A, B], [A, B]), true);
   assert.equal(sameSelection([A, B], [B, A]), false);
   assert.equal(sameSelection([A], [A, B]), false);
+});
+
+test('stepDelta: プロパティ欄の ▲ は値を 1 増やし、▼ は 1 減らす(選択の数に依らない)', () => {
+  assert.equal(stepDelta('up'), 1);
+  assert.equal(stepDelta('dn'), -1);
+  assert.equal(stepDelta('other'), 0);
+});
+
+test('arrowNudge: 矢印キーは画面の向きに 1 グリッド(▲▼ とは別)', () => {
+  assert.deepEqual(arrowNudge('ArrowLeft'), { axis: 'x', d: -1 });
+  assert.deepEqual(arrowNudge('ArrowRight'), { axis: 'x', d: 1 });
+  assert.deepEqual(arrowNudge('ArrowUp'), { axis: 'y', d: -1 });
+  assert.deepEqual(arrowNudge('ArrowDown'), { axis: 'y', d: 1 });
+  assert.equal(arrowNudge('a'), null);
 });
