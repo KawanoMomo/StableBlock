@@ -80,6 +80,27 @@ function findFreeSlot(items, w, h, opts = {}) {
   return { x: x0, y: Math.max(y0, bottom + gap) };
 }
 
+// 「+ ブロック追加」(ツール欄・group 欄)と貼り付けの置き場所。1 つの規則で決める:
+// 直前に置いたもの prev の右隣(同じ行)から読み順で、w x h を既存の要素と gap 以上離して置ける位置を探す。
+// 行の右端 cols(グリッド、この値は含まない)を超えるなら次の行の x0 へ。下は足りるまで伸ばす(呼び出し側が
+// キャンバスや group を広げる)。prev が無ければ領域の左上(x0, y0)から探す。
+function placeNext(items, w, h, opts = {}) {
+  const x0 = opts.x0 ?? 1, y0 = opts.y0 ?? 1, gap = opts.gap ?? 1, prev = opts.prev || null;
+  const list = (items || []).filter(Boolean);
+  const cols = Math.max(opts.cols ?? 48, x0 + w);
+  const { bottom } = contentExtent(list);
+  const startY = prev ? Math.max(y0, prev.y) : y0;
+  const lastY = Math.max(bottom, startY) + gap;
+  for (let y = startY; y <= lastY; y++) {
+    const xs = prev && y === startY ? Math.max(x0, prev.x + prev.w + gap) : x0;
+    for (let x = xs; x + w <= cols; x++) {
+      const r = { x, y, w, h };
+      if (!list.some(it => overlaps(r, it, gap))) return { x, y };
+    }
+  }
+  return { x: x0, y: lastY };
+}
+
 // キャンバス(px)を表示欄(px)に収める倍率。max を超えて拡大しない。
 function fitZoom(canvasW, canvasH, areaW, areaH, opts = {}) {
   const min = opts.min ?? 0.1, max = opts.max ?? 1;
@@ -96,4 +117,4 @@ function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, fitZoom, stepZoom };
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom };
