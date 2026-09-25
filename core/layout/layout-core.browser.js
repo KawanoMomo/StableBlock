@@ -80,8 +80,39 @@ function setCanvasRouteInDsl(dsl, route) {
   return out === dsl ? dsl : out;
 }
 
-// 要素がキャンバスからはみ出していれば `@canvas` 行を広げた本文を返す。はみ出していなければ同じ文字列。
+// 本文の `@canvas` 行の grow=off(寸法を固定し、GUI の操作ではみ出しても広げない)を書く・消す。on = true(既定)で grow= を消す。
+// `@canvas` 行が無く固定にするときは、先頭のコメント行の直後に `@canvas grow=off` を 1 行足す。変える必要が無ければ同じ文字列を返す。
+function setCanvasGrowInDsl(dsl, on) {
+  const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
+  const lines = dsl.split('\n');
+  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  if (idx < 0) {
+    if (on) return dsl;
+    let at = 0;
+    while (at < lines.length && /^\s*#/.test(lines[at])) at++;
+    lines.splice(at, 0, '@canvas grow=off' + (eol === '\r\n' ? '\r' : ''));
+    return lines.join('\n');
+  }
+  let line = lines[idx];
+  const cr = line.endsWith('\r') ? '\r' : '';
+  if (cr) line = line.slice(0, -1);
+  if (on) line = line.replace(/\s+grow=\S+/, '');
+  else if (/\sgrow=\S+/.test(line)) line = line.replace(/(\s)grow=\S+/, '$1grow=off');
+  else line = line.replace(/\s*$/, '') + ' grow=off';
+  lines[idx] = line + cr;
+  const out = lines.join('\n');
+  return out === dsl ? dsl : out;
+}
+
+// GUI の操作でキャンバスを広げてよいか(`@canvas` 行に grow=off が無い)
+function canvasGrows(canvas) {
+  return !(canvas && canvas.grow === 'off');
+}
+
+// 要素がキャンバスからはみ出していれば `@canvas` 行を広げた本文を返す。はみ出していなければ、
+// または寸法を固定した図(grow=off)なら同じ文字列。
 function growCanvasInDsl(dsl, canvas, items, margin = 1) {
+  if (!canvasGrows(canvas)) return dsl;
   const { width, height } = grownCanvasSize(canvas, items, margin);
   if (width === canvas.width && height === canvas.height) return dsl;
   return setCanvasInDsl(dsl, width, height);
@@ -318,4 +349,4 @@ function placeInGroup(items, gr, w, h, prev) {
   return { x: p.x, y: p.y, group };
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };

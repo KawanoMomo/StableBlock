@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
   parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup,
 } from '../layout-core.mjs';
 
@@ -316,4 +316,22 @@ test('fitParents(seeds): 新しい group の下・右の余白で兄弟に接す
   assert.equal(by.Flash.y, 8);                              // MCU の下端 7 から 1 空ける
   assert.equal(by.ECU.x, 0);                                // MCU が ECU の左の枠に掛かるので ECU が左へ広がる
   assert.ok(by.ECU.y + by.ECU.h >= 8 + 3 + 1);
+});
+
+test('setCanvasGrowInDsl / canvasGrows: grow=off を @canvas 行に書く・消す(ほかの属性と改行コードは触らない)', () => {
+  const src = '# 図\r\n@canvas width=1120 height=780 grid=20\r\nblock a "A" at 1,1 size 2x2\r\n';
+  const off = setCanvasGrowInDsl(src, false);
+  assert.equal(off, '# 図\r\n@canvas width=1120 height=780 grid=20 grow=off\r\nblock a "A" at 1,1 size 2x2\r\n');
+  assert.equal(setCanvasGrowInDsl(off, false), off);
+  assert.equal(setCanvasGrowInDsl(off, true), src);
+  assert.equal(setCanvasGrowInDsl(src, true), src);
+  assert.equal(setCanvasGrowInDsl('# t\nblock a "A" at 1,1 size 2x2\n', false), '# t\n@canvas grow=off\nblock a "A" at 1,1 size 2x2\n');
+  assert.equal(canvasGrows({ width: 400 }), true);
+  assert.equal(canvasGrows({ width: 400, grow: 'off' }), false);
+});
+
+test('growCanvasInDsl: grow=off の図は要素がはみ出しても広げない', () => {
+  const src = '@canvas width=400 height=300 grid=20 grow=off\nblock a "A" at 18,1 size 4x2\n';
+  assert.equal(growCanvasInDsl(src, { ...CV, grow: 'off' }, [{ x: 18, y: 1, w: 4, h: 2 }]), src);
+  assert.notEqual(growCanvasInDsl(src, CV, [{ x: 18, y: 1, w: 4, h: 2 }]), src);
 });

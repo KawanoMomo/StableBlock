@@ -70,7 +70,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
-#svg-wrap svg { cursor:default; }
+#svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
 
 /* Property Panel */
 #prop-panel { width:220px; min-width:220px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
@@ -115,6 +115,8 @@ textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #export-report ul { margin:4px 0 0 16px; }
 #export-report .hint { color:#D6B98C; font-size:10px; margin-top:4px; }
 #status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
+#status .status-btn { font:inherit; font-size:10px; padding:0 6px; margin-left:4px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
+.canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:10px; color:var(--muted); }
 
 input[type=number] { -moz-appearance:textfield; }
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
@@ -274,7 +276,7 @@ function parseDSL(text){
   for(let i=0;i<lines.length;i++){
     const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
     try{
-      if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/),r=raw.match(/route=(\S+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];if(r)canvas.route=r[1];continue;}
+      if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/),r=raw.match(/route=(\S+)/),gr=raw.match(/grow=(\S+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];if(r)canvas.route=r[1];if(gr)canvas.grow=gr[1];continue;}
       if(raw.startsWith("@include")){const inc=raw.match(/@include\s+"([^"]+)"/);if(inc)errors.push({line:ln,msg:`@include "${inc[1]}" — use preprocessInclude() to resolve`});continue;}
       let m=raw.match(/^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
@@ -563,7 +565,8 @@ function renderPropsPanel(){
       <div class="prop-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
         <div style="flex:1"><div class="prop-sub">幅</div><div class="stepper"><input class="prop-input" id="canvas-w" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.width}" onchange="setCanvasSize('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('w',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('w',-1)">▼</button></div></div></div>
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
-      </div><div class="prop-sub">要素がはみ出すと自動で広がる。要素より小さくはできない</div></div>
+      </div><label class="prop-sub canvas-grow"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label>
+      <div class="prop-sub">${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素より小さくはできない。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}</div></div>
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
       <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ。3 つ以上はクリックした順に「a → b → c」で鎖状に結ぶ(Enter でも)。右ボタンで block から block へドラッグしても 1 本結べる</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
@@ -814,15 +817,17 @@ function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')|
 // ═══════════════════════════════════════════════
 function syncEditor(){suppressSync=true;document.getElementById('editor').value=dsl;suppressSync=false;renderLineNums();}
 function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
-// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げる(本文の差分は @canvas の 1 行)
-function growCanvas(){const p=parseDoc();dsl=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);}
+// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げる(本文の差分は @canvas の 1 行)。@canvas に grow=off があれば広げない(core/layout)
+// grewFrom: 自動で広げる前の寸法。ステータスバーの「元の寸法に戻して固定」の戻し先。元に戻す・読込・新規・寸法の手入力で消える
+let grewFrom=null;
+function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);if(nd!==dsl&&!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
-function refresh(noGrow){if(!noGrow)growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
+function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
 function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
+function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
@@ -863,8 +868,12 @@ function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=M
 function setZoom(dir){applyZoom(window.StableBlockLayout.stepZoom(zoom,dir));}
 // 全体表示: キャンバス全体がプレビュー欄に収まる倍率にする(100% より大きくはしない)。図を開いたときもこの倍率で見せる
 function fitView(){if(!parsed)return;const a=document.getElementById('preview-area'),cs=getComputedStyle(a);const aw=a.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,ah=a.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom)-2;applyZoom(window.StableBlockLayout.fitZoom(parsed.canvas.width,parsed.canvas.height,aw,ah));}
-// キャンバス寸法(px)。要素より小さくはしない
-function setCanvasSize(axis,v){if(!parsed)return;const n=parseInt(v);if(isNaN(n)||n<1)return;const c=parsed.canvas,e=window.StableBlockLayout.contentExtent([...parsed.blocks,...parsed.groups,...parsed.notes]);const w=axis==='w'?Math.max(n,e.right*c.grid):c.width,h=axis==='h'?Math.max(n,e.bottom*c.grid):c.height;if(w===c.width&&h===c.height){renderProps();return;}pushHistory();dsl=window.StableBlockLayout.setCanvasInDsl(dsl,w,h);refresh();}
+// キャンバス寸法(px)。自動で広げる図では要素より小さくはしない。寸法を固定した図(grow=off)は打った値のまま(はみ出しはエラー欄に出る)
+function setCanvasSize(axis,v){if(!parsed)return;const n=parseInt(v);if(isNaN(n)||n<1)return;const c=parsed.canvas,L=window.StableBlockLayout,grows=L.canvasGrows(c),e=L.contentExtent([...parsed.blocks,...parsed.groups,...parsed.notes]);const w=axis==='w'?(grows?Math.max(n,e.right*c.grid):n):c.width,h=axis==='h'?(grows?Math.max(n,e.bottom*c.grid):n):c.height;if(w===c.width&&h===c.height){renderProps();return;}pushHistory();grewFrom=null;dsl=L.setCanvasInDsl(dsl,w,h);refresh();}
+// 「はみ出したら自動で広げる」の切替。外すと本文の @canvas 行に grow=off を書く(資料の寸法に合わせた図を崩さない)
+function setCanvasGrow(on){if(!parsed)return;const nd=window.StableBlockLayout.setCanvasGrowInDsl(dsl,on);if(nd===dsl)return;pushHistory();grewFrom=null;dsl=nd;refresh();}
+// ステータスバーの「元の寸法に戻して固定」: 自動で広げる前の寸法に戻し、grow=off を書く(本文の差分は @canvas の 1 行)
+function fixCanvasAtOrigin(){if(!grewFrom)return;const L=window.StableBlockLayout,f=grewFrom;pushHistory();grewFrom=null;dsl=L.setCanvasGrowInDsl(L.setCanvasInDsl(dsl,f.width,f.height),false);refresh();}
 function nudgeCanvas(axis,d){if(!parsed)return;const c=parsed.canvas;setCanvasSize(axis,(axis==='w'?c.width:c.height)+d*c.grid*5);}
 
 // ═══════════════════════════════════════════════

@@ -23,6 +23,7 @@ const SAMPLES = {
   default: DEFAULT_DSL,
   crlf: '@canvas width=400 height=200 grid=20\r\nblock ui "UI" at 1,1 size 5x3 color=#3B82F6 text=#FFFFFF round=4\r\nblock core "Core" at 10,1 size 5x3\r\nui -> core "request"\r\n',
   canvasRoute: '@canvas width=400 route=ortho grid=20\nblock a "A" at 1,1 size 2x2\nblock b "B" at 6,1 size 2x2\na -> b\n',
+  canvasGrow: '@canvas width=1120 height=780 grid=20 grow=off\nblock a "A" at 1,1 size 2x2\n',
   bom: '﻿# 先頭に BOM\n@canvas width=400\ngroup g "G" at 0,0 size 10x10 color=#EEF2FF border=#818CF8\n',
   mixed: '  block a "A\\nB" at 1.5,2 size 4x2 style=dashed border=#000\n\tnote n "メモ" at 0,0 size 3x1\na --> n "l" color=#f00 width=2 route=ortho lpos=top\nb -> c\nゴミ行\nblock a "dup" at 0,0 size 1x1\n@include "x.sb"\n',
 };
@@ -73,4 +74,11 @@ test('parseDSL: @canvas 行の route=(図全体の既定の線の形)を canvas.
   const p = parseDSL('@canvas width=400 grid=20 route=ortho\n');
   p.canvas.route = 'straight';
   assert.equal(serializeDSL(p), '@canvas width=400 grid=20 route=straight\n');
+});
+
+test('parseDSL: @canvas 行の grow=off(寸法を固定)を canvas.grow に読み、往復で落とさない', () => {
+  assert.equal(parseDSL('@canvas width=400 grow=off\n').canvas.grow, 'off');
+  assert.equal(parseDSL('@canvas width=400\n').canvas.grow, undefined);
+  const src = '@canvas width=1120 height=780 grid=20 grow=off\n';
+  assert.equal(serializeDSL(parseDSL(src)), src);
 });

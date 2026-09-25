@@ -79,6 +79,21 @@ function findStraddles(blocks, groups) {
   return out;
 }
 
+// キャンバス(`@canvas` の width / height、px)の外にはみ出す block / group / note と、はみ出す量(グリッド、切り上げ)。
+// 書き出し(SVG / PNG / Excel)はキャンバスの寸法で切れる。寸法を固定した図(grow=off)では GUI の操作でも起こる
+function findOutside(canvas, items) {
+  const g = (canvas && canvas.grid) || 20;
+  const out = [];
+  if (!canvas || !(canvas.width > 0) || !(canvas.height > 0)) return out;
+  for (const it of items || []) {
+    if (!it) continue;
+    const right = Math.max(0, Math.ceil(it.x + it.w - canvas.width / g));
+    const bottom = Math.max(0, Math.ceil(it.y + it.h - canvas.height / g));
+    if (right || bottom) out.push({ item: it, right, bottom });
+  }
+  return out;
+}
+
 // 線分 p-q が矩形 r(px, {x,y,w,h})の内部を通るか(Liang-Barsky)
 function segmentHitsRect(p, q, r) {
   const dx = q.x - p.x, dy = q.y - p.y;
@@ -146,6 +161,13 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
     out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる` });
+  }
+  if (parsed.canvas) {
+    const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
+    for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
+      const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる` });
+    }
   }
   if (paths) {
     const g = parsed.canvas.grid;
@@ -243,4 +265,4 @@ function includeDrops(exp) {
   return ((exp && exp.missing) || []).map(m => `include 先「${m.path}」(L${m.at})を読めず、その中の要素は入っていない`);
 }
 
-;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };
+;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };
