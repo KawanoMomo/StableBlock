@@ -16,18 +16,18 @@ Deterministic grid-based block diagram tool — syntax highlighting and interact
 - **Search/Filter** — toolbar search input dims non-matching elements
 - **Connection Management** — connect, delete, flip, toggle bidirectional, change color/width/style
 - **Arrow Key Move** — move selected items by 1 grid unit with arrow keys
-- **Highlight Mode** — dim unconnected blocks (`H` key or HL button)
-- **ID Auto-Fix** — rename `__new_*` placeholder IDs from labels
+- **Dim unlinked** — dim blocks without connections (`H` key or "Dim unlinked" button)
+- **ID** — set / change in the property panel's ID field; a new item's ID follows its label as you type
 
 ### Annotation Layer
 - **`note` DSL syntax** — annotations rendered on a separate top layer
-- **Show/Hide Toggle** — `N` key or Anno button
-- **Edit Mode** — locks blocks, only notes are interactive
+- **Show/Hide Toggle** — `N` key or "Show notes" button
+- **Select / add** — click a shown note to select it, drag or use its handles to move; add one with "+ Note" in the tools panel
 - **Note → Block connections** — always rendered as dashed lines
 
 ### Export
 - **SVG / PNG / Transparent PNG** — from toolbar
-- **Clipboard Copy** — copy PNG to clipboard
+- **Copy PNG** — copy PNG to clipboard
 - **Mermaid Export** — convert to flowchart TD format
 - **Git Visual Diff** — side-by-side SVG comparison with HEAD
 

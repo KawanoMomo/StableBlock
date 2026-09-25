@@ -58,3 +58,45 @@ test('junior-06: 同じ座標の block と、別の block の上を横切る線�
   await setText(page, lines.join('\n').replace('block b3 "B3" at 1,6', 'block b3 "B3" at 25,6').replace('block b5 "B5" at 1,11', 'block b5 "B5" at 25,11'));
   await expect(bar(page)).not.toContainText('「b1 -> b7」の線が block「b3」');
 });
+
+test('junior-06: ツールバーとプロパティ欄の入口は、名前とツールチップで何をするかを言う', async ({ page }) => {
+  await bootPlain(page);
+  await setText(page, [
+    '@canvas width=600 height=300 grid=20',
+    'group g "G" at 1,1 size 12x8',
+    'block a "A" at 2,3 size 4x2',
+    'block b "B" at 16,3 size 4x2',
+    'a -> b',
+  ].join('\n'));
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+
+  // 略語・絵文字だけの名前は無く、ツールチップが動詞で言う
+  await expect(page.locator('#hl-btn')).toHaveText('◎ 未接続を薄く');
+  await expect(page.locator('#hl-btn')).toHaveAttribute('title', /薄く表示する/);
+  await expect(page.getByRole('button', { name: 'PNGをコピー' })).toHaveAttribute('title', /クリップボードにコピーする/);
+  await expect(page.getByRole('button', { name: '透過PNG' })).toBeVisible();
+  await expect(page.locator('#search-input')).toHaveAttribute('placeholder', '🔍 ID・ラベルで検索');
+
+  // 線の形: 押すと何を切り替えたかと今の値が出る
+  const lm = page.locator('#line-mode-btn');
+  await expect(lm).toHaveText('⌇ 線の形: 曲線');
+  await lm.click();
+  await expect(lm).toHaveText('╱ 線の形: 直線');
+  await lm.click();
+  await expect(lm).toHaveText('⊾ 線の形: 直角');
+  await lm.click();
+
+  // block を選ぶ: 種類とスタイルは日本語
+  await svg.locator('g[data-type="block"][data-id="a"]').click();
+  await expect(props).toContainText('ブロック');
+  for (const n of ['実線', '破線', '太線']) await expect(props.getByRole('button', { name: n, exact: true })).toBeVisible();
+  await props.getByRole('button', { name: '破線', exact: true }).click();
+  await expect(page.locator('#editor')).toHaveValue(/block a "A" at 2,3 size 4x2 .*style=dashed/);
+
+  // group を選ぶ: 中に足す入口はツール欄の「+ ブロック追加」と別の名前で、半角の +
+  await page.keyboard.press('Escape');
+  await svg.locator('g[data-type="group"][data-id="g"]').click({ position: { x: 20, y: 8 } });
+  await expect(props.getByRole('button', { name: '+ グループ内にブロック追加' })).toHaveAttribute('title', /グループの中/);
+  await expect(props.getByText('＋')).toHaveCount(0);
+});
