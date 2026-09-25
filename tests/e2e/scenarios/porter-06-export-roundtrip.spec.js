@@ -113,3 +113,19 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
   await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
   await expect(report).toContainText('spiapi -> zz');
 });
+
+// ラベル中の二重引用符は SVG / Mermaid / Excel に引用符のまま出る(BLK-porter-20260926-0617)
+test('porter-06: ラベルの " は SVG / Mermaid / Excel に引用符のまま出る', async ({ page }, testInfo) => {
+  await bootPlain(page);
+  await importSb(page, path.join(FIXTURES, 'porter-quoted.sb'));
+  const dir = saveDir(testInfo);
+  const svgText = fs.readFileSync(await download(page, 'SVG', dir), 'utf8');
+  expect(svgText).toMatch(/>Block (&quot;|")quoted(&quot;|") label</);
+  expect(svgText).toMatch(/>say (&quot;|")ref(&quot;|")</);
+  const mmd = fs.readFileSync(await download(page, 'Mermaid', dir), 'utf8');
+  expect(mmd).toContain('id_2a("Block #quot;quoted#quot; label")');
+  expect(mmd).toContain('id_2a -->|"say #quot;ref#quot;"| a_1_b_2');
+  const zip = await JSZip.loadAsync(fs.readFileSync(await download(page, 'Excel', dir)));
+  const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
+  expect(xml).toContain('<a:t>Block &quot;quoted&quot; label</a:t>');
+});
