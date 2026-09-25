@@ -128,7 +128,7 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **PNGをコピー** — PNG画像をクリップボードに(ツールバー「PNGをコピー」)
 - **Mermaid変換** — flowchart TD 形式でエクスポート
 - **.sb 保存/読込** — DSLファイルの入出力
-- **@include** — 共通パーツのインクルード
+- **@include** — 共通パーツのインクルード。include 先は include 元のファイルからの相対パス。HTML 版は「.sb 読込」で本体と include 先を一緒に選ぶ(複数選択。ほかの選んだファイルから include されていないものが本体になる)。VSCode 拡張と `npm run check` はファイルから読む。読めない include はその行にエラーを出し、書き出しでも「入っていない」と知らせる。保存は @include 行をそのまま残す
 - **Excel エクスポート** — `.xlsx` 出力。各図形は Excel ネイティブシェイプとして個別に編集可能
 
 ### VSCode拡張

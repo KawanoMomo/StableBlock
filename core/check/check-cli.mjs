@@ -4,37 +4,26 @@
 // `ファイル:行: error|warn: 内容` で出す。@include は読み込んだ先のファイルと行で示す。error があれば終了コード 1。
 // --refs <ID>: ID を定義・参照している図と行を一覧する。--rename <旧> <新>: 全図で ID を改名する(core/label の planRename)。
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, relative } from 'node:path';
+import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDSL } from '../dsl/dsl-core.mjs';
 import { connectionPaths, placeLabels, labelIssues, findIdInDsl, planRename } from '../label/label-core.mjs';
-import { checkDiagram } from './check-core.mjs';
+import { expandIncludes, checkIncluded } from './check-core.mjs';
 
-// @include を展開し、展開後の各行がどのファイルの何行目かを返す
-export function expandIncludes(file, seen = new Set()) {
-  const abs = resolve(file);
-  const text = readFileSync(abs, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-  const lines = [], origin = [];
-  text.split('\n').forEach((line, i) => {
-    const m = line.trim().match(/^@include\s+"([^"]+)"/);
-    if (m && !seen.has(abs)) {
-      const inc = resolve(dirname(abs), m[1]);
-      try {
-        const sub = expandIncludes(inc, new Set([...seen, abs]));
-        lines.push(...sub.lines); origin.push(...sub.origin);
-        return;
-      } catch { /* 読めない include は行のまま残し、parser のエラーにする */ }
-    }
-    lines.push(line); origin.push({ file: abs, line: i + 1 });
-  });
-  return { lines, origin };
+// @include を展開する(core の expandIncludes に fs の読み込みを渡す)。include 先は include 元のファイルからの相対パス
+export function expandFile(file) {
+  const read = p => { try { return readFileSync(p, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; } };
+  const abs = resolve(file).split(sep).join('/');
+  return expandIncludes(read(abs) ?? '', read, abs);
 }
 
 export function checkFile(file, mode = 'curved') {
-  const { lines, origin } = expandIncludes(file);
-  const parsed = parseDSL(lines.join('\n'));
+  const exp = expandFile(file);
+  const parsed = parseDSL(exp.text);
   const paths = connectionPaths(parsed, mode);
-  return checkDiagram(parsed, lines, paths, labelIssues(placeLabels(paths, parsed), parsed)).map(d => ({ ...d, ...(origin[d.line - 1] || { file: resolve(file), line: d.line }) }));
+  const name = p => relative(process.cwd(), p) || p;
+  return checkIncluded(parsed, exp, paths, { name, inline: false, hint: '(ファイルが無い)', labelIssues: labelIssues(placeLabels(paths, parsed), parsed) })
+    .map(d => ({ ...d, file: resolve(d.file), line: d.fileLine }));
 }
 
 function collect(p) {

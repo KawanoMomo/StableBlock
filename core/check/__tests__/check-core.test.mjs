@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, segmentHitsRect, findCrossings, findStraddles, checkDiagram } from '../check-core.mjs';
+import { explainLine, findOverlaps, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -150,6 +150,73 @@ test('checkDiagram: 読めない接続ラベルを、何に掛かるかと直し
   const p2 = parseDSL(t2);
   const paths2 = connectionPaths(p2, 'straight');
   assert.deepEqual(checkDiagram(p2, t2.split('\n'), paths2, labelIssues(placeLabels(paths2, p2), p2)), []);
+test('resolveIncludePath: include 元のファイルからの相対パスを / 区切りで解決する', () => {
+  assert.equal(resolveIncludePath('05-include.sb', 'shared/common.sb'), 'shared/common.sb');
+  assert.equal(resolveIncludePath('corpus/05-include.sb', './shared/common.sb'), 'corpus/shared/common.sb');
+  assert.equal(resolveIncludePath('E:/d/corpus/a.sb', '../shared/x.sb'), 'E:/d/shared/x.sb');
+  assert.equal(resolveIncludePath('corpus/shared/common.sb', '../a.sb'), 'corpus/a.sb');
+  assert.equal(resolveIncludePath('', 'a.sb'), 'a.sb');
+  assert.equal(resolveIncludePath('a/b.sb', '/abs/x.sb'), '/abs/x.sb');
+});
+
+const MAIN = '@canvas width=480 height=200 grid=20\nblock ui "UI" at 1,1 size 5x3\nui -> shared_db "lookup"\n@include "shared/common.sb"\n';
+const COMMON = 'block shared_db "Shared DB" at 19,1 size 5x3\n';
+
+test('expandIncludes: 読めた include 先は展開し、各行の元の場所(ファイル・行・本文の何行目から)を持つ', () => {
+  const exp = expandIncludes(MAIN, p => (p === 'shared/common.sb' ? COMMON : null), '05-include.sb');
+  assert.equal(exp.missing.length, 0);
+  assert.equal(exp.lines[3], 'block shared_db "Shared DB" at 19,1 size 5x3');
+  assert.deepEqual(exp.origin[3], { file: 'shared/common.sb', line: 1, at: 4 });
+  assert.deepEqual(exp.origin[1], { file: '05-include.sb', line: 2, at: 2 });
+  const p = parseDSL(exp.text);
+  assert.ok(p.blockMap.shared_db);
+  assert.deepEqual(checkIncluded(p, exp, connectionPaths(p)), []);
+  // include の無い本文はそのまま
+  const plain = 'block a "A" at 1,1 size 2x2\r\n';
+  assert.equal(expandIncludes(plain, () => null, 'x.sb').text, plain);
+});
+
+test('checkIncluded: 読めない @include はその行のエラーにし、ID が無い接続に原因の include 行を示す', () => {
+  const exp = expandIncludes(MAIN, () => null, '05-include.sb');
+  assert.deepEqual(exp.missing.map(m => [m.at, m.path]), [[4, 'shared/common.sb']]);
+  const p = parseDSL(exp.text);
+  const d = checkIncluded(p, exp, connectionPaths(p), { hint: '(「.sb 読込」で本体と一緒に選ぶ)' });
+  assert.deepEqual(d.map(x => [x.line, x.level]), [[3, 'error'], [4, 'error']]);
+  assert.equal(d[1].msg, 'include 先「shared/common.sb」を読めない(「.sb 読込」で本体と一緒に選ぶ)');
+  assert.match(d[0].msg, /「shared_db」という ID の block \/ note が無い\(読めていない include 先: L4「shared\/common.sb」\)$/);
+  assert.deepEqual(includeDrops(exp), ['include 先「shared/common.sb」(L4)を読めず、その中の要素は入っていない']);
+});
+
+test('checkIncluded: include 先の行の診断は @include 行に寄せ、どのファイルの何行目かを書き添える。循環は読めない扱い', () => {
+  const files = { 'shared/common.sb': 'block rte "RTE" at 1,5 size 4x2\nblock rte2 "R2" at 1,5 size 4x2\n', 'self.sb': '@include "self.sb"\n' };
+  const text = '@include "shared/common.sb"\nblock x "X" at 1,1 size 4x2\n@include "self.sb"\n';
+  const exp = expandIncludes(text, p => files[p] ?? null, 'a.sb');
+  const p = parseDSL(exp.text);
+  const d = checkIncluded(p, exp, connectionPaths(p));
+  const ov = d.find(x => /重なっている/.test(x.msg));
+  assert.equal(ov.line, 1);
+  assert.equal(ov.msg, 'block「rte2」が block「rte」(shared/common.sb L1)に重なっている(shared/common.sb L2)');
+  assert.deepEqual([ov.file, ov.fileLine], ['shared/common.sb', 2]);
+  const cyc = d.find(x => /自分自身/.test(x.msg));
+  assert.equal(cyc.line, 3);
+  assert.match(cyc.msg, /include 先「self.sb」を読めない\(自分自身を include している\)\(self.sb L1\)/);
+});
+
+test('check-cli: 読めない @include は include 元のファイルの行でエラーにする', async () => {
+  const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { checkFile } = await import('../check-cli.mjs');
+  const dir = join(process.cwd(), 'test-results', 'check-cli-missing');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'main.sb'), MAIN);
+  const d = checkFile(join(dir, 'main.sb'));
+  assert.deepEqual(d.map(x => [x.line, x.level]), [[3, 'error'], [4, 'error']]);
+  assert.match(d[1].msg, /include 先「shared\/common.sb」を読めない\(ファイルが無い\)/);
+  assert.ok(d[1].file.endsWith('main.sb'));
+  mkdirSync(join(dir, 'shared'), { recursive: true });
+  writeFileSync(join(dir, 'shared', 'common.sb'), COMMON);
+  assert.deepEqual(checkFile(join(dir, 'main.sb')), []);
 });
 
 test('check-cli --refs / --rename: 図を開かずに参照元を探し、@include 先を含めて全図を 1 操作で改名する', async () => {

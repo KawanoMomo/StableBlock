@@ -155,7 +155,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する">.sb 保存</button>
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
-    <input type="file" id="file-input" accept=".sb,.stableblock,.txt" style="display:none" onchange="importSB(this)">
+    <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
     <input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする" oninput="doSearch(this.value)">
   </div>
@@ -284,7 +284,7 @@ function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,
 // その向きに親(と親の親)を広げる(growParents)。本文で変わるのは広がった group の行だけ
 function boxItems(){return[...parsed.blocks,...parsed.groups];}
 function parentsNow(){return window.StableBlockLayout.parentMap(boxItems());}
-function growParents(before,moved,seeds){parsed=parseDSL(dsl);const ch=window.StableBlockLayout.fitParents(boxItems(),before,moved,1,seeds);ch.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(ch.length)parsed=parseDSL(dsl);}
+function growParents(before,moved,seeds){parsed=parseDoc();const ch=window.StableBlockLayout.fitParents(boxItems(),before,moved,1,seeds);ch.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(ch.length)parsed=parseDoc();}
 
 // ═══════════════════════════════════════════════
 // Highlight, Annotations, Search — toggle modes that affect rendering
@@ -336,20 +336,14 @@ function renderLineModeBtn(){
   btn.classList.toggle('tb-line-active',m!=='curved');
 }
 function doSearch(q){searchQuery=q.toLowerCase();renderSVG();}
-const includeCache={};
-async function preprocessInclude(text){
-  const lines=text.split('\n'),out=[];
-  for(const line of lines){
-    const m=line.trim().match(/^@include\s+"([^"]+)"/);
-    if(m){
-      const path=m[1];
-      try{if(!includeCache[path]){const r=await fetch(path);if(r.ok)includeCache[path]=await r.text();else includeCache[path]=`# include error: ${path} not found`;}
-        out.push(includeCache[path]);
-      }catch(e){out.push(`# include error: ${path}`);}
-    }else{out.push(line);}
-  }
-  return out.join('\n');
-}
+// @include(core/check の expandIncludes): include 先は「.sb 読込」で本体と一緒に選んだファイルから、読込んだファイルからの相対パスで探す
+// (選んだファイルにフォルダの情報が無ければ同じ名前のファイル)。file:// でも http でも同じ。読めない include はその行のエラーと書き出しの知らせに出す。
+// 保存は本文(dsl)をそのまま書くので @include 行は残る
+let dslFile='',expanded=null;const includeFiles={};
+function readInclude(p){if(Object.prototype.hasOwnProperty.call(includeFiles,p))return includeFiles[p];const b=p.split('/').pop(),hit=Object.keys(includeFiles).filter(k=>k!==dslFile&&k.split('/').pop()===b);return hit.length===1?includeFiles[hit[0]]:null;}
+// 本文を include 先ごと展開して parse する(parsed と expanded はいつも同じ本文から作る)
+function parseDoc(){expanded=window.StableBlockCheck.expandIncludes(dsl,readInclude,dslFile);return parseDSL(expanded.text);}
+function includeDrops(){return window.StableBlockCheck.includeDrops(expanded);}
 function matchesSearch(item){if(!searchQuery)return true;return item.id.toLowerCase().includes(searchQuery)||item.label.toLowerCase().includes(searchQuery);}
 
 // ═══════════════════════════════════════════════
@@ -493,7 +487,7 @@ function setupInteractions(){
         if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
         updatePos(type,id,Math.max(0,nx),Math.max(0,ny));
         updateSize(type,id,nw,nh);growCanvas();
-        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+        parsed=parseDoc(); renderSVG(); syncEditor();
       }
       function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);growParents(before,[{id,sides:window.StableBlockLayout.edgeSides(edge)}]);refresh();}
       window.addEventListener('mousemove',onMove);
@@ -536,7 +530,7 @@ function setupInteractions(){
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;lastDx=dx;lastDy=dy;
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));growCanvas();
-        parsed=parseDSL(dsl); renderSVG(); syncEditor();
+        parsed=parseDoc(); renderSVG(); syncEditor();
       }
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
@@ -699,9 +693,9 @@ function renderPropsPanel(){
 // Actions: single
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
-function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
-function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
-function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 const axisSides=(axis,d)=>window.StableBlockLayout.moveSides(axis==='x'?d:0,axis==='y'?d:0);
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
@@ -778,14 +772,14 @@ function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type=
   const pid=L.parentMap([...parsed.groups,box])[box.id],parent=pid?parsed.groupMap[pid]:null;
   const r=L.groupRectFor(items,boxItems().filter(x=>!items.includes(x)),parent);const gid=`__new_${addCounter++}`;
   dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${r.x},${r.y} size ${r.w}x${r.h} color=#F1F5F9 border=#94A3B8\n`;
-  parsed=parseDSL(dsl);const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
+  parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
 // ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。
 // __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
 const autoIds=new Set();
 function usedIdsExcept(id){return new Set([...parsed.blocks,...parsed.groups,...parsed.notes].map(x=>x.id).filter(x=>x!==id));}
-function applyRename(s,newId){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&it?it.line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);return true;}
+function applyRename(s,newId){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const o=it&&expanded?expanded.origin[it.line-1]:null;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&o&&o.file===expanded.file?o.line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);return true;}
 function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}
   const SL=window.StableBlockLabel;const err=!SL.isValidId(nv)?'英数字と _ だけが使えます':usedIdsExcept(s.id).has(nv)?`「${nv}」は既に使われています`:'';
   if(err){if(msg)msg.textContent=err;return;}
@@ -800,12 +794,12 @@ function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')|
 function syncEditor(){suppressSync=true;document.getElementById('editor').value=dsl;suppressSync=false;renderLineNums();}
 function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
 // GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げる(本文の差分は @canvas の 1 行)
-function growCanvas(){const p=parseDSL(dsl);dsl=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);}
+function growCanvas(){const p=parseDoc();dsl=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
-function refresh(noGrow){if(!noGrow)growCanvas();if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
+function refresh(noGrow){if(!noGrow)growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
-function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkDiagram(parsed,lines,paths,SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed));}
+function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
 function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
 
@@ -814,15 +808,22 @@ function renderStatus(){document.getElementById('status').innerHTML=`<span>Block
 // ═══════════════════════════════════════════════
 function download(name,data){const a=document.createElement('a');a.href=data;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 function exportSB(){download('diagram.sb','data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));}
-function exportSVG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.outerHTML));}
+function exportSVG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.outerHTML));showExportReport('SVG',includeDrops());}
 function pngCanvas(transparent){const svg=document.querySelector('#svg-wrap svg');if(!svg)return null;const data=new XMLSerializer().serializeToString(svg);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=parsed.canvas.width*zoom*2;c.height=parsed.canvas.height*zoom*2;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
-function exportPNG(){pngCanvas(false).then(c=>{if(c)download('diagram.png',c.toDataURL('image/png'));});}
-function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c)download('diagram_transparent.png',c.toDataURL('image/png'));});}
-function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});});}
-async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',window.StableBlockExcel.listXlsxDrops(parsed));}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
-function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh(true);fitView();};reader.readAsText(file);input.value='';}
+function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram_transparent.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
+async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
+function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
+// .sb 読込: 本体と include 先を一緒に選べる(複数選択)。ほかの選んだファイルから include されていないものが本文になる
+async function importSB(input){const files=[...(input.files||[])];input.value='';if(!files.length)return;
+  const texts=await Promise.all(files.map(readFileText)),keys=files.map(f=>(f.webkitRelativePath||f.name).split('\\').join('/'));
+  Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
+  const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
+  let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
+  pushHistory();dsl=texts[mi];dslFile=keys[mi];sel=[];refresh(true);fitView();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
-function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',r.dropped);}
+function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
 function showExportReport(fmt,dropped){const el=document.getElementById('export-report');if(!dropped||!dropped.length){el.hidden=true;el.innerHTML='';return;}el.innerHTML=`<b>${esc(fmt)} に書き出せなかったもの(${dropped.length} 件)</b><ul>${dropped.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`;el.hidden=false;}
 function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
@@ -894,7 +895,7 @@ editor.addEventListener('input',()=>{
   clearTimeout(editorHistTimer);
   editorHistTimer=setTimeout(()=>{editorHistTimer=null;},1000);
   // renderProps drops selected items the new text no longer has (and refreshes Selected: N) before the SVG draws them
-  dsl=editor.value;parsed=parseDSL(dsl);renderProps();renderSVG();renderErrors();renderStatus();renderLineNums();
+  dsl=editor.value;parsed=parseDoc();renderProps();renderSVG();renderErrors();renderStatus();renderLineNums();
 });
 editor.addEventListener('scroll',()=>{document.getElementById('line-nums').scrollTop=editor.scrollTop;});
 
@@ -937,7 +938,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
 
-parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();fitView();
+parsed=parseDoc();renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();fitView();
 </script>
 </body>
 </html>
