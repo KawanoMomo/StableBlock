@@ -153,7 +153,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-accent" data-term="export-xlsx" onclick="exportXlsx()" title="Excel(.xlsx)で書き出す">Excel</button>
     <button class="tb tb-accent" data-term="export-mermaid" onclick="exportMermaid()" title="Mermaid(.mmd)で書き出す">Mermaid</button>
     <div class="sep"></div>
-    <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する">.sb 保存</button>
+    <button class="tb tb-green" data-term="new-sb" onclick="newDiagram()" title="空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる">新規</button>
+    <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する(読み込んだ図は同じファイル名で)">.sb 保存</button>
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
@@ -807,7 +808,13 @@ function renderStatus(){document.getElementById('status').innerHTML=`<span>Block
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
 // ═══════════════════════════════════════════════
 function download(name,data){const a=document.createElement('a');a.href=data;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
-function exportSB(){download('diagram.sb','data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));}
+// 保存するファイル名: 読み込んだ図はその名前、新規・起動時の見本は diagram.sb。タブの題名にも出す
+let sbFileName='diagram.sb';
+function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbFileName} - StableBlock`;}
+function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));}
+// 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
+const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
+function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 function exportSVG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.outerHTML));showExportReport('SVG',includeDrops());}
 function pngCanvas(transparent){const svg=document.querySelector('#svg-wrap svg');if(!svg)return null;const data=new XMLSerializer().serializeToString(svg);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=parsed.canvas.width*zoom*2;c.height=parsed.canvas.height*zoom*2;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
 function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
@@ -821,7 +828,7 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
   Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
   const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
   let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  pushHistory();dsl=texts[mi];dslFile=keys[mi];sel=[];refresh(true);fitView();}
+  pushHistory();dsl=texts[mi];dslFile=keys[mi];setSbFileName(files[mi].name);sel=[];refresh(true);fitView();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない

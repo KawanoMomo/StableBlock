@@ -1,7 +1,7 @@
 // junior 手順 2: 作図 UI だけで図を作る(本文欄には触らない)。接続は「ブロックを選んで結ぶ」。
 // 接続を作る入口は 2 つ選んだときの「a → b」だけ(ID を打つ from/to 欄と「色を指定して接続」は畳んだ)。色は結んだ後に「線の色」で変える。
 const path = require('node:path');
-const { test, expect, bootPlain, importSb, getEditorText, FIXTURES } = require('./_scenario');
+const { test, expect, bootPlain, importSb, getEditorText, exportSb, saveDir, FIXTURES } = require('./_scenario');
 
 const SENPAI = path.join(FIXTURES, 'primary-spi_swc.sb');
 
@@ -461,4 +461,30 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   await editor.fill(after.replace(/^(group MCU "MCU" at )(\d+),/m, (m, a, x) => `${a}${+x + 6},`));
   await expect(page.locator('#error-bar')).toContainText('group「MCU」が group「ECU」');
   await expect(page.locator('#error-bar')).toContainText('枠をまたいでいる');
+});
+
+test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、見本の見出し・要素が本文に混ざらない。保存名は diagram.sb', async ({ page }, testInfo) => {
+  await bootPlain(page);
+  await expect(page.locator('#editor')).toHaveValue(/# Application/);          // 起動時は見本
+  await page.getByRole('button', { name: '新規', exact: true }).click();
+  expect(await getEditorText(page)).toBe('@canvas width=960 height=520 grid=20\n');
+  await expect(page.locator('#svg-wrap svg g[data-type]')).toHaveCount(0);
+  await expect(page.locator('#status')).toContainText('Blocks: 0');
+
+  // 作図 UI だけで group と block を置く。本文は @canvas と足した要素の行だけ
+  await page.getByRole('button', { name: '+ グループ追加' }).click();
+  await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(1);
+  const text = await getEditorText(page);
+  expect(text).not.toMatch(/^# /m);
+  for (const l of text.split('\n').filter(Boolean)) expect(l).toMatch(/^(@canvas |group |block )/);
+
+  const { file } = await exportSb(page, saveDir(testInfo));
+  expect(require('node:path').basename(file)).toBe('diagram.sb');
+
+  // 前の図(見本)は ↩ で戻せる
+  await page.getByRole('button', { name: '↩' }).click();
+  await page.getByRole('button', { name: '↩' }).click();
+  await page.getByRole('button', { name: '↩' }).click();
+  await expect(page.locator('#editor')).toHaveValue(/# Application/);
 });

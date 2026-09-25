@@ -24,7 +24,8 @@ const SB_TERMS_TABLE = {
   'copy-png': { ja: ['PNGをコピー', 'PNG 画像をクリップボードにコピーする'], en: ['Copy PNG', 'Copy the diagram to the clipboard as PNG'] },
   'export-xlsx': { ja: ['Excel', 'Excel(.xlsx)で書き出す'], en: ['Excel', 'Save as Excel (.xlsx)'] },
   'export-mermaid': { ja: ['Mermaid', 'Mermaid(.mmd)で書き出す'], en: ['Mermaid', 'Save as Mermaid (.mmd)'] },
-  'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する'] },
+  'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
+  'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
   'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },
   'search': { ja: ['🔍 ID・ラベルで検索', 'ID・ラベルで絞り込み、外れた要素を薄くする'], en: ['Search ID / label', 'Filter by ID / label and dim the rest'] },
   // プロパティ欄
