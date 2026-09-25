@@ -258,6 +258,17 @@ function getWebviewContent(dslText) {
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
     + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection };';
 
+  // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
+  let layoutCoreScript = '';
+  try {
+    layoutCoreScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'layout', 'layout-core.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load layout-core:', e.message);
+  }
+  const layoutCoreAsGlobals = layoutCoreScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, fitZoom, stepZoom };';
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -298,10 +309,11 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>${emitterAsGlobals}<\/script>
 <script>${labelCoreAsGlobals}<\/script>
 <script>${selectCoreAsGlobals}<\/script>
+<script>${layoutCoreAsGlobals}<\/script>
 <script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
 </head><body>
 <div class="toolbar">
-  <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button>
+  <button class="tb" onclick="sz(-1)">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" onclick="sz(1)">+</button><button class="tb" onclick="fitV()" title="Fit the whole diagram (F key)">Fit</button>
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
   <div class="sep"></div><button class="tb anno-act" id="anno-btn" onclick="toggleAnno()" title="Show/hide annotations (N key)">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation-only mode (locks blocks/groups)">&#x270E; Edit</button>
@@ -324,9 +336,11 @@ var BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCF
 var NOTE_COLORS=["#FEF3C7","#FEE2E2","#DBEAFE","#DCFCE7","#F5F3FF","#FCE7F3","#CFFAFE","#FFF7ED","#F1F5F9","#FEF9C3","#ECFDF5","#F8FAFC"];
 
 function pushH(){hist.push(dsl);if(hist.length>80)hist.shift();fut.length=0;}
-function undo(){if(!hist.length)return;fut.push(dsl);dsl=hist.pop();sel=[];go();notify();}
-function redo(){if(!fut.length)return;hist.push(dsl);dsl=fut.pop();sel=[];go();notify();}
-function notify(){vscodeApi.postMessage({type:"dslUpdate",dsl:dsl});}
+function undo(){if(!hist.length)return;fut.push(dsl);dsl=hist.pop();sel=[];go();notify(true);}
+function redo(){if(!fut.length)return;hist.push(dsl);dsl=fut.pop();sel=[];go();notify(true);}
+// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げてから本文に返す(undo/redo は noGrow)
+function growCv(){var p=parseDSL(dsl),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,p.blocks.concat(p.groups,p.notes));if(nd===dsl)return false;dsl=nd;return true;}
+function notify(noGrow){if(!noGrow&&growCv())go();vscodeApi.postMessage({type:"dslUpdate",dsl:dsl});}
 function isSel(id){return sel.some(function(s){return s.id===id});}
 function getIt(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]||parsed.nm[s.id];}
 function isAnnoConn(c){return !!(parsed.nm[c.from]||parsed.nm[c.to]);}
@@ -629,10 +643,11 @@ function setCP(a,b,prop,val){pushH();var lines=dsl.split("\\n"),pr=new RegExp(pr
 function setCC(a,b,col){setCP(a,b,"color",col);}
 
 // Add
-function addBlock(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
+function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot(parsed.blocks.concat(parsed.groups,parsed.notes),w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
+function addBlock(){pushH();var id="__new_"+(addC++),p=freeSlot(8,3);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+p.x+','+p.y+' size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
 function addBlockInGroup(gid){var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var ch=fCh(gr).cb;var bw=8,bh=3,pad=1,labelH=2;var px=gr.x+pad,py=gr.y+labelH;if(ch.length){var sorted=ch.slice().sort(function(a,b){return a.y===b.y?a.x-b.x:a.y-b.y});var last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){upS('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+px+','+py+' size '+bw+'x'+bh+' color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
-function addGroup(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
-function addNote(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!showAnno){showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');}go();notify();}
+function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
+function addNote(){pushH();var id="__new_"+(addC++),p=freeSlot(8,2);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at '+p.x+','+p.y+' size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!showAnno){showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');}go();notify();}
 function lToId(lb){var s=lb.replace(/\\\\n/g,' ').replace(/[^a-zA-Z0-9\\s]/g,'').trim().replace(/\\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/,'');return s;}
 function fixN(fa){if(!parsed)return;var all=parsed.blocks.concat(parsed.groups).concat(parsed.notes);var tgts=fa?all:all.filter(function(x){return x.id.indexOf('__new_')===0;});if(!tgts.length)return;pushH();var tSet=new Set(tgts);var used={};all.forEach(function(x){if(!tSet.has(x))used[x.id]=1;});var rns=[];tgts.forEach(function(t){var base=lToId(t.label);if(used[base]){var n=2;while(used[base+'_'+n])n++;base=base+'_'+n;}used[base]=1;rns.push({o:t.id,n:base,ln:t.line});});var ls=dsl.split("\\n");rns.forEach(function(r){var idx=r.ln-1;if(idx>=0&&idx<ls.length)ls[idx]=ls[idx].replace(new RegExp("^(\\\\s*(?:block|group|note)\\\\s+)"+r.o+"(\\\\s+)"),"$1"+r.n+"$2");});var cm={};rns.forEach(function(r){if(!cm[r.o])cm[r.o]=r.n;});for(var i=0;i<ls.length;i++){var m=ls[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;for(var k in cm){ls[i]=ls[i].replace(new RegExp("\\\\b"+k+"\\\\b","g"),cm[k]);}}dsl=ls.join("\\n");sel=sel.map(function(s){var r=rns.filter(function(r){return r.o===s.id;})[0];return r?{type:s.type,id:r.n}:s;});go();notify();}
 
@@ -669,7 +684,9 @@ function exportXlsx(){
     }).catch(function(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});});
   }catch(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});}
 }
-function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('zl').textContent=Math.round(zm*100)+'%';render();}
+function setZm(z){zm=z;document.getElementById('zl').textContent=Math.round(zm*100)+'%';render();}
+function sz(d){setZm(window.StableBlockLayout.stepZoom(zm,d));}
+function fitV(){if(!parsed)return;var a=document.getElementById('preview');setZm(window.StableBlockLayout.fitZoom(parsed.canvas.width,parsed.canvas.height,a.clientWidth-18,a.clientHeight-18));}
 
 // Keyboard
 document.addEventListener('keydown',function(e){
@@ -678,6 +695,7 @@ document.addEventListener('keydown',function(e){
   if(inInput)return;
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}
+  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitV();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();var an=showAnno?parsed.notes.map(function(n){return{type:'note',id:n.id}}):[];if(annoEdit)sel=an;else sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}})).concat(an);render();props();return;}
   if(sel.length&&(e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();var ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';var d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)bNudge(ax,d);else sNudge(ax,d);return;}
   if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();return;}
@@ -718,7 +736,7 @@ document.getElementById('preview').addEventListener('mousedown',function(e){
   clrSel();
 });
 
-parsed=parseDSL(dsl);go();
+parsed=parseDSL(dsl);go();fitV();
 <\/script></body></html>`;
 }
 

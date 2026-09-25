@@ -65,7 +65,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #editor { flex:1; background:transparent; color:var(--text); border:none; outline:none; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; padding:12px 12px 12px 4px; resize:none; white-space:pre; overflow-x:auto; tab-size:2; }
 
 /* Preview Panel */
-#preview-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
 #svg-wrap svg { cursor:default; }
@@ -109,6 +109,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/excel/emitter.browser.js"></script>
 <script src="core/label/label-core.browser.js"></script>
 <script src="core/select/select-core.browser.js"></script>
+<script src="core/layout/layout-core.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -126,6 +127,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" onclick="setZoom(-1)">−</button>
     <span id="zoom-label" style="font-size:11px;color:#94A3B8;min-width:36px;text-align:center">100%</span>
     <button class="tb" onclick="setZoom(1)">+</button>
+    <button class="tb" id="fit-btn" onclick="fitView()" title="図の全体を画面に収める(F キー)">全体表示</button>
     <div class="sep"></div>
     <button class="tb" onclick="undo()" title="Ctrl+Z">↩</button>
     <button class="tb" onclick="redo()" title="Ctrl+Y">↪</button>
@@ -221,8 +223,8 @@ let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=fal
 // Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
-function undo(){if(!history.length)return;future.push(dsl);dsl=history.pop();sel=[];refresh();}
-function redo(){if(!future.length)return;history.push(dsl);dsl=future.pop();sel=[];refresh();}
+function undo(){if(!history.length)return;future.push(dsl);dsl=history.pop();sel=[];refresh(true);}
+function redo(){if(!future.length)return;history.push(dsl);dsl=future.pop();sel=[];refresh(true);}
 // Clipboard
 let clipboard=null; // [{type,dslLine}]
 const COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626","#1E293B","#0F172A","#334155","#475569"];
@@ -501,7 +503,7 @@ function setupInteractions(){
         if(edge.includes('s')){nh=Math.max(1,oh+dyg);}
         if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
         updatePos(type,id,Math.max(0,nx),Math.max(0,ny));
-        updateSize(type,id,nw,nh);
+        updateSize(type,id,nw,nh);growCanvas();
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
       function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);refresh();}
@@ -545,7 +547,7 @@ function setupInteractions(){
         if(!moved&&!dx&&!dy)return;   // a click with hand jitter below one grid is not a drag
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
-        items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
+        items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));growCanvas();
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
       function onUp(ev){
@@ -603,6 +605,10 @@ function renderPropsPanel(){
         <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;margin-bottom:6px" onclick="addGroup()">+ グループ追加</button>
         <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ 注釈追加</button>
       </div>
+      <div class="prop-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
+        <div style="flex:1"><div class="prop-sub">幅</div><div class="stepper"><input class="prop-input" id="canvas-w" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.width}" onchange="setCanvasSize('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('w',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('w',-1)">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
+      </div><div class="prop-sub">要素がはみ出すと自動で広がる。要素より小さくはできない</div></div>
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
       <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
@@ -612,7 +618,7 @@ function renderPropsPanel(){
           <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
           <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈<br>
-          <span style="color:var(--muted)">L</span> 線モード切替
+          <span style="color:var(--muted)">L</span> 線モード切替 <span style="color:var(--muted)">F</span> 全体表示
         </div>`;
     }
     return;
@@ -761,11 +767,13 @@ function removeConnProp(a,b,prop){pushHistory();const lines=dsl.split("\n");cons
 // Add items — all new elements get __new_N placeholder IDs
 // groupSelected() creates a group from bounding box of selected blocks
 // ═══════════════════════════════════════════════
-function addBlock(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at 5,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
+// 新しい要素は既存の要素と重ならない空き位置に、上の行から左詰めで並べる
+function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot([...parsed.blocks,...parsed.groups,...parsed.notes],w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
+function addBlock(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,3);dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${p.x},${p.y} size 8x3 color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
-function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
-function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
+function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
 // labelToId: convert label → valid ID (lowercase, alphanum+underscore, max 30 chars)
 // fixNames(all): normal click → rename __new_ only; Shift+click → rename ALL IDs
 // Uses line-based replacement to handle duplicate IDs correctly
@@ -801,7 +809,10 @@ function fixNames(all){
 // ═══════════════════════════════════════════════
 function syncEditor(){suppressSync=true;document.getElementById('editor').value=dsl;suppressSync=false;renderLineNums();}
 function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
-function refresh(){if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
+// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げる(本文の差分は @canvas の 1 行)
+function growCanvas(){const p=parseDSL(dsl);dsl=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);}
+// noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
+function refresh(noGrow){if(!noGrow)growCanvas();if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
 function renderErrors(){const el=document.getElementById('error-bar');if(parsed.errors.length){el.style.display='block';el.innerHTML=parsed.errors.map(e=>`L${e.line}: ${esc(e.msg)}`).join('<br>');}else{el.style.display='none';}}
 function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
 
@@ -816,9 +827,15 @@ function exportPNG(){pngCanvas(false).then(c=>{if(c)download('diagram.png',c.toD
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c)download('diagram_transparent.png',c.toDataURL('image/png'));});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});});}
 async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
-function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh();};reader.readAsText(file);input.value='';}
+function importSB(input){const file=input.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{pushHistory();dsl=ev.target.result;sel=[];refresh(true);fitView();};reader.readAsText(file);input.value='';}
 function exportMermaid(){if(!parsed)return;let m='graph TD\n';const inGroup={};parsed.groups.forEach(gr=>{const children=parsed.blocks.filter(b=>isInside(b,gr));if(children.length){m+=`  subgraph ${gr.id}["${gr.label}"]\n`;children.forEach(b=>{m+=`    ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;inGroup[b.id]=true;});m+=`  end\n`;}});parsed.blocks.filter(b=>!inGroup[b.id]).forEach(b=>{m+=`  ${b.id}["${b.label.replace(/\\\\n/g,'\\n')}"]\n`;});parsed.connections.filter(c=>!isAnnotationConn(c)).forEach(c=>{const arrow=c.bidir?'<-->':'-->';const lbl=c.label?`|${c.label}|`:'';m+=`  ${c.from} ${arrow}${lbl} ${c.to}\n`;});download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(m));}
-function setZoom(dir){zoom=Math.max(0.25,Math.min(3,zoom+dir*0.25));document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
+function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
+function setZoom(dir){applyZoom(window.StableBlockLayout.stepZoom(zoom,dir));}
+// 全体表示: キャンバス全体がプレビュー欄に収まる倍率にする(100% より大きくはしない)。図を開いたときもこの倍率で見せる
+function fitView(){if(!parsed)return;const a=document.getElementById('preview-area'),cs=getComputedStyle(a);const aw=a.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,ah=a.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom)-2;applyZoom(window.StableBlockLayout.fitZoom(parsed.canvas.width,parsed.canvas.height,aw,ah));}
+// キャンバス寸法(px)。要素より小さくはしない
+function setCanvasSize(axis,v){if(!parsed)return;const n=parseInt(v);if(isNaN(n)||n<1)return;const c=parsed.canvas,e=window.StableBlockLayout.contentExtent([...parsed.blocks,...parsed.groups,...parsed.notes]);const w=axis==='w'?Math.max(n,e.right*c.grid):c.width,h=axis==='h'?Math.max(n,e.bottom*c.grid):c.height;if(w===c.width&&h===c.height){renderProps();return;}pushHistory();dsl=window.StableBlockLayout.setCanvasInDsl(dsl,w,h);refresh();}
+function nudgeCanvas(axis,d){if(!parsed)return;const c=parsed.canvas;setCanvasSize(axis,(axis==='w'?c.width:c.height)+d*c.grid*5);}
 
 // ═══════════════════════════════════════════════
 // Copy / Cut / Paste — stores DSL lines in clipboard, paste offsets by +2 grid units
@@ -909,10 +926,11 @@ document.addEventListener('keydown',e=>{
   // H: toggle highlight
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
   if(e.key==='l'||e.key==='L'){e.preventDefault();cycleLineMode();return;}
+  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitView();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
 
-parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();
+parsed=parseDSL(dsl);renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();fitView();
 </script>
 </body>
 </html>
