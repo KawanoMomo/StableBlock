@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-human-20260925-1900: E2E の基盤(`npm run test:e2e`、worker ごとの静的サーバ、`tests/e2e/scenarios/` の雛形 2 本)と、porter コーパスの .sb を parse → 直列化で往復するバイト一致テスト(`core/dsl/`)
 - Excel (.xlsx) エクスポート機能 (HTML 版 / VSCode 拡張)
   - ブロック・接続線・グループ・注釈をネイティブ Excel シェイプとして出力
   - 各シェイプを Excel 上で個別にテキスト・色・位置・サイズ編集可能
