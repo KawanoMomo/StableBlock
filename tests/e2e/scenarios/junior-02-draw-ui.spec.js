@@ -488,3 +488,84 @@ test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、
   await page.getByRole('button', { name: '↩' }).click();
   await expect(page.locator('#editor')).toHaveValue(/# Application/);
 });
+
+// ─── 名付け・複製をキャンバスの上で: ダブルクリック / F2 でその場でラベルを直し、貼り付けは間の接続も複製し、
+//     キャンバスを押すとフォーカスがボタンから離れる(BLK-owner-20260926-0451-4) ───
+test('junior-02: ラベルはキャンバス上でダブルクリック / F2 で直せ、コピーは間の接続も複製し、押したボタンに Enter が残らない', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  const b = id => svg.locator(`g[data-type="block"][data-id="${id}"]`);
+  const inline = page.locator('#inline-label');
+
+  // ダブルクリックでその場の入力欄が開き、打って Enter で確定。本文で変わるのはラベルの 1 行だけ
+  const t0 = await getEditorText(page);
+  await b('b1').dblclick();
+  await expect(inline).toBeFocused();
+  await expect(inline).toHaveValue('Spi_Api');
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Spi_Main');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  const t1 = await getEditorText(page);
+  const diff = t1.split('\n').map((l, i) => [t0.split('\n')[i], l]).filter(([a, c]) => a !== c);
+  expect(diff).toHaveLength(1);
+  expect(diff[0][1]).toMatch(/^block b1 "Spi_Main"\s+at 1,1 /);
+  expect(diff[0][0].replace('"Spi_Api"', '"Spi_Main"')).toBe(diff[0][1]);
+
+  // F2 でも開く。Backspace は入力欄の文字だけを消し(block は消えない)、Esc で開く前の本文に戻る
+  await b('b2').click();
+  await page.keyboard.press('F2');
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Backspace');
+  await expect(b('b2')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(inline).toHaveCount(0);
+  expect(await getEditorText(page)).toBe(t1);
+
+  // 続けて名付ける: Tab で確定して読み順の次の block の編集へ移る(マウスへ戻らない)
+  await b('b5').dblclick();
+  for (const name of ['CPU', 'RAM', 'ROM']) {
+    await expect(inline).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(name);
+    await page.keyboard.press(name === 'ROM' ? 'Enter' : 'Tab');
+  }
+  await expect(inline).toHaveCount(0);
+  const named = await getEditorText(page);
+  expect(named).toMatch(/^block b5 "CPU"\s+at 1,8 /m);
+  expect(named).toMatch(/^block b6 "RAM"\s+at 10,8 /m);
+  expect(named).toMatch(/^block b7 "ROM"\s+at 19,8 /m);
+  expect(named).toMatch(/^block b8 "Spi_Det"/m);
+
+  // 接続した 4 block を選んで Ctrl+C → Ctrl+V: block 4 個と、その間の接続が同じ属性で増える
+  const pairs = [['b1', 'b2'], ['b2', 'b3'], ['b3', 'b4']];
+  for (const [x, y] of pairs) {
+    await b(x).click();
+    await b(y).click({ modifiers: ['Shift'] });
+    await page.getByRole('button', { name: `${x} → ${y}`, exact: true }).click();
+  }
+  await b('b1').click();
+  for (const id of ['b2', 'b3', 'b4']) await b(id).click({ modifiers: ['Shift'] });
+  await expect(page.locator('#status')).toContainText('Selected: 4');
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(12);
+  const pasted = (await getEditorText(page)).split('\n').filter(l => /^__new_\d+ -> __new_\d+$/.test(l));
+  expect(pasted).toHaveLength(3);
+  await expect(page.locator('#status')).toContainText('Conn: 6');
+
+  // ツールバーのボタンを押した後にキャンバスの block を押すと、フォーカスはボタンから離れる。Enter はボタンを押し直さずラベル編集を開く
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  await page.getByRole('button', { name: '.sb 保存' }).click();
+  await expect.poll(() => downloads).toBe(1);
+  await b('b3').click();
+  expect(await page.evaluate(() => document.activeElement.tagName)).not.toBe('BUTTON');
+  await page.keyboard.press('Enter');
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  expect(downloads).toBe(1);
+});
