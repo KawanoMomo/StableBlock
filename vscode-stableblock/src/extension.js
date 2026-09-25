@@ -500,8 +500,7 @@ function props(){
         '<button class="pbtn" onclick="addBlock()">+ Block</button>'+
         '<button class="pbtn" onclick="addGroup()">+ Group</button>'+
         '<div class="pl">CONNECT</div>'+
-        '<div class="pr"><input class="pi" id="cf" placeholder="from" style="flex:1"><span style="color:#888;line-height:24px">&rarr;</span><input class="pi" id="ct" placeholder="to" style="flex:1"></div>'+
-        '<button class="pbtn" onclick="addConn()">Add</button>'+
+        '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click two blocks, then press "a &rarr; b"</div>'+
         '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: highlight N: annotations</div>';
     }
     return;
@@ -517,7 +516,7 @@ function props(){
       mh+='<div class="pl">Connection</div>';
       if(cns.length===0){
         mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sb+'\\',\\''+sa+'\\')">'+esc(sb)+' &rarr; '+esc(sa)+'</button></div>';
-        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Color + Connect</div><div class="cg">'+CC.map(function(c){return'<div class="cd" style="background:'+c+'" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Color, width and label are set after connecting</div>';
       }else{
         var cn=cns[0],fa=cn.from,ta=cn.to;
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
@@ -606,7 +605,7 @@ function pasteSel(){if(!clipboard||!clipboard.length)return;pushH();var ns=[];cl
 
 // Connection management (two-select)
 function findCB(a,b){return parsed.connections.filter(function(c){return(c.from===a&&c.to===b)||(c.from===b&&c.to===a)});}
-function connTwo(a,b,col){pushH();var extra=col?" color="+col:"";dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+extra+"\\n";go();notify();}
+function connTwo(a,b){pushH();dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+"\\n";go();notify();}
 function rmConn(a,b){pushH();var lines=dsl.split("\\n");dsl=lines.filter(function(l){var m=l.trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\\n");go();notify();}
 function flipC(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\\s*)(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)/,function(_,sp,f,s1,ar,s2,t){return sp+t+s1+ar+s2+f;});break;}}dsl=lines.join("\\n");go();notify();}
 function togBi(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\\n");go();notify();}
@@ -618,7 +617,6 @@ function addBlock(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\nblock
 function addBlockInGroup(gid){var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var ch=fCh(gr).cb;var bw=8,bh=3,pad=1,labelH=2;var px=gr.x+pad,py=gr.y+labelH;if(ch.length){var sorted=ch.slice().sort(function(a,b){return a.y===b.y?a.x-b.x:a.y-b.y});var last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){upS('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+px+','+py+' size '+bw+'x'+bh+' color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 function addNote(){pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!annoEdit){annoEdit=true;showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');var ebtn=document.getElementById('anno-edit-btn');if(ebtn){ebtn.style.display='';ebtn.classList.add('anno-edit');}}go();notify();}
-function addConn(){var f=document.getElementById('cf'),t=document.getElementById('ct');if(f&&t&&f.value&&t.value){pushH();dsl=dsl.trimEnd()+"\\n"+f.value+" -> "+t.value+"\\n";go();notify();}}
 function lToId(lb){var s=lb.replace(/\\\\n/g,' ').replace(/[^a-zA-Z0-9\\s]/g,'').trim().replace(/\\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/,'');return s;}
 function fixN(fa){if(!parsed)return;var all=parsed.blocks.concat(parsed.groups).concat(parsed.notes);var tgts=fa?all:all.filter(function(x){return x.id.indexOf('__new_')===0;});if(!tgts.length)return;pushH();var tSet=new Set(tgts);var used={};all.forEach(function(x){if(!tSet.has(x))used[x.id]=1;});var rns=[];tgts.forEach(function(t){var base=lToId(t.label);if(used[base]){var n=2;while(used[base+'_'+n])n++;base=base+'_'+n;}used[base]=1;rns.push({o:t.id,n:base,ln:t.line});});var ls=dsl.split("\\n");rns.forEach(function(r){var idx=r.ln-1;if(idx>=0&&idx<ls.length)ls[idx]=ls[idx].replace(new RegExp("^(\\\\s*(?:block|group|note)\\\\s+)"+r.o+"(\\\\s+)"),"$1"+r.n+"$2");});var cm={};rns.forEach(function(r){if(!cm[r.o])cm[r.o]=r.n;});for(var i=0;i<ls.length;i++){var m=ls[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;for(var k in cm){ls[i]=ls[i].replace(new RegExp("\\\\b"+k+"\\\\b","g"),cm[k]);}}dsl=ls.join("\\n");sel=sel.map(function(s){var r=rns.filter(function(r){return r.o===s.id;})[0];return r?{type:s.type,id:r.n}:s;});go();notify();}
 
