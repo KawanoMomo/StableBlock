@@ -143,9 +143,10 @@ function labelToId(label) {
 }
 
 // プロパティ欄の ID 欄を開いて見せるか。ID はラベルを打てば自動で付くので普段は畳んで今の ID だけを見せ、まだ名前が無い
-// (`__new_` で始まる)ときと、利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
-function idFieldOpen(id, userOpen) {
-  return !!userOpen || String(id).startsWith('__new_');
+// (`__new_` で始まる)とき、一緒に読み込んだほかの図でも使われている(elsewhere。改名が全部の図に及ぶと見せる)とき、
+// 利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
+function idFieldOpen(id, userOpen, elsewhere) {
+  return !!userOpen || !!elsewhere || String(id).startsWith('__new_');
 }
 
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける

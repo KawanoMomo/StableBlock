@@ -438,7 +438,8 @@ test('renameIdInDsl: ラベル全体が旧 ID と同じなら表示名も新 ID 
 // ─── プロパティ欄の ID 欄: 普段は畳んで今の ID だけ見せ、名前が無いときと利用者が開いたときだけ開く(BLK-human-20260926-1010-2) ───
 import { idFieldOpen } from '../label-core.mjs';
 
-test('idFieldOpen: __new_ の ID か、利用者が開いたままにしたときだけ開く', () => {
+test('idFieldOpen: __new_ の ID か、ほかの図でも使う ID か、利用者が開いたままにしたときだけ開く', () => {
+  assert.equal(idFieldOpen('SpiDrv', false, true), true);
   assert.equal(idFieldOpen('__new_3', false), true);
   assert.equal(idFieldOpen('SpiDrv', false), false);
   assert.equal(idFieldOpen('SpiDrv', true), true);

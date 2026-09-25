@@ -49,6 +49,7 @@ test('primary-02: 検索で参照元を図と行で見つけ、ID を 1 回変�
   expect(await getEditorText(page)).toBe(read(FILES[1]));
   await expect(page.locator('#prop-id')).toHaveValue('SpiDrv');
   await expect(page.locator('#prop-id-elsewhere')).toContainText('spi_dataflow.sb(L4, L6)');
+  await expect(page.locator('#prop-id')).toBeVisible();                    // ほかの図でも使う ID は ID 欄が開いている
 
   // 既にほかの図にある ID には変えられず、どの図も変わらない
   await page.locator('#prop-id').click();
