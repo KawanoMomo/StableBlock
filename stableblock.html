@@ -595,9 +595,8 @@ function renderProps(){
         <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
         <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
       </div>
-      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続追加</div>
-      <div class="prop-row"><input class="prop-input" id="conn-from" placeholder="from"><span style="color:var(--muted);font-size:14px;line-height:28px">→</span><input class="prop-input" id="conn-to" placeholder="to"></div>
-      <button class="prop-btn" onclick="addConn()">接続追加</button>
+      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
+      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
           クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
@@ -635,7 +634,7 @@ function renderProps(){
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       if(conns.length===0){
         html+=`<div style="display:flex;gap:4px"><button class="prop-btn" onclick="connectTwo('${a}','${b}')" style="flex:1;background:#6366F1;color:#fff">${a} → ${b}</button><button class="prop-btn" onclick="connectTwo('${b}','${a}')" style="flex:1;background:#6366F1;color:#fff">${b} → ${a}</button></div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">色を指定して接続</div><div class="color-grid">${connColors.map(c=>`<div class="color-dot" style="background:${c}" onclick="connectTwo('${a}','${b}','${c}')"></div>`).join('')}</div>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">色・太さ・ラベルは結んだ後にここで変える</div>`;
       } else {
         const c=conns[0],fa=c.from,ta=c.to;
         html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
@@ -742,7 +741,7 @@ function batchDelete(){
 // Connection management (two-select) — find, create, remove, flip, bidir, color, width, style
 // ═══════════════════════════════════════════════
 function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
-function connectTwo(a,b,col){pushHistory();const extra=col?` color=${col}`:'';dsl=dsl.trimEnd()+`\n${a} -> ${b}${extra}\n`;refresh();}
+function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;refresh();}
 function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
 function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
 function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
@@ -759,7 +758,6 @@ function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHi
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
-function addConn(){const f=document.getElementById('conn-from')?.value,t=document.getElementById('conn-to')?.value;if(f&&t){pushHistory();dsl=dsl.trimEnd()+`\n${f} -> ${t}\n`;refresh();}}
 // labelToId: convert label → valid ID (lowercase, alphanum+underscore, max 30 chars)
 // fixNames(all): normal click → rename __new_ only; Shift+click → rename ALL IDs
 // Uses line-based replacement to handle duplicate IDs correctly
