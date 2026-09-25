@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
-import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser, buildSelectCoreBrowser, buildLayoutCoreBrowser, buildMermaidCoreBrowser } from '../build-browser.mjs';
+import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser, buildSelectCoreBrowser, buildLayoutCoreBrowser, buildMermaidCoreBrowser, buildCheckCoreBrowser } from '../build-browser.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -96,4 +96,12 @@ test('mermaid-core.browser.js is up to date (drift detection)', () => {
   const norm = (s) => s.replace(/\r\n/g, '\n');
   assert.equal(norm(built), norm(buildMermaidCoreBrowser(norm(src))),
     'Run `npm run build:browser` to regenerate mermaid-core.browser.js');
+});
+
+test('check-core.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../check/check-core.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../check/check-core.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildCheckCoreBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate check-core.browser.js');
 });

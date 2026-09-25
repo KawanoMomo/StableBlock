@@ -59,7 +59,10 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #editor-panel { width:30%; min-width:240px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
 .panel-label { padding:4px 10px; font-size:10px; font-weight:600; color:var(--muted); border-bottom:1px solid var(--bg2); display:flex; align-items:center; gap:4px; }
 .panel-label .dot { font-size:10px; }
-#error-bar { padding:4px 10px; background:#7F1D1D; color:#FCA5A5; font-size:10px; display:none; }
+#error-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:10px; display:none; max-height:30%; overflow-y:auto; line-height:1.5; }
+#error-bar.has-error { background:#7F1D1D; }
+#error-bar .diag-error { color:#FCA5A5; }
+#error-bar .diag-warn { color:#FDE68A; }
 #editor-wrap { flex:1; display:flex; overflow:hidden; background:var(--bg); }
 #line-nums { width:40px; padding:12px 4px 12px 0; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; color:var(--dim); user-select:none; overflow:hidden; flex-shrink:0; }
 #editor { flex:1; background:transparent; color:var(--text); border:none; outline:none; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; padding:12px 12px 12px 4px; resize:none; white-space:pre; overflow-x:auto; tab-size:2; }
@@ -112,6 +115,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/excel/template-inline.js"></script>
 <script src="core/excel/emitter.browser.js"></script>
 <script src="core/label/label-core.browser.js"></script>
+<script src="core/check/check-core.browser.js"></script>
 <script src="core/select/select-core.browser.js"></script>
 <script src="core/layout/layout-core.browser.js"></script>
 <script src="core/mermaid/mermaid-core.browser.js"></script>
@@ -328,7 +332,7 @@ function cycleLineMode(){
   const labels={curved:'⌇ 曲線',straight:'╱ 直線',ortho:'⊾ 直角'};
   btn.textContent=labels[lineMode];
   btn.classList.toggle('tb-line-active',lineMode!=='curved');
-  renderSVG();
+  renderSVG();renderErrors();renderStatus();
 }
 function doSearch(q){searchQuery=q.toLowerCase();renderSVG();}
 const includeCache={};
@@ -352,31 +356,8 @@ function matchesSearch(item){if(!searchQuery)return true;return item.id.toLowerC
 // Render order: groups → normal connections → blocks → [annotation layer] → resize handles
 // Respects highlight, annotation edit, and search dimming
 // ═══════════════════════════════════════════════
-function getSide(fb,tb,g){
-  const gapB=tb.y-(fb.y+fb.h),gapT=fb.y-(tb.y+tb.h),gapR=tb.x-(fb.x+fb.w),gapL=fb.x-(tb.x+tb.w);
-  const vBest=Math.max(gapB,gapT),hBest=Math.max(gapR,gapL);
-  if(vBest>=hBest)return gapB>=gapT?{fs:'bottom',ts:'top'}:{fs:'top',ts:'bottom'};
-  return gapR>=gapL?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};
-}
-function portPos(b,side,idx,total,g){
-  const bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=0.2;
-  const t=total===1?0.5:pad+(1-2*pad)*idx/(total-1);
-  if(side==='top')return{x:bx+bw*t,y:by};if(side==='bottom')return{x:bx+bw*t,y:by+bh};
-  if(side==='left')return{x:bx,y:by+bh*t};return{x:bx+bw,y:by+bh*t};
-}
-function computePorts(connections,blockMap,g){
-  const sides=connections.map(c=>{const fb=blockMap[c.from],tb=blockMap[c.to];return fb&&tb?getSide(fb,tb,g):null;});
-  const sm={};
-  connections.forEach((c,i)=>{if(!sides[i])return;const fb=blockMap[c.from],tb=blockMap[c.to];
-    if(!sm[c.from])sm[c.from]={};const fs=sides[i].fs;if(!sm[c.from][fs])sm[c.from][fs]=[];sm[c.from][fs].push({ci:i,ox:tb.x+tb.w/2,oy:tb.y+tb.h/2});
-    if(!sm[c.to])sm[c.to]={};const ts=sides[i].ts;if(!sm[c.to][ts])sm[c.to][ts]=[];sm[c.to][ts].push({ci:i,ox:fb.x+fb.w/2,oy:fb.y+fb.h/2});
-  });
-  for(const bid in sm)for(const side in sm[bid]){const list=sm[bid][side];list.sort((a,b)=>(side==='left'||side==='right')?(a.oy-b.oy):(a.ox-b.ox));}
-  return connections.map((c,i)=>{if(!sides[i])return null;const fb=blockMap[c.from],tb=blockMap[c.to];
-    const fl=sm[c.from][sides[i].fs],tl=sm[c.to][sides[i].ts];
-    return{fp:portPos(fb,sides[i].fs,fl.findIndex(p=>p.ci===i),fl.length,g),tp:portPos(tb,sides[i].ts,tl.findIndex(p=>p.ci===i),tl.length,g),fs:sides[i].fs,ts:sides[i].ts};
-  });
-}
+// 接続の端点(ポート)は描画と検査で同じ計算を使う(core/label/label-core.mjs)
+function computePorts(connections,itemMap,g){return window.StableBlockLabel.computePorts(connections,itemMap,g);}
 function connPathInfo(fp,tp,fs,ts,route){
   const m=route||lineMode;
   const SBL=window.StableBlockLabel;
@@ -801,8 +782,11 @@ function renderLineNums(){const el=document.getElementById('line-nums');el.inner
 function growCanvas(){const p=parseDSL(dsl);dsl=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
 function refresh(noGrow){if(!noGrow)growCanvas();if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
-function renderErrors(){const el=document.getElementById('error-bar');if(parsed.errors.length){el.style.display='block';el.innerHTML=parsed.errors.map(e=>`L${e.line}: ${esc(e.msg)}`).join('<br>');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+(parsed.errors.length?`<span style="color:var(--red)">Err: ${parsed.errors.length}</span>`:'');}
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
+let lastDiag=[];
+function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');return window.StableBlockCheck.checkDiagram(parsed,lines,window.StableBlockLabel.connectionPaths(parsed,lineMode));}
+function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
+function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file

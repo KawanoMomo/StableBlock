@@ -58,6 +58,11 @@ E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.j
 静的サーバは worker ごとに `python -m http.server` を `SB_PORT`(既定 8901)+ worker 番号から起こす。`SB_PORT` に既にこのリポジトリの server があれば再利用する。
 結果・保存物は `test-results/` 配下のみ(コーパス往復テストの結果は `test-results/corpus-roundtrip.json`)。
 
+### 図の検査(開かずに)
+
+`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線が別の block の上を横切る)を
+`ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
+
 ### MCPサーバー
 
 LLMから図を操作するためのMCPサーバー（18ツール）。

@@ -249,7 +249,18 @@ function getWebviewContent(dslText) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, renameIdInDsl };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, renameIdInDsl, getSide, portPos, computePorts, pathPoints, connectionPaths };';
+
+  // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
+  let checkCoreScript = '';
+  try {
+    checkCoreScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'check', 'check-core.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load check-core:', e.message);
+  }
+  const checkCoreAsGlobals = checkCoreScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, segmentHitsRect, findCrossings, checkDiagram };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -297,6 +308,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 #wrap{background:#fff;border-radius:6px;display:inline-block;line-height:0}
 #propPanel{width:200px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
 .error{background:var(--vscode-inputValidation-errorBackground,#5a1d1d);color:#f88;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-size:11px}
+.error.warn-only{background:#422006;color:#FDE68A}.error .dg-warn{color:#FDE68A}
 .stats{padding:3px 8px;font-size:10px;color:var(--vscode-descriptionForeground,#888);border-top:1px solid var(--vscode-widget-border,#444);flex-shrink:0}
 .pl{font-size:9px;color:var(--vscode-descriptionForeground,#888);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;margin-top:8px}
 .pi{background:var(--vscode-input-background,#333);border:1px solid var(--vscode-widget-border,#444);border-radius:3px;color:var(--vscode-input-foreground,#ccc);padding:3px 6px;font-size:11px;width:100%;outline:none;font-family:inherit}
@@ -323,6 +335,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>${jszipScript}<\/script>
 <script>${emitterAsGlobals}<\/script>
 <script>${labelCoreAsGlobals}<\/script>
+<script>${checkCoreAsGlobals}<\/script>
 <script>${selectCoreAsGlobals}<\/script>
 <script>${layoutCoreAsGlobals}<\/script>
 <script>${mermaidCoreAsGlobals}<\/script>
@@ -390,9 +403,7 @@ function upLb(tp,id,lb){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+)\\"[
 function isIn(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
 function fCh(gr){return{cb:parsed.blocks.filter(function(b){return isIn(b,gr)}),cg:parsed.groups.filter(function(x){return x.id!==gr.id&&isIn(x,gr)})};}
 
-function gSide(a,b,g){var gB=b.y-(a.y+a.h),gT=a.y-(b.y+b.h),gR=b.x-(a.x+a.w),gL=a.x-(b.x+b.w),vB=Math.max(gB,gT),hB=Math.max(gR,gL);if(vB>=hB)return gB>=gT?{fs:'bottom',ts:'top'}:{fs:'top',ts:'bottom'};return gR>=gL?{fs:'right',ts:'left'}:{fs:'left',ts:'right'};}
-function pPos(b,side,idx,total,g){var bx=b.x*g,by=b.y*g,bw=b.w*g,bh=b.h*g,pad=0.2,t=total===1?0.5:pad+(1-2*pad)*idx/(total-1);if(side==='top')return{x:bx+bw*t,y:by};if(side==='bottom')return{x:bx+bw*t,y:by+bh};if(side==='left')return{x:bx,y:by+bh*t};return{x:bx+bw,y:by+bh*t};}
-function cPorts(conns,bm,g){var sides=conns.map(function(c){var a=bm[c.from],b=bm[c.to];return a&&b?gSide(a,b,g):null;});var sm={};conns.forEach(function(c,i){if(!sides[i])return;var a=bm[c.from],b=bm[c.to],fs=sides[i].fs,ts=sides[i].ts;if(!sm[c.from])sm[c.from]={};if(!sm[c.from][fs])sm[c.from][fs]=[];sm[c.from][fs].push({ci:i,ox:b.x+b.w/2,oy:b.y+b.h/2});if(!sm[c.to])sm[c.to]={};if(!sm[c.to][ts])sm[c.to][ts]=[];sm[c.to][ts].push({ci:i,ox:a.x+a.w/2,oy:a.y+a.h/2});});for(var bid in sm)for(var sd in sm[bid]){var list=sm[bid][sd];list.sort(function(a,b){return(sd==='left'||sd==='right')?(a.oy-b.oy):(a.ox-b.ox)});}return conns.map(function(c,i){if(!sides[i])return null;var a=bm[c.from],b=bm[c.to],fl=sm[c.from][sides[i].fs],tl=sm[c.to][sides[i].ts];return{fp:pPos(a,sides[i].fs,fl.findIndex(function(p){return p.ci===i}),fl.length,g),tp:pPos(b,sides[i].ts,tl.findIndex(function(p){return p.ci===i}),tl.length,g),fs:sides[i].fs,ts:sides[i].ts};});}
+function cPorts(conns,bm,g){return window.StableBlockLabel.computePorts(conns,bm,g);}
 function eP(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
 function pathInfo(f,t,fs,ts){var cc=window.StableBlockLabel.bezierControls(f,t,fs,ts);return{d:"M"+f.x+","+f.y+" C"+cc.c1.x+","+cc.c1.y+" "+cc.c2.x+","+cc.c2.y+" "+t.x+","+t.y,mid:window.StableBlockLabel.bezierMidpoint(f,cc.c1,cc.c2,t)};}
 var _mCtx=document.createElement('canvas').getContext('2d');
@@ -617,7 +628,7 @@ function stepper2(label,xd,xi,yd,yi){
 // Single-item actions
 function sPr(p,v){if(!sel.length)return;pushH();upPr(sel[0].type,sel[0].id,p,v);go();notify();}
 function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);fLbId(v);parsed=parseDSL(dsl);render();
-  document.getElementById('err').innerHTML=parsed.errors.length?'<div class="error">'+parsed.errors.map(function(e){return 'L'+e.line+': '+esc(e.msg)}).join('<br>')+'</div>':'';
+  showErr();
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
 function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDSL(dsl);render();notify();}
@@ -683,8 +694,11 @@ function doSearch(q){searchQ=q.trim();render();}
 function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(r.dropped.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:r.dropped});}
 
 // Refresh
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check
+var lastDiag=[];
+function showErr(){var p={canvas:parsed.canvas,blocks:parsed.blocks,groups:parsed.groups,notes:parsed.notes,connections:parsed.connections,errors:parsed.errors,blockMap:parsed.blockMap,groupMap:parsed.groupMap,noteMap:parsed.nm};lastDiag=window.StableBlockCheck.checkDiagram(p,dsl.split('\\n'),window.StableBlockLabel.connectionPaths(p,'curved'));var hasErr=lastDiag.some(function(d){return d.level==='error'});document.getElementById('err').innerHTML=lastDiag.length?'<div class="error'+(hasErr?'':' warn-only')+'">'+lastDiag.map(function(d){return '<div class="dg-'+d.level+'">L'+d.line+': '+esc(d.msg)+'</div>'}).join('')+'</div>':'';}
 function go(){parsed=parseDSL(dsl);render();props();
-  document.getElementById('err').innerHTML=parsed.errors.length?'<div class="error">'+parsed.errors.map(function(e){return 'L'+e.line+': '+esc(e.msg)}).join('<br>')+'</div>':'';
+  showErr();
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';}
 
