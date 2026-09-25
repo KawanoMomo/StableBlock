@@ -1,5 +1,7 @@
-// コーパス往復テスト: porter の実物(inbox)と見本(corpus)の全 .sb を parseDSL → serializeDSL で往復し、バイト一致を確かめる。
-// 結果は test-results/corpus-roundtrip.json に {total, passed, failed[]} で書く(releaser の品質条件が読む)。
+// コーパス往復テスト: .sb を parseDSL → serializeDSL で往復し、バイト一致を確かめる。
+// - 同梱(リポジトリ内の core/excel/fixtures と tests/e2e/fixtures の .sb): assert する。崩れたら製品の退行。
+// - persona-data(porter の実物 inbox と見本 corpus): ループ外から来る入力なので fail させない。
+//   結果を test-results/corpus-roundtrip.json に {total, passed, failed[]} で書き(releaser の品質条件が読む)、失敗は console に出す。
 // 置き場は SB_CORPUS_ROOT(既定 E:\03_Loop\persona-data\porter)。フォルダが無ければ 0 件で skip。
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -10,6 +12,7 @@ const { pathToFileURL } = require('node:url');
 const ROOT = path.resolve(__dirname, '..');
 const CORPUS_ROOT = process.env.SB_CORPUS_ROOT || 'E:\\03_Loop\\persona-data\\porter';
 const DIRS = ['inbox', 'corpus'].map(d => path.join(CORPUS_ROOT, d));
+const BUNDLED_DIRS = [path.join(ROOT, 'core', 'excel', 'fixtures'), path.join(ROOT, 'tests', 'e2e', 'fixtures')];
 const OUT = path.join(ROOT, 'test-results', 'corpus-roundtrip.json');
 
 function listSb(dir) {
@@ -31,19 +34,14 @@ function firstDiff(a, b) {
   return { line: null, expected: null, actual: null };
 }
 
-test('corpus: 全 .sb が parseDSL → 直列化でバイト一致する', async (t) => {
-  const files = DIRS.flatMap(listSb);
+// files を往復し {total, passed, failed[]} を返す。failed の file は base からの相対パス
+async function roundtrip(files, base) {
   const result = { total: files.length, passed: 0, failed: [] };
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  if (!files.length) {
-    fs.writeFileSync(OUT, JSON.stringify(result, null, 2) + '\n');
-    t.skip(`コーパスが無い: ${DIRS.join(', ')}`);
-    return;
-  }
+  if (!files.length) return result;
   const { parseDSL, serializeDSL } = await import(pathToFileURL(path.join(ROOT, 'core', 'dsl', 'dsl-core.mjs')).href);
   const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
   for (const file of files) {
-    const rel = path.relative(CORPUS_ROOT, file).split(path.sep).join('/');
+    const rel = path.relative(base, file).split(path.sep).join('/');
     const bytes = fs.readFileSync(file);
     const text = decoder.decode(bytes);
     let parsed, back;
@@ -59,6 +57,27 @@ test('corpus: 全 .sb が parseDSL → 直列化でバイト一致する', async
       result.passed++;
     }
   }
+  return result;
+}
+
+test('fixtures: 同梱の .sb が parseDSL → 直列化でバイト一致する', async () => {
+  const files = BUNDLED_DIRS.flatMap(listSb);
+  assert.ok(files.length > 0, `同梱の .sb が見つからない: ${BUNDLED_DIRS.join(', ')}`);
+  const result = await roundtrip(files, ROOT);
+  assert.deepEqual(result.failed, [], `同梱の .sb が往復で壊れた: ${result.failed.length}/${result.total} 件`);
+});
+
+test('corpus: persona-data の .sb を往復して結果を JSON に書く(fail させない)', async (t) => {
+  const files = DIRS.flatMap(listSb);
+  const result = await roundtrip(files, CORPUS_ROOT);
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(result, null, 2) + '\n');
-  assert.deepEqual(result.failed, [], `往復で壊れた .sb が ${result.failed.length}/${result.total} 件(${path.relative(ROOT, OUT)})`);
+  if (!files.length) { t.skip(`コーパスが無い: ${DIRS.join(', ')}`); return; }
+  const summary = `corpus-roundtrip: ${result.passed}/${result.total} passed(${path.relative(ROOT, OUT)})`;
+  if (result.failed.length) {
+    console.log(`${summary}、往復で崩れた ${result.failed.length} 件:`);
+    for (const f of result.failed) console.log(`  - ${f.file}: ${f.reason}${f.line ? ` L${f.line}` : ''}`);
+  } else {
+    console.log(summary);
+  }
 });
