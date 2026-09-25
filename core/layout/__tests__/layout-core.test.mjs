@@ -303,3 +303,17 @@ test('fitParents: 押し出した要素の型を返す(block は at だけ、gro
   const ch = fitParents([p, { ...a, x: 12 }, b], parentMap([p, a, b]), [{ id: 'a', sides: ['r'] }]);
   assert.deepEqual(ch, [{ type: 'group', id: 'P', x: 0, y: 0, w: 21, h: 10 }]);
 });
+
+test('fitParents(seeds): 新しい group の下・右の余白で兄弟に接するなら、隙間 1 を保って押し出す', () => {
+  const ecu = G('ECU', 1, 1, 20, 12), cpu = B('CPU', 2, 3, 8), ram = B('RAM', 11, 3, 8), flash = B('Flash', 2, 7, 8);
+  const r = groupRectFor([cpu, ram], [ecu, flash], ecu);
+  assert.deepEqual(r, { x: 1, y: 2, w: 19, h: 5 });       // 下の余白 1 で Flash(y=7)に接する
+  const mcu = { type: 'group', id: 'MCU', ...r };
+  const parents = { ...parentMap([ecu, cpu, ram, flash]), MCU: 'ECU', CPU: 'MCU', RAM: 'MCU' };
+  const ch = fitParents([ecu, cpu, ram, flash, mcu], parents, [{ id: 'MCU', sides: ['l', 't', 'r', 'b'] }], 1,
+    [{ id: 'MCU', from: { x: 1, y: 2, w: 18, h: 4 } }]);
+  const by = Object.fromEntries(ch.map(c => [c.id, c]));
+  assert.equal(by.Flash.y, 8);                              // MCU の下端 7 から 1 空ける
+  assert.equal(by.ECU.x, 0);                                // MCU が ECU の左の枠に掛かるので ECU が左へ広がる
+  assert.ok(by.ECU.y + by.ECU.h >= 8 + 3 + 1);
+});

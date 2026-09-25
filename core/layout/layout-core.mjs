@@ -206,7 +206,8 @@ export function growToContain(p, c, sides, margin = 1) {
 // items: 操作後の block / group の矩形。parents: 操作前の parentMap。moved: [{ id, sides }](sides は枠を越えうる辺)。
 // 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない。親も一緒に動いた要素は相対位置が変わらないので見ない。
 // 返り値: 動いた・広がった要素の [{ type, id, x, y, w, h }](呼び出し側が本文の行の at / size に書く)。
-export function fitParents(items, parents, moved, margin = 1) {
+// seeds: [{ id, from }] 操作で from から今の矩形に広がった要素(新しい group など)。その広がりで掛かる要素を先に押し出す。
+export function fitParents(items, parents, moved, margin = 1, seeds = []) {
   const byId = new Map((items || []).filter(Boolean).map(i => [i.id, { ...i }]));
   const movedIds = new Set((moved || []).map(m => m.id));
   const queue = (moved || []).filter(m => !movedIds.has(parents[m.id])).map(m => ({ id: m.id, sides: m.sides }));
@@ -243,6 +244,7 @@ export function fitParents(items, parents, moved, margin = 1) {
       queue.push({ id: q.id, sides: moveSides(dx, dy) });
     }
   };
+  for (const sd of seeds || []) { const it = byId.get(sd.id); if (it && sd.from) push(sd.from, it, sd.id, 0); }
   for (let guard = 0; queue.length && guard < 1000; guard++) {
     const { id, sides } = queue.shift();
     const it = byId.get(id), pid = parents[id], p = pid && byId.get(pid);
