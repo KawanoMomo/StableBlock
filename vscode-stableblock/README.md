@@ -18,6 +18,7 @@ Deterministic grid-based block diagram tool — syntax highlighting and interact
 - **Arrow Key Move** — move selected items by 1 grid unit with arrow keys
 - **Dim unlinked** — dim blocks without connections (`H` key or "Dim unlinked" button)
 - **ID** — set / change in the property panel's ID field; a new item's ID follows its label as you type
+- **Rename ID across diagrams** — `F2` on an ID (definition or connection end) renames it in every `.sb` of the workspace, touching only definition lines and connection endpoints; `Shift+F12` lists every diagram and line that defines or references it
 
 ### Annotation Layer
 - **`note` DSL syntax** — annotations rendered on a separate top layer

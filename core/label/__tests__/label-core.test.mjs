@@ -326,3 +326,52 @@ test('labelIssues: 読めないラベル(note の下・block の名前・他の�
   const qi = labelIssues(placeLabels(connectionPaths(q, 'straight'), q), q);
   assert.deepEqual(qi.map(i => [i.kind, i.item.id]), [['text', 'b']]);
 });
+
+// ─── 図をまたぐ参照探しと改名(findIdInDsl / renameIdAcrossDsl / planRename) ───
+import { findIdInDsl, renameIdAcrossDsl, planRename, idSpansInLine } from '../label-core.mjs';
+
+test('idSpansInLine: 定義行の ID と接続の両端の列(F2 で押した位置が ID かを決める)', () => {
+  assert.deepEqual(idSpansInLine('  block SpiDrv "SpiDrv" at 1,1 size 4x2'), [{ id: 'SpiDrv', start: 8, end: 14 }]);
+  assert.deepEqual(idSpansInLine('app  -->  SpiDrv "x"'), [{ id: 'app', start: 0, end: 3 }, { id: 'SpiDrv', start: 10, end: 16 }]);
+  assert.deepEqual(idSpansInLine('# block SpiDrv'), []);
+});
+
+test('findIdInDsl: 定義行と接続の from / to だけを拾い、ラベル・コメントの同じ文字列は拾わない', () => {
+  const dsl = '# SpiDrv の図\r\nblock SpiDrv "SpiDrv" at 1,1 size 4x2\r\nblock b "uses SpiDrv" at 8,1 size 4x2\r\nSpiDrv -> b "SpiDrv"\r\nb --> SpiDrv\r\n';
+  assert.deepEqual(findIdInDsl(dsl, 'SpiDrv').map(r => [r.line, r.kind]), [[2, 'def'], [4, 'ref'], [5, 'ref']]);
+  assert.equal(findIdInDsl(dsl, 'SpiDrv')[0].text, 'block SpiDrv "SpiDrv" at 1,1 size 4x2');   // 行末の \r は含めない
+  assert.deepEqual(findIdInDsl(dsl, 'Spi'), []);
+});
+
+test('renameIdAcrossDsl: 定義の無い図(@include 先の定義を参照する図)は接続の from / to だけを変える', () => {
+  const user = '@include "shared/common.sb"\r\nblock app "App" at 1,1 size 4x2\r\napp -> SpiDrv "req"\r\n# SpiDrv はここ\r\n';
+  assert.equal(renameIdAcrossDsl(user, 'SpiDrv', 'Spi_Driver'),
+    '@include "shared/common.sb"\r\nblock app "App" at 1,1 size 4x2\r\napp -> Spi_Driver "req"\r\n# SpiDrv はここ\r\n');
+  const def = '﻿block SpiDrv "SpiDrv" at 1,1 size 4x2\nSpiDrv -> app\n';
+  assert.equal(renameIdAcrossDsl(def, 'SpiDrv', 'Spi_Driver'), '﻿block Spi_Driver "SpiDrv" at 1,1 size 4x2\nSpi_Driver -> app\n');
+  assert.equal(renameIdAcrossDsl('block a "A" at 1,1 size 4x2\n', 'SpiDrv', 'X'), 'block a "A" at 1,1 size 4x2\n');
+});
+
+test('planRename: 全図の変わる行は定義行と接続行だけ。座標・サイズの行は 1 バイトも変えない', () => {
+  const files = [
+    { path: 'shared/common.sb', text: 'block SpiDrv "SPI" at 1,1 size 4x2\r\nblock os "OS" at 1,5 size 4x2\r\n' },
+    { path: 'spi_swc.sb', text: '@include "shared/common.sb"\r\nblock app "App" at 8,1 size 4x2\r\napp -> SpiDrv\r\nSpiDrv -> os\r\n' },
+    { path: 'can_swc.sb', text: 'block can "Can" at 1,1 size 4x2\r\n' },
+  ];
+  const plan = planRename(files, 'SpiDrv', 'Spi_Driver');
+  assert.equal(plan.error, undefined);
+  assert.equal(plan.defs, 1);
+  assert.deepEqual(plan.changes.map(c => [c.path, c.lines.map(l => l.line)]), [['shared/common.sb', [1]], ['spi_swc.sb', [3, 4]]]);
+  assert.equal(plan.changes[1].text, '@include "shared/common.sb"\r\nblock app "App" at 8,1 size 4x2\r\napp -> Spi_Driver\r\nSpi_Driver -> os\r\n');
+  assert.deepEqual(plan.changes[1].lines[0], { line: 3, before: 'app -> SpiDrv', after: 'app -> Spi_Driver' });
+});
+
+test('planRename: 使えない表記・既にある ID・どこにも無い ID は何も変えずに理由を返す', () => {
+  const files = [{ path: 'a.sb', text: 'block SpiDrv "S" at 1,1 size 4x2\n' }, { path: 'b.sb', text: 'block Spi_Driver "S" at 1,1 size 4x2\n' }];
+  assert.match(planRename(files, 'SpiDrv', 'Spi Driver').error, /ID に使えない/);
+  assert.match(planRename(files, 'SpiDrv', 'Spi_Driver').error, /既に定義されている: b\.sb:1/);
+  assert.match(planRename(files, 'Nope', 'X').error, /定義・参照している図が無い/);
+  assert.match(planRename(files, 'SpiDrv', 'SpiDrv').error, /同じ/);
+  const dup = [{ path: 'd.sb', text: 'block a "A" at 1,1 size 4x2\nblock a "A2" at 8,1 size 4x2\na -> a\n' }];
+  assert.match(planRename(dup, 'a', 'b').error, /d\.sb で 2 回定義されている\(L1, L2\)/);
+});
