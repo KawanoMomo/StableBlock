@@ -434,3 +434,24 @@ test('renameIdInDsl: ラベル全体が旧 ID と同じなら表示名も新 ID 
   assert.equal(renameIdInDsl('block SpiDrv "SpiDrv 本体" at 1,1 size 4x2', 'SpiDrv', 'X'), 'block X "SpiDrv 本体" at 1,1 size 4x2');
   assert.equal(renameIdInDsl('block a "A" at 1,1 size 4x2\nblock b "a" at 5,1 size 4x2', 'a', 'z'), 'block z "A" at 1,1 size 4x2\nblock b "a" at 5,1 size 4x2');
 });
+
+// ─── プロパティ欄の ID 欄: 普段は畳んで今の ID だけ見せ、名前が無いときと利用者が開いたときだけ開く(BLK-human-20260926-1010-2) ───
+import { idFieldOpen } from '../label-core.mjs';
+
+test('idFieldOpen: __new_ の ID か、利用者が開いたままにしたときだけ開く', () => {
+  assert.equal(idFieldOpen('__new_3', false), true);
+  assert.equal(idFieldOpen('SpiDrv', false), false);
+  assert.equal(idFieldOpen('SpiDrv', true), true);
+  assert.equal(idFieldOpen('new_x', false), false);
+});
+
+test('HTML 版と VSCode 拡張の ID 欄は畳める欄(details)で、ラベル欄より下にあり、開閉は core の idFieldOpen で決める', () => {
+  const root = sbPath(new URL('../../../', import.meta.url));
+  for (const f of ['stableblock.html', 'vscode-stableblock/src/extension.js']) {
+    const src = sbRead(root + f, 'utf8');
+    const box = src.indexOf('id="prop-id-box"'), inp = src.indexOf('id="prop-id"');
+    assert.ok(box > 0 && box < inp, f + ': ID 欄が details の中に無い');
+    assert.ok(src.slice(box, inp).includes('StableBlockLabel.idFieldOpen('), f + ': 開閉が idFieldOpen で決まっていない');
+    assert.ok(src.lastIndexOf('setLabel(this.value)', box) > 0 || src.lastIndexOf('sLb(this.value)', box) > 0, f + ': ラベル欄が ID 欄より上に無い');
+  }
+});

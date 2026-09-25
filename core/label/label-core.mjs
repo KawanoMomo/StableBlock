@@ -140,6 +140,12 @@ export function labelToId(label) {
   return s;
 }
 
+// プロパティ欄の ID 欄を開いて見せるか。ID はラベルを打てば自動で付くので普段は畳んで今の ID だけを見せ、まだ名前が無い
+// (`__new_` で始まる)ときと、利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
+export function idFieldOpen(id, userOpen) {
+  return !!userOpen || String(id).startsWith('__new_');
+}
+
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
 export function uniqueId(base, used) {
   const has = used instanceof Set ? id => used.has(id) : id => used.includes(id);

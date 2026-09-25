@@ -360,6 +360,8 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await label.fill('');
   await label.pressSequentially('Spi_Api');
   await expect(props.locator('#prop-id')).toHaveValue('Spi_Api');
+  await expect(props.locator('#prop-id')).toBeVisible();                   // 名前がまだ無かった要素は ID 欄が開いている
+  await expect(props.locator('#prop-id-now')).toHaveText('Spi_Api');
   await expect.poll(() => getEditorText(page)).toMatch(/^block Spi_Api "Spi_Api" at /m);
 
   // 読み込んだ図の block はラベルを変えても ID は動かない。ID 欄で変えると定義行と接続の参照だけが変わる
@@ -367,6 +369,11 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   const before = (await getEditorText(page)).split('\n');
   const id = props.locator('#prop-id');
   await expect(id).toHaveValue('spi_d');
+  // ID 欄は普段は畳まれて今の ID だけが見え、「ID:」を押すと開く(開いたら選び直しても開いたまま)
+  await expect(props.locator('#prop-id-now')).toHaveText('spi_d');
+  await expect(id).toBeHidden();
+  await props.locator('#prop-id-box > summary').click();
+  await expect(id).toBeVisible();
   await id.fill('bad id');
   await id.press('Enter');
   await expect(props.locator('#prop-id-msg')).toContainText('英数字と _');
@@ -383,6 +390,10 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
     'Spi_Driver -> mcal',
   ]);
   await expect(props.locator('#prop-id')).toHaveValue('Spi_Driver');
+  await expect(props.locator('#prop-id-now')).toHaveText('Spi_Driver');
+  await svg.locator('g[data-type="block"][data-id="dma"]').click();
+  await expect(props.locator('#prop-id')).toBeVisible();
+  await svg.locator('g[data-type="block"][data-id="Spi_Driver"]').click();
 
   // 既にある ID には変えられない
   await props.locator('#prop-id').fill('dma');
