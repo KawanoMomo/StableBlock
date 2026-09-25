@@ -34,3 +34,21 @@ export function pruneSelection(sel, parsed) {
 export function sameSelection(a, b) {
   return a.length === b.length && a.every((s, i) => selSame(s, b[i]));
 }
+
+// プロパティ欄の数値欄(X / Y / W / H)の ▲▼ が値をどれだけ変えるか。▲ は +1、▼ は -1。
+// 1 つ選択でも複数選択でも同じ向き(Excel / Visio / draw.io の数値欄と同じ)。
+// Y は下向きが正なので Y の ▲ は図の上では下へ動く。画面の向きで動かすのは矢印キー(arrowNudge)
+export function stepDelta(button) {
+  return button === 'up' ? 1 : button === 'dn' ? -1 : 0;
+}
+
+// 矢印キーの移動: 画面の向きに 1 グリッド。{ axis: 'x'|'y', d: ±1 }、矢印キーでなければ null
+export function arrowNudge(key) {
+  switch (key) {
+    case 'ArrowLeft': return { axis: 'x', d: -1 };
+    case 'ArrowRight': return { axis: 'x', d: 1 };
+    case 'ArrowUp': return { axis: 'y', d: -1 };
+    case 'ArrowDown': return { axis: 'y', d: 1 };
+    default: return null;
+  }
+}

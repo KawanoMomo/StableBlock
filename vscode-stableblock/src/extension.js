@@ -352,7 +352,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -690,8 +690,8 @@ function propsPanel(){
   }
   if(sel.length>1){
     var mh='<div class="pl" style="margin-top:0">'+sel.length+' SELECTED</div>'+
-      stepper2("Position","bNudge('x',-1)","bNudge('x',1)","bNudge('y',-1)","bNudge('y',1)")+
-      stepper2("Size","bNudgeSz('w',-1)","bNudgeSz('w',1)","bNudgeSz('h',-1)","bNudgeSz('h',1)")+
+      stepper2("Position","stepF('x','dn')","stepF('x','up')","stepF('y','dn')","stepF('y','up')")+
+      stepper2("Size","stepF('w','dn')","stepF('w','up')","stepF('h','dn')","stepF('h','up')")+
       '<div class="pl">Color</div><div class="cg">'+COLORS.map(function(c){return'<div class="cd" style="background:'+c+'" onclick="bProp(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     if(sel.length>=3&&chainIds()){mh+='<div class="pl">Connection</div><button class="pbtn" id="chain-btn" style="width:100%;background:#6366F1;color:#fff;border-color:#6366F1" title="Connect in the order you clicked" onclick="connChain()">'+chainIds().map(esc).join(' &rarr; ')+'</button>';}
     if(sel.length===2){
@@ -728,8 +728,8 @@ function propsPanel(){
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
   h+='<div class="pl">ID</div><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="if(event.key===\\'Enter\\')this.blur()" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div>';
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
-  h+=stepperRow("X","sNudge(\\'x\\',-1)","sNudge(\\'x\\',1)",it.x)+stepperRow("Y","sNudge(\\'y\\',-1)","sNudge(\\'y\\',1)",it.y);
-  h+=stepperRow("W","sNudgeSz(\\'w\\',-1)","sNudgeSz(\\'w\\',1)",it.w)+stepperRow("H","sNudgeSz(\\'h\\',-1)","sNudgeSz(\\'h\\',1)",it.h);
+  h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
+  h+=stepperRow("W","stepF(\\'w\\',\\'dn\\')","stepF(\\'w\\',\\'up\\')",it.w)+stepperRow("H","stepF(\\'h\\',\\'dn\\')","stepF(\\'h\\',\\'up\\')",it.h);
   h+='<div class="pl">Color</div><div class="cg">'+colors.map(function(c){return'<div class="cd'+(it.color===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
   h+='<input class="pi" style="width:80px" value="'+it.color+'" oninput="sPr(\\'color\\',this.value)">';
   if(isB||isN){
@@ -751,7 +751,7 @@ function stepperRow(label,decF,incF,val){
   return '<div class="pl">'+label+'</div><div class="stepper" style="margin-bottom:4px"><input class="pi" type="number" value="'+val+'" oninput="sField(\\''+label.toLowerCase()+'\\',this.value)"><div class="stcol"><button class="stb up" onclick="'+incF+'">&#x25B2;</button><button class="stb dn" onclick="'+decF+'">&#x25BC;</button></div></div>';
 }
 function stepper2(label,xd,xi,yd,yi){
-  return '<div class="pl">'+label+'</div><div class="pr"><div style="flex:1"><div style="font-size:8px;color:#888">X</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+xi+'">&#x25B2;</button><button class="stb dn" onclick="'+xd+'">&#x25BC;</button></div></div></div><div style="flex:1"><div style="font-size:8px;color:#888">Y</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+yd+'">&#x25B2;</button><button class="stb dn" onclick="'+yi+'">&#x25BC;</button></div></div></div></div>';
+  return '<div class="pl">'+label+'</div><div class="pr"><div style="flex:1"><div style="font-size:8px;color:#888">X</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+xi+'">&#x25B2;</button><button class="stb dn" onclick="'+xd+'">&#x25BC;</button></div></div></div><div style="flex:1"><div style="font-size:8px;color:#888">Y</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+yi+'">&#x25B2;</button><button class="stb dn" onclick="'+yd+'">&#x25BC;</button></div></div></div></div>';
 }
 
 // Single-item actions
@@ -771,6 +771,10 @@ function sNudge(ax,d){if(!sel.length)return;pushH();var s=sel[0],it=getIt(s);if(
   if(s.type==='group'){var ch=fCh(it);ch.cb.forEach(function(b){upP('block',b.id,b.x+(ax==='x'?d:0),b.y+(ax==='y'?d:0))});ch.cg.forEach(function(g){upP('group',g.id,g.x+(ax==='x'?d:0),g.y+(ax==='y'?d:0))});}
   upP(s.type,s.id,Math.max(0,it.x+(ax==='x'?d:0)),Math.max(0,it.y+(ax==='y'?d:0)));growPar(before,[{id:s.id,sides:axSides(ax,d)}]);go();notify();}
 function sNudgeSz(ax,d){if(!sel.length)return;pushH();var it=getIt(sel[0]);if(!it)return;var before=parNow();upS(sel[0].type,sel[0].id,ax==='w'?Math.max(1,it.w+d):it.w,ax==='h'?Math.max(1,it.h+d):it.h);growPar(before,[{id:sel[0].id,sides:axSides(ax==='w'?'x':'y',d)}]);go();notify();}
+// プロパティ欄の X / Y / W / H の ▲▼(core/select stepDelta): ▲ は値を増やす。1 つ選択と複数選択で同じ向き
+function stepF(f,btn){var d=window.StableBlockSelect.stepDelta(btn);if(!sel.length||!d)return;
+  if(f==='x'||f==='y'){if(sel.length>1)bNudge(f,d);else sNudge(f,d);}
+  else if(sel.length>1)bNudgeSz(f,d);else sNudgeSz(f,d);}
 function sNudgeR(d){if(!sel.length)return;var it=parsed.blockMap[sel[0].id]||parsed.nm[sel[0].id];if(!it)return;pushH();upPr(sel[0].type,sel[0].id,'round',Math.max(0,it.round+d));go();notify();}
 function sDel(){if(!sel.length)return;pushH();delItems(sel);sel=[];go();notify();}
 
@@ -872,7 +876,7 @@ document.addEventListener('keydown',function(e){
   var tg=e.target&&e.target.tagName;if((tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'))return;
   if((e.key==='F2'||(e.key==='Enter'&&!(document.activeElement&&document.activeElement.tagName==='BUTTON')&&tg!=='BUTTON'))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInl(sel[0].type,sel[0].id);return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClk=false;var an=showAnno?parsed.notes.map(function(n){return{type:'note',id:n.id}}):[];sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}})).concat(an);render();props();return;}
-  if(sel.length&&(e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();var ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';var d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)bNudge(ax,d);else sNudge(ax,d);return;}
+  var an=window.StableBlockSelect.arrowNudge(e.key);if(sel.length&&an){e.preventDefault();if(sel.length>1)bNudge(an.axis,an.d);else sNudge(an.axis,an.d);return;}
   if(e.key==='Delete'||e.key==='Backspace'){if(!sel.length)return;e.preventDefault();pushH();delItems(sel);sel=[];go();notify();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='c'){e.preventDefault();copySel();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSel();return;}

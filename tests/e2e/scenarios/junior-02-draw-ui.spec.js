@@ -633,3 +633,41 @@ test('junior-02: ラベルはキャンバス上でダブルクリック / F2 で
   await page.waitForTimeout(300);
   expect(downloads).toBe(1);
 });
+
+test('junior-02: プロパティ欄の X / Y / W / H の ▲ は 1 つ選択でも複数選択でも値を 1 増やし、矢印キーは画面の向きのまま', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SENPAI);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const step = (field, dir) => props.locator(`div:has(> .prop-sub:text-is("${field}")) .step-btn.${dir}`);
+  const line = id => getEditorText(page).then(t => t.split('\n').map(l => l.replace(/\s+/g, ' ')).find(l => l.startsWith(`block ${id} `)));
+
+  // 1 つ選択: X ▲ → x+1、Y ▲ → y+1、W ▲ → w+1、H ▼ → h-1
+  await svg.locator('g[data-type="block"][data-id="app"]').click();
+  await step('X', 'up').click();
+  await expect.poll(() => line('app')).toContain('at 3,3 size 9x3');
+  await step('Y', 'up').click();
+  await expect.poll(() => line('app')).toContain('at 3,4 size 9x3');
+  await step('W', 'up').click();
+  await step('H', 'dn').click();
+  await expect.poll(() => line('app')).toContain('at 3,4 size 10x2');
+
+  // 複数選択: 同じ ▲ が同じ向き(X ▲ で両方 x+1、Y ▲ で両方 y+1、W ▲ で両方 w+1)
+  await svg.locator('g[data-type="block"][data-id="dma"]').click({ modifiers: ['Shift'] });
+  await expect(props).toContainText('2個のアイテムを選択中');
+  await step('X', 'up').click();
+  await step('Y', 'up').click();
+  await step('W', 'up').click();
+  await expect.poll(() => line('app')).toContain('at 4,5 size 11x2');
+  await expect.poll(() => line('dma')).toContain('at 14,9 size 10x3');
+  await step('X', 'dn').click();
+  await step('Y', 'dn').click();
+  await expect.poll(() => line('app')).toContain('at 3,4 size 11x2');
+  await expect.poll(() => line('dma')).toContain('at 13,8 size 10x3');
+
+  // 矢印キーは画面の向き(↑ で上 = y-1、→ で右 = x+1)。▲▼ とは別
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => line('app')).toContain('at 4,3 size 11x2');
+  await expect.poll(() => line('dma')).toContain('at 14,7 size 10x3');
+});

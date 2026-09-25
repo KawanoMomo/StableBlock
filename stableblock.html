@@ -661,13 +661,13 @@ function renderPropsPanel(){
     let html=`<div style="font-size:12px;font-weight:700;color:#A5B4FC;margin-bottom:10px">${sel.length}個のアイテムを選択中</div>`;
     html+=`<div class="prop-section"><div class="prop-label">一括 位置調整</div>
       <div class="prop-row">
-        <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudge('x',-1)">▲</button><button class="step-btn dn" onclick="batchNudge('x',1)">▼</button></div></div></div>
-        <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudge('y',-1)">▲</button><button class="step-btn dn" onclick="batchNudge('y',1)">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
       </div></div>`;
     html+=`<div class="prop-section"><div class="prop-label">一括 サイズ調整</div>
       <div class="prop-row">
-        <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudgeSz('w',1)">▲</button><button class="step-btn dn" onclick="batchNudgeSz('w',-1)">▼</button></div></div></div>
-        <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="batchNudgeSz('h',1)">▲</button><button class="step-btn dn" onclick="batchNudgeSz('h',-1)">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
+        <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" value="" placeholder="—" disabled><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
       </div></div>`;
     html+=`<div class="prop-section"><div class="prop-label">一括 色変更</div><div class="color-grid">${colorDots}</div></div>`;
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
@@ -727,12 +727,12 @@ function renderPropsPanel(){
     <div class="prop-section"><div class="prop-label">ID</div><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div><div class="prop-sub">英数字と _。接続の参照も一緒に変わる</div></div>
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('y',-1)">▲</button><button class="step-btn dn" onclick="nudge('y',1)">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
     </div></div>
     <div class="prop-section"><div class="prop-label">サイズ (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" oninput="setSz('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeSz('w',1)">▲</button><button class="step-btn dn" onclick="nudgeSz('w',-1)">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" oninput="setSz('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeSz('h',1)">▲</button><button class="step-btn dn" onclick="nudgeSz('h',-1)">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" oninput="setSz('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" oninput="setSz('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
     </div></div>
     <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" oninput="setProp('color',this.value)" placeholder="#RRGGBB"></div>`;
 
@@ -767,6 +767,10 @@ function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it
   if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
   updatePos(s.type,s.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
 function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',delta)}]);refresh();}
+// プロパティ欄の X / Y / W / H の ▲▼(core/select stepDelta): ▲ は値を増やす。1 つ選択と複数選択で同じ向き
+function stepField(field,button){const d=window.StableBlockSelect.stepDelta(button);if(!sel.length||!d)return;
+  if(field==='x'||field==='y'){if(sel.length>1)batchNudge(field,d);else nudge(field,d);}
+  else if(sel.length>1)batchNudgeSz(field,d);else nudgeSz(field,d);}
 function nudgeRound(delta){if(!sel.length)return;pushHistory();const it=parsed.blockMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}
 function deleteItem(){if(!sel.length)return;pushHistory();const{type,id}=sel[0];const lines=dsl.split("\n"),re=new RegExp(`^\\s*${type}\\s+${id}\\s+`),c1=new RegExp(`(^|\\s)${id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${id}(\\s|$)`);dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");sel=[];refresh();}
 
@@ -1032,7 +1036,7 @@ document.addEventListener('keydown',e=>{
   // Ctrl+A: select all
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClicked=false;justLinked=[];const allNotes=showAnnotations?parsed.notes.map(n=>({type:'note',id:n.id})):[];sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id})),...allNotes];renderProps();renderSVG();return;}
   // Arrow keys: move selected
-  if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
+  const an=window.StableBlockSelect.arrowNudge(e.key);if(sel.length&&an){e.preventDefault();if(sel.length>1)batchNudge(an.axis,an.d);else nudge(an.axis,an.d);return;}
   // H: toggle highlight
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
   if(e.key==='l'||e.key==='L'){e.preventDefault();cycleLineMode();return;}
