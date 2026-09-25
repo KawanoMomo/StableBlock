@@ -132,8 +132,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" id="line-mode-btn" onclick="cycleLineMode()" title="L キーで切替: 曲線/直線/直角">⌇ 曲線</button>
     <button class="tb" id="hl-btn" onclick="toggleHighlight()" title="H キーでも切替">◎ HL</button>
     <div class="sep"></div>
-    <button class="tb" id="anno-btn" onclick="toggleAnnotations()" title="N キーでも切替">◇ 注釈</button>
-    <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈編集モード" style="opacity:0.4;pointer-events:none">✎ 編集</button>
+    <button class="tb tb-anno-active" id="anno-btn" onclick="toggleAnnotations()" title="注釈の表示/非表示(N キーでも切替)">◇ 注釈</button>
+    <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈だけを触るモード(ブロック/グループをロック)">✎ 編集</button>
     <div class="sep"></div>
     <button class="tb" onclick="fixNames(event.shiftKey)" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
@@ -216,7 +216,7 @@ log   -> hal
 // addCounter: auto-increment for new element IDs, highlight: HL mode toggle
 // showAnnotations/annotationEdit: annotation layer visibility and edit mode
 // searchQuery: toolbar search filter text
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=false, annotationEdit=false, searchQuery='', lineMode='curved';
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, annotationEdit=false, searchQuery='', lineMode='curved';
 // Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -304,7 +304,7 @@ function toggleAnnotations(){
   const editBtn=document.getElementById('anno-edit-btn');
   editBtn.style.opacity=showAnnotations?'':'0.4';
   editBtn.style.pointerEvents=showAnnotations?'':'none';
-  if(!showAnnotations&&annotationEdit){annotationEdit=false;editBtn.classList.remove('tb-anno-edit');sel=sel.filter(s=>s.type!=='note');}
+  if(!showAnnotations){if(annotationEdit){annotationEdit=false;editBtn.classList.remove('tb-anno-edit');}sel=sel.filter(s=>s.type!=='note');}
   renderSVG();renderProps();
 }
 function toggleAnnotationEdit(){
@@ -312,7 +312,6 @@ function toggleAnnotationEdit(){
   annotationEdit=!annotationEdit;
   document.getElementById('anno-edit-btn').classList.toggle('tb-anno-edit',annotationEdit);
   if(annotationEdit)sel=sel.filter(s=>s.type==='note');
-  else sel=sel.filter(s=>s.type!=='note');
   renderSVG();renderProps();
 }
 function cycleLineMode(){
@@ -430,12 +429,12 @@ function renderSVG(){
     annoConns.forEach((c,i)=>{const p=annoPorts[i];if(!p)return;const{fp,tp,fs,ts}=p;
       const ci=connections.indexOf(c);
       const pi=connPathInfo(fp,tp,fs,ts,c.route);
-      s+=`<g opacity="${annotationEdit?1:0.7}">`;
+      s+=`<g>`;
       s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
       if(c.label)s+=connLabelSvg(c,pi.mid);
       s+=`</g>`;});
     notes.forEach(n=>{const sl=isSel(n.id);
-      s+=`<g data-type="note" data-id="${n.id}" style="cursor:${annotationEdit?'grab':'default'}" opacity="${annotationEdit?1:0.7}">`;
+      s+=`<g data-type="note" data-id="${n.id}" style="cursor:grab">`;
       s+=`<rect x="${n.x*g}" y="${n.y*g}" width="${n.w*g}" height="${n.h*g}" fill="${n.color}" stroke="${sl?'#F59E0B':(n.borderColor||'#D97706')}" stroke-width="${sl?2.5:1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
       n.label.split("\\n").forEach((line,li)=>{const ty=n.y*g+6+li*14;s+=`<text x="${n.x*g+6}" y="${ty+10}" font-size="11" font-weight="400" fill="${n.textColor}" text-anchor="start" style="pointer-events:none">${esc(line)}</text>`;});
       s+=`</g>`;});
@@ -445,7 +444,6 @@ function renderSVG(){
   sel.forEach(si=>{
     const it=getItem(si); if(!it)return;
     const isNote=it.type==='note';
-    if(isNote&&!annotationEdit)return;
     if(!isNote&&annotationEdit)return;
     const x=it.x*g, y=it.y*g, w=it.w*g, h=it.h*g;
     const hs=10, hitS=20;
@@ -516,7 +514,6 @@ function setupInteractions(){
     el.addEventListener('mousedown',e=>{
       e.preventDefault();e.stopPropagation();
       const type=el.dataset.type, id=el.dataset.id;
-      if(type==='note'&&!annotationEdit)return;
       if(type!=='note'&&annotationEdit)return;
 
       // Selection logic: Shift adds, otherwise replaces
@@ -593,7 +590,8 @@ function renderProps(){
     } else {
       el.innerHTML=`<div class="prop-section">
         <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()">+ ブロック追加</button>
-        <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD" onclick="addGroup()">+ グループ追加</button>
+        <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;margin-bottom:6px" onclick="addGroup()">+ グループ追加</button>
+        <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()">+ 注釈追加</button>
       </div>
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
       <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ</div>
@@ -757,7 +755,7 @@ function addBlock(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimE
 function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;const ch=findChildren(gr).childBlocks;const bw=8,bh=3,pad=1,labelH=2;let px=gr.x+pad,py=gr.y+labelH;if(ch.length){const sorted=[...ch].sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y);const last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){updateSize('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+`\nblock ${id} "New Block" at ${px},${py} size ${bw}x${bh} color=#3B82F6 text=#FFFFFF round=4\n`;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at 5,5 size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
-function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!annotationEdit){annotationEdit=true;showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');document.getElementById('anno-edit-btn').style.display='';document.getElementById('anno-edit-btn').classList.add('tb-anno-edit');}refresh();}
+function addNote(){pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at 5,5 size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
 // labelToId: convert label → valid ID (lowercase, alphanum+underscore, max 30 chars)
 // fixNames(all): normal click → rename __new_ only; Shift+click → rename ALL IDs
 // Uses line-based replacement to handle duplicate IDs correctly
@@ -885,7 +883,7 @@ document.addEventListener('keydown',e=>{
   // Delete / Backspace: delete selected
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
   // Ctrl+A: select all
-  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();if(annotationEdit)sel=parsed.notes.map(n=>({type:'note',id:n.id}));else sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id}))];renderProps();renderSVG();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();const allNotes=showAnnotations?parsed.notes.map(n=>({type:'note',id:n.id})):[];if(annotationEdit)sel=allNotes;else sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id})),...allNotes];renderProps();renderSVG();return;}
   // Arrow keys: move selected
   if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
   // H: toggle highlight

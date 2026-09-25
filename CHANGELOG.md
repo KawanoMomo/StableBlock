@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-owner-20260925-1921-3: 注釈(note)が既定で表示され、ツール欄の「+ 注釈追加」1 回で置け、通常モードのまま block と同じに選択・移動・リサイズでき、Ctrl+A → Delete で note も消える(HTML 版と VSCode 拡張)
 - BLK-owner-20260925-1921-prune: 接続を作る入口を「2 つ選んで a → b」の 1 つに統合(from/to の ID 入力欄と「色を指定して接続」を畳み、案内 1 行に置換。色は結んだ後に「線の色」で変える。HTML 版と VSCode 拡張の両方)
 - BLK-human-20260925-1900: E2E の基盤(`npm run test:e2e`、worker ごとの静的サーバ、`tests/e2e/scenarios/` の雛形 2 本)と、porter コーパスの .sb を parse → 直列化で往復するバイト一致テスト(`core/dsl/`)
 - Excel (.xlsx) エクスポート機能 (HTML 版 / VSCode 拡張)

@@ -39,3 +39,38 @@ test('junior-02: 2 つ選んで「a → b」で結び、結んだ後に線の色
   await expect.poll(() => getEditorText(page)).toMatch(/^app -> dma color=#EF4444$/m);
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(8);
 });
+
+test('junior-02: 注釈は block と同じ 1 手で置け、そのまま選んで動かせ、全選択 → Delete で消える', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SENPAI);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+
+  // 何も選んでいないツール欄の「+ 注釈追加」1 回で note が入り、編集モードに入らずに選択されている
+  await props.getByRole('button', { name: '+ 注釈追加' }).click();
+  const added = svg.locator('g[data-type="note"][data-id^="__new_"]');
+  await expect(added).toHaveCount(1);
+  await expect(page.locator('#anno-edit-btn')).not.toHaveClass(/tb-anno-edit/);
+  await expect(props).toContainText('__new_');
+
+  // 通常モードのまま block も note も選べる
+  await svg.locator('g[data-type="block"][data-id="app"]').click();
+  await expect(props).toContainText('app');
+  await svg.locator('g[data-type="note"][data-id="memo"]').click();
+  await expect(props).toContainText('memo');
+
+  // note をドラッグで動かせる(本文の note 行の座標が変わる)
+  const box = await svg.locator('g[data-type="note"][data-id="memo"] rect').first().boundingBox();
+  await page.mouse.move(box.x + 10, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 10, box.y + 70, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(() => getEditorText(page)).not.toMatch(/^note memo "Job 単位で排他" at 35,3 /m);
+
+  // Ctrl+A → Delete で note も含めて空になる
+  await svg.locator('g[data-type="block"][data-id="app"]').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await expect(svg.locator('g[data-type="block"], g[data-type="group"], g[data-type="note"]')).toHaveCount(0);
+  expect(await getEditorText(page)).not.toMatch(/^\s*note\s/m);
+});
