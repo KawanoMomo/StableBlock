@@ -99,6 +99,10 @@ export function buildLabelCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockLabel', 'label-core.mjs');
 }
 
+export function buildSelectCoreBrowser(source) {
+  return buildBrowserGlobal(source, 'StableBlockSelect', 'select-core.mjs');
+}
+
 /**
  * CLI entry point.
  */
@@ -115,6 +119,11 @@ function main() {
   const labelSource = readFileSync(LABEL_SRC, 'utf8');
   writeFileSync(OUT_LABEL_BROWSER, buildLabelCoreBrowser(labelSource));
   console.log(`Wrote: ${OUT_LABEL_BROWSER}`);
+
+  const SELECT_SRC = join(__dirname, '..', 'select', 'select-core.mjs');
+  const OUT_SELECT_BROWSER = join(__dirname, '..', 'select', 'select-core.browser.js');
+  writeFileSync(OUT_SELECT_BROWSER, buildSelectCoreBrowser(readFileSync(SELECT_SRC, 'utf8')));
+  console.log(`Wrote: ${OUT_SELECT_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script
