@@ -53,6 +53,33 @@ function setCanvasInDsl(dsl, width, height) {
   return out === dsl ? dsl : out;
 }
 
+// 本文の `@canvas` 行の route=(図全体の既定の線の形。route を書いていない接続に効く)だけを書き換える。
+// 曲線(既定)にするときは route= を消す(何も書いていない図と同じバイトに戻る)。`@canvas` 行が無ければ、
+// 先頭のコメント行の直後に `@canvas route=...` を 1 行足す。変える必要が無ければ同じ文字列を返す。
+function setCanvasRouteInDsl(dsl, route) {
+  const r = route === 'straight' || route === 'ortho' ? route : null;
+  const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
+  const lines = dsl.split('\n');
+  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  if (idx < 0) {
+    if (!r) return dsl;
+    let at = 0;
+    while (at < lines.length && /^\s*#/.test(lines[at])) at++;
+    lines.splice(at, 0, `@canvas route=${r}` + (eol === '\r\n' ? '\r' : ''));
+    return lines.join('\n');
+  }
+  let line = lines[idx];
+  const cr = line.endsWith('\r') ? '\r' : '';
+  if (cr) line = line.slice(0, -1);
+  const re = /(\s)route=\S+/;
+  if (!r) line = line.replace(/\s+route=\S+/, '');
+  else if (re.test(line)) line = line.replace(re, `$1route=${r}`);
+  else line = line.replace(/\s*$/, '') + ` route=${r}`;
+  lines[idx] = line + cr;
+  const out = lines.join('\n');
+  return out === dsl ? dsl : out;
+}
+
 // 要素がキャンバスからはみ出していれば `@canvas` 行を広げた本文を返す。はみ出していなければ同じ文字列。
 function growCanvasInDsl(dsl, canvas, items, margin = 1) {
   const { width, height } = grownCanvasSize(canvas, items, margin);
@@ -117,4 +144,4 @@ function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom };
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom };

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
   parseLpos, labelLayout, setConnLabelInDsl,
+  connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
 } from '../label-core.mjs';
+import { parseDSL } from '../../dsl/dsl-core.mjs';
 
 test('extendPoint moves point in side direction', () => {
   assert.deepEqual(extendPoint({ x: 10, y: 20 }, 'top', 5), { x: 10, y: 15 });
@@ -221,4 +223,42 @@ test('renameIdInDsl with duplicate ids renames the given line only and leaves co
 
 test('renameIdInDsl returns dsl unchanged when the id is absent', () => {
   assert.equal(renameIdInDsl('block a "A" at 1,1 size 4x2', 'zz', 'y'), 'block a "A" at 1,1 size 4x2');
+});
+
+test('線の形: 接続の route → @canvas の route → 曲線 の順で決まる(GUI に表示だけの状態は無い)', () => {
+  assert.equal(canvasRoute({}), 'curved');
+  assert.equal(canvasRoute(undefined), 'curved');
+  assert.equal(canvasRoute({ route: 'ortho' }), 'ortho');
+  assert.equal(canvasRoute({ route: 'zigzag' }), 'curved');
+  assert.equal(connRoute({ route: null }, { route: 'straight' }), 'straight');
+  assert.equal(connRoute({ route: 'curved' }, { route: 'straight' }), 'curved');
+  assert.equal(connRoute({}, {}), 'curved');
+  assert.deepEqual([undefined, 'curved', 'straight', 'ortho'].map(nextCanvasRoute), ['straight', 'straight', 'ortho', 'curved']);
+});
+
+test('connPathInfo: 曲線・直線・直角の path と中点', () => {
+  const fp = { x: 0, y: 0 }, tp = { x: 100, y: 40 };
+  assert.deepEqual(connPathInfo(fp, tp, 'right', 'left', 'straight'), { d: 'M0,0 L100,40', mid: { x: 50, y: 20 } });
+  const o = connPathInfo(fp, tp, 'right', 'left', 'ortho');
+  const pts = orthoPoints(fp, tp, 'right', 'left');
+  assert.equal(o.d, 'M' + pts.map(p => `${p.x},${p.y}`).join(' L'));
+  assert.deepEqual(o.mid, polylineMidpoint(pts));
+  const c = connPathInfo(fp, tp, 'right', 'left', 'curved');
+  const { c1, c2 } = bezierControls(fp, tp, 'right', 'left');
+  assert.equal(c.d, `M0,0 C${c1.x},${c1.y} ${c2.x},${c2.y} 100,40`);
+  assert.deepEqual(c.mid, bezierMidpoint(fp, c1, c2, tp));
+  assert.deepEqual(connPathInfo(fp, tp, 'right', 'left', undefined), c);
+});
+
+test('connectionPaths: @canvas の route が本文にあればそれで経路を作る(検査・描画が同じ形を見る)', () => {
+  const body = 'block a "A" at 1,1 size 4x2\nblock b "B" at 10,6 size 4x2\na -> b\n';
+  const straight = connectionPaths(parseDSL('@canvas width=400 route=straight\n' + body));
+  assert.equal(straight[0].pts.length, 2);
+  const curved = connectionPaths(parseDSL('@canvas width=400\n' + body));
+  assert.equal(curved[0].pts.length, 25);
+  // 接続の route は @canvas より強い
+  const own = connectionPaths(parseDSL('@canvas width=400 route=straight\n' + body.replace('a -> b', 'a -> b route=ortho')));
+  const p = parseDSL('@canvas width=400\n' + body);
+  const port = computePorts(p.connections, p.blockMap, 20)[0];
+  assert.deepEqual(own[0].pts, pathPoints(port.fp, port.tp, port.fs, port.ts, 'ortho'));
 });

@@ -141,7 +141,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="undo" onclick="undo()" title="元に戻す(Ctrl+Z)">↩</button>
     <button class="tb" data-term="redo" onclick="redo()" title="やり直す(Ctrl+Y)">↪</button>
     <div class="sep"></div>
-    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替える(L キー)">⌇ 線の形: 曲線</button>
+    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="図全体の線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替え、本文の @canvas 行に書く(L キー)">⌇ 線の形: 曲線</button>
     <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続を薄く</button>
     <div class="sep"></div>
     <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈を表示</button>
@@ -228,7 +228,7 @@ log   -> hal
 // searchQuery: toolbar search filter text
 // lastAddedId: block placed last by「+ ブロック追加」, lastPaste: area of the last paste — the next one lines up to their right (core/layout placeNext)
 let lastAddedId=null, lastPaste=null;
-let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, searchQuery='', lineMode='curved';
+let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, searchQuery='';
 // Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -254,7 +254,7 @@ function parseDSL(text){
   for(let i=0;i<lines.length;i++){
     const raw=lines[i].trim(); if(!raw||raw.startsWith("#"))continue; const ln=i+1;
     try{
-      if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];continue;}
+      if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/),r=raw.match(/route=(\S+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];if(r)canvas.route=r[1];continue;}
       if(raw.startsWith("@include")){const inc=raw.match(/@include\s+"([^"]+)"/);if(inc)errors.push({line:ln,msg:`@include "${inc[1]}" — use preprocessInclude() to resolve`});continue;}
       let m=raw.match(/^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
@@ -316,13 +316,19 @@ function toggleAnnotations(){
   if(!showAnnotations)sel=sel.filter(s=>s.type!=='note');
   renderSVG();renderProps();
 }
+// 線の形は本文だけが持つ: 押すと `@canvas` 行の route=(図全体の既定)を書き換える(曲線に戻すと route= を消す)。
+// 画面・SVG・PNG・検査は本文から読み直すので、開き直しても同じ形になる
 function cycleLineMode(){
-  const modes=['curved','straight','ortho'];
-  lineMode=modes[(modes.indexOf(lineMode)+1)%modes.length];
-  const btn=document.getElementById('line-mode-btn');
-  btn.textContent=window.StableBlockTerms.lineModeText(lineMode);
-  btn.classList.toggle('tb-line-active',lineMode!=='curved');
-  renderSVG();renderErrors();renderStatus();
+  if(!parsed)return;
+  const nd=window.StableBlockLayout.setCanvasRouteInDsl(dsl,window.StableBlockLabel.nextCanvasRoute(parsed.canvas.route));
+  if(nd===dsl)return;
+  pushHistory();dsl=nd;refresh();
+}
+function renderLineModeBtn(){
+  const m=window.StableBlockLabel.canvasRoute(parsed&&parsed.canvas),btn=document.getElementById('line-mode-btn');
+  if(!btn)return;
+  btn.textContent=window.StableBlockTerms.lineModeText(m);
+  btn.classList.toggle('tb-line-active',m!=='curved');
 }
 function doSearch(q){searchQuery=q.toLowerCase();renderSVG();}
 const includeCache={};
@@ -348,13 +354,10 @@ function matchesSearch(item){if(!searchQuery)return true;return item.id.toLowerC
 // ═══════════════════════════════════════════════
 // 接続の端点(ポート)は描画と検査で同じ計算を使う(core/label/label-core.mjs)
 function computePorts(connections,itemMap,g){return window.StableBlockLabel.computePorts(connections,itemMap,g);}
+// 線の形は接続の route、無ければ `@canvas` 行の route(core/label の connRoute)
 function connPathInfo(fp,tp,fs,ts,route){
-  const m=route||lineMode;
   const SBL=window.StableBlockLabel;
-  if(m==='straight')return{d:`M${fp.x},${fp.y} L${tp.x},${tp.y}`,mid:{x:(fp.x+tp.x)/2,y:(fp.y+tp.y)/2}};
-  if(m==='ortho'){const pts=SBL.orthoPoints(fp,tp,fs,ts);return{d:'M'+pts.map(p=>`${p.x},${p.y}`).join(' L'),mid:SBL.polylineMidpoint(pts)};}
-  const{c1,c2}=SBL.bezierControls(fp,tp,fs,ts);
-  return{d:`M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`,mid:SBL.bezierMidpoint(fp,c1,c2,tp)};
+  return SBL.connPathInfo(fp,tp,fs,ts,route||SBL.canvasRoute(parsed.canvas));
 }
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 const _measureCtx=document.createElement('canvas').getContext('2d');
@@ -367,6 +370,7 @@ function connLabelSvg(c,mid){
 
 function renderSVG(){
   if(!parsed)return;
+  renderLineModeBtn();
   const{canvas,blocks,groups,notes,connections,blockMap}=parsed, g=canvas.grid;
   const hlIds=highlight?getConnectedIds():null;
   const hlGroups=hlIds?getHighlightedGroups(hlIds):null;
@@ -780,7 +784,7 @@ function growCanvas(){const p=parseDSL(dsl);dsl=window.StableBlockLayout.growCan
 function refresh(noGrow){if(!noGrow)growCanvas();if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
-function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');return window.StableBlockCheck.checkDiagram(parsed,lines,window.StableBlockLabel.connectionPaths(parsed,lineMode));}
+function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');return window.StableBlockCheck.checkDiagram(parsed,lines,window.StableBlockLabel.connectionPaths(parsed));}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
 function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
 

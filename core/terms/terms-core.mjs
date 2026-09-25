@@ -15,7 +15,7 @@ const SB_TERMS_TABLE = {
   'fit': { ja: ['全体表示', '図の全体を画面に収める(F キー)'], en: ['Fit', 'Fit the whole diagram (F key)'] },
   'undo': { ja: ['↩', '元に戻す(Ctrl+Z)'], en: ['↩', 'Undo (Ctrl+Z)'] },
   'redo': { ja: ['↪', 'やり直す(Ctrl+Y)'], en: ['↪', 'Redo (Ctrl+Y)'] },
-  'line-mode': { ja: ['⌇ 線の形: 曲線', '線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替える(L キー)'] },
+  'line-mode': { ja: ['⌇ 線の形: 曲線', '図全体の線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替え、本文の @canvas 行に書く(L キー)'] },
   'highlight': { ja: ['◎ 未接続を薄く', '接続の無いブロックを薄く表示する/戻す(H キー)'], en: ['◎ Dim unlinked', 'Dim blocks without connections / restore (H key)'] },
   'anno': { ja: ['◇ 注釈を表示', '注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる'], en: ['◇ Show notes', 'Show / hide notes (N key). Click a shown note to select it'] },
   'export-svg': { ja: ['SVG', 'SVG で書き出す'], en: ['SVG', 'Save as SVG'] },
@@ -40,7 +40,7 @@ const SB_STYLE_NAMES = {
   bold: { ja: '太線', en: 'Bold' },
 };
 
-// 線の形(DSL の route 値。'' は「既定」= ツールバーの線の形に従う)
+// 線の形(DSL の route 値。'' は「既定」= `@canvas` 行の route(図全体の既定。ツールバーの「線の形」が書く)に従う)
 const SB_LINE_SHAPE_NAMES = {
   '': { ja: '既定', en: 'Default' },
   curved: { ja: '曲線', en: 'Curved' },

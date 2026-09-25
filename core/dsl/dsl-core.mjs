@@ -21,7 +21,7 @@ const ATTRS = {
   group: [['color', /color=(\S+)/d], ['borderColor', /border=(\S+)/d]],
   note: [['color', /color=(\S+)/d], ['textColor', /text=(\S+)/d], ['borderColor', /border=(\S+)/d], ['round', /round=(\d+)/d], ['style', /style=(\S+)/d]],
   conn: [['color', /color=(\S+)/d], ['style', /style=(\S+)/d], ['width', /width=([\d.]+)/d], ['route', /route=(\S+)/d], ['lpos', /lpos=(\S+)/d]],
-  canvas: [['width', /width=(\d+)/d], ['height', /height=(\d+)/d], ['grid', /grid=(\d+)/d]],
+  canvas: [['width', /width=(\d+)/d], ['height', /height=(\d+)/d], ['grid', /grid=(\d+)/d], ['route', /route=(\S+)/d]],
 };
 
 function attr(rest, re) { return rest.match(re)?.[1]; }
@@ -89,8 +89,8 @@ export function parseDSL(text) {
     const ln = i + 1;
     try {
       if (raw.startsWith('@canvas')) {
-        const w = raw.match(/width=(\d+)/), h = raw.match(/height=(\d+)/), g = raw.match(/grid=(\d+)/);
-        if (w) canvas.width = +w[1]; if (h) canvas.height = +h[1]; if (g) canvas.grid = +g[1];
+        const w = raw.match(/width=(\d+)/), h = raw.match(/height=(\d+)/), g = raw.match(/grid=(\d+)/), r = raw.match(/route=(\S+)/);
+        if (w) canvas.width = +w[1]; if (h) canvas.height = +h[1]; if (g) canvas.grid = +g[1]; if (r) canvas.route = r[1];
         rec.item = canvas; rec.parts = template(raw, raw.match(RE_CANVAS), [], 1, ATTRS.canvas);
         continue;
       }

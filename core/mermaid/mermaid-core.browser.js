@@ -52,6 +52,7 @@ function toMermaid(parsed) {
   const blocks = parsed.blocks || [], groups = parsed.groups || [], notes = parsed.notes || [], conns = parsed.connections || [];
   const { map: mid, renamed } = mermaidIds([...groups, ...blocks, ...notes].map(x => x.id));
   const dropped = [];
+  const canvasRouted = !!(parsed.canvas && parsed.canvas.route);
 
   // 包含で親 group を決める(自分を除く、最も小さい group)
   const parentOf = new Map();
@@ -104,7 +105,7 @@ function toMermaid(parsed) {
     if (c.width) ls.push(`stroke-width:${c.width}px`);
     if (ls.length) links.push(`  linkStyle ${links.length} ${ls.join(',')}`);
     else links.push(null);
-    if (c.route || (c.label && c.lpos && c.lpos !== 'right')) routed++;   // lpos の既定は right
+    if (c.route || canvasRouted || (c.label && c.lpos && c.lpos !== 'right')) routed++;   // lpos の既定は right。`@canvas` の route は全接続に効く
   }
   lines.push(...styles, ...links.filter(Boolean));
 
