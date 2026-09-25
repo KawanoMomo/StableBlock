@@ -1,0 +1,26 @@
+# SPI ドライバ ソフト構成図(先輩 primary の手本)
+@canvas width=960 height=480 grid=20
+
+group spi "SPI Driver" at 1,1 size 44x16 color=#EEF2FF border=#818CF8
+
+block app   "App\nSWC"      at 2,3  size 9x3 color=#6366F1 text=#FFFFFF round=6
+block rte   "RTE"           at 13,3 size 9x3 color=#6366F1 text=#FFFFFF round=6
+block spi_h "Spi_Handler"   at 24,3 size 9x3 color=#6366F1 text=#FFFFFF round=6
+block spi_d "Spi_Driver"    at 2,8  size 9x3 color=#D97706 text=#FFFFFF round=4
+block dma   "DMA"           at 13,8 size 9x3 color=#D97706 text=#FFFFFF round=4
+block irq   "IRQ"           at 24,8 size 9x3 color=#D97706 text=#FFFFFF round=4
+block mcal  "MCAL"          at 2,13 size 20x3 color=#16A34A text=#FFFFFF round=4
+block hw    "SPI HW"        at 24,13 size 9x3 color=#16A34A text=#FFFFFF round=4
+
+note memo "Job 単位で排他" at 35,3 size 9x2 color=#FEF3C7 text=#92400E
+
+app   -> rte "Spi_WriteIB"
+rte   -> spi_h
+spi_h -> spi_d
+spi_d -> dma
+dma   -> irq
+irq   -> spi_h
+spi_d -> mcal
+mcal  -> hw
+hw    --> irq
+memo  -> spi_h

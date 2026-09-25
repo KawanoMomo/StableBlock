@@ -54,6 +54,10 @@ run-tests.bat
 
 JS エミッタの単体・golden ファイルテストを実行（Node.js組み込みテストランナー）。
 
+E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.js`): 初回だけ `npm install` と `npx playwright install chromium`、以後 `npm run test:e2e`。
+静的サーバは worker ごとに `python -m http.server` を `SB_PORT`(既定 8901)+ worker 番号から起こす。`SB_PORT` に既にこのリポジトリの server があれば再利用する。
+結果・保存物は `test-results/` 配下のみ(コーパス往復テストの結果は `test-results/corpus-roundtrip.json`)。
+
 ### MCPサーバー
 
 LLMから図を操作するためのMCPサーバー（18ツール）。
