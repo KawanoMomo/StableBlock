@@ -4,12 +4,13 @@
 // parser が黙って捨てる記法(未知の属性・値の正規化)は往復でバイトが変わるので、コーパス往復テストで見つかる。
 // DOM API は使用禁止 — 純粋関数のみ。
 
-import { parseLpos, hasLpos } from '../label/label-core.mjs';
+import { parseLpos, hasLpos, unquoteLabel } from '../label/label-core.mjs';
 
-const RE_BLOCK = /^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_GROUP = /^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_NOTE = /^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/d;
+// ラベルは "…"。中の \" は " を表す(core/label の quoteLabel / unquoteLabel)
+const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_GROUP = /^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_NOTE = /^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/d;
 const RE_CANVAS = /^@canvas(.*)/d;
 
 const BOX_KEYS = ['id', 'label', 'x', 'y', 'w', 'h'];
@@ -28,7 +29,7 @@ function attr(rest, re) { return rest.match(re)?.[1]; }
 
 function boxItem(type, m, ln) {
   const [, id, label, x, y, w, h, rest] = m;
-  const base = { type, id, label, x: +x, y: +y, w: +w, h: +h };
+  const base = { type, id, label: unquoteLabel(label), x: +x, y: +y, w: +w, h: +h };
   if (type === 'group') {
     return { ...base, color: attr(rest, /color=(\S+)/) || '#F3F4F6', borderColor: attr(rest, /border=(\S+)/) || '#9CA3AF', line: ln };
   }
@@ -117,7 +118,7 @@ export function parseDSL(text) {
       if (m) {
         const [, from, arrow, to, label, rest] = m;
         const c = {
-          from, to, label: label || '',
+          from, to, label: unquoteLabel(label || ''),
           color: rest?.match(/color=(\S+)/)?.[1] || '#64748B',
           style: rest?.match(/style=(\S+)/)?.[1] || 'solid',
           width: +(rest?.match(/width=([\d.]+)/)?.[1] || '1.5'),
@@ -142,6 +143,7 @@ export function parseDSL(text) {
 function fieldText(item, key) {
   if (key === 'arrow') return item.bidir ? '-->' : '->';
   const v = item[key];
+  if (key === 'label') return String(v == null ? '' : v).replace(/"/g, '\\"');   // 引用の中へ戻す(quoteLabel と同じ規則)
   return v === null || v === undefined ? '' : String(v);
 }
 

@@ -65,3 +65,33 @@ test('porter-05: include 先を選ばずに読込むと、@include の行と参�
   await svgDl.saveAs(path.join(saveDir(testInfo), svgDl.suggestedFilename()));
   await expect(report).toContainText('SVG に書き出せなかったもの');
 });
+
+// ラベルに二重引用符を含む図(`"Block \"quoted\" label"`): 読込で全部描かれ、無変更保存はバイト一致。
+// GUI のラベル欄に " を打っても本文は \" で書かれて壊れない(BLK-porter-20260926-0617)
+const QUOTED = path.join(FIXTURES, 'porter-quoted.sb');
+
+test('porter-05: ラベルに \\" を含む図が描かれ、無変更で Export → バイト一致、GUI で " を打っても壊れない', async ({ page }, testInfo) => {
+  const original = fs.readFileSync(QUOTED);
+  await bootPlain(page);
+  await importSb(page, QUOTED);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
+  await expect(svg.locator('g[data-type="block"][data-id="id_2a"]')).toContainText('Block "quoted" label');
+  await expect(svg.locator('g[data-type="note"][data-id="n1"]')).toContainText('"TBD" は仮');
+  await expect(svg.locator('g.conn-label')).toHaveText(['say "ref"']);
+  await expect(page.locator('#error-bar .diag')).toHaveCount(0);
+
+  const { bytes } = await exportSb(page, saveDir(testInfo));
+  expect(bytes.equals(original), '無変更保存が元と違う').toBe(true);
+
+  // GUI: block を選び、ラベル欄に " を含む名前を打つ
+  await svg.locator('g[data-type="block"][data-id="a_1_b_2"]').click();
+  const label = page.locator('#prop-content input[oninput="setLabel(this.value)"]');
+  await label.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type('Say "hi"');
+  await expect(page.locator('#editor')).toHaveValue(/^block a_1_b_2 "Say \\"hi\\"" at 12,1 size 8x3 color=#10B981 text=#FFFFFF round=4$/m);
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
+  await expect(svg.locator('g[data-type="block"][data-id="a_1_b_2"]')).toContainText('Say "hi"');
+  await expect(page.locator('#error-bar .diag')).toHaveCount(0);
+});

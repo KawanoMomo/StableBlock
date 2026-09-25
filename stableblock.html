@@ -283,14 +283,14 @@ function parseDSL(text){
     try{
       if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/),r=raw.match(/route=(\S+)/),gr=raw.match(/grow=(\S+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];if(r)canvas.route=r[1];if(gr)canvas.grow=gr[1];continue;}
       if(raw.startsWith("@include")){const inc=raw.match(/@include\s+"([^"]+)"/);if(inc)errors.push({line:ln,msg:`@include "${inc[1]}" — use preprocessInclude() to resolve`});continue;}
-      let m=raw.match(/^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
-      m=raw.match(/^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
-      m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
-      if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
-      m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
-      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),lposAuto:!window.StableBlockLabel.hasLpos(rest),bidir:arrow==="-->",line:ln});continue;}
+      let m=raw.match(/^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
+      m=raw.match(/^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
+      m=raw.match(/^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
+      m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/);
+      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:window.StableBlockLabel.unquoteLabel(label||""),color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),lposAuto:!window.StableBlockLabel.hasLpos(rest),bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
     }catch(e){errors.push({line:ln,msg:e.message});}
   }
@@ -301,10 +301,11 @@ function parseDSL(text){
 // DSL Updaters — modify DSL text in-place via regex
 // These find the matching line by type+id and replace the target value
 // ═══════════════════════════════════════════════
-function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"[^"]*"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
-function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"[^"]*?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
+function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"(?:\\\\"|[^"])*"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
+function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"(?:\\\\"|[^"])*?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
 function updateProp(type,id,prop,val){const lines=dsl.split("\n"),lr=new RegExp(`^\\s*${type}\\s+${id}\\s+`),pr=new RegExp(`${prop}=\\S+`);for(let i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}dsl=lines.join("\n");}
-function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"[^"]*"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,`$1"${label}"$2`);}
+// ラベル中の " は \" で書く(core/label の quoteLabel。パーサは unquoteLabel で戻す)
+function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"(?:\\\\"|[^"])*"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,(_,a,b)=>a+window.StableBlockLabel.quoteLabel(label)+b);}
 function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
 function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
 // 入れ子の group(core/layout): 子は座標で決まる。操作の前に親を控え(parentsNow)、操作の後で子が親の枠をまたいだら

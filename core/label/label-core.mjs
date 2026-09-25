@@ -66,22 +66,32 @@ export function labelLayout(mid, lpos, textW) {
   return { tx, ty, anchor, bg: { x, y: ty - h / 2, w, h, rx: 2 } };
 }
 
-// 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。
+// ─── ラベルの引用(.sb の "…")。中の \" が 1 文字の " を表す。ほかの \ はそのまま(\n は改行の印のまま)。
+// 読む側は LABEL_Q の形で切り出して unquoteLabel、書く側は quoteLabel。パーサ(core/dsl・HTML 版・VSCode 拡張)と GUI の書き込みが同じ規則を使う
+// 形: "((?:\\"|[^"])*)"。末尾が \ のラベル("C:\")は後戻りで閉じ引用符として読める
+export function unquoteLabel(raw) {
+  return String(raw == null ? '' : raw).replace(/\\"/g, '"');
+}
+export function quoteLabel(label) {
+  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"') + '"';
+}
+
+// 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。ラベル中の " は \" で書く
 export function setConnLabelInDsl(dsl, from, to, label) {
-  const clean = String(label).replace(/"/g, '');
+  const clean = String(label);
   const lines = dsl.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
     if (!m) continue;
     if (!((m[1] === from && m[3] === to) || (m[1] === to && m[3] === from))) continue;
     const line = lines[i];
-    const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"[^"]*"/.test(line);
+    const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/.test(line);
     if (hasLabel && clean) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"[^"]*"/, (_, head) => head + '"' + clean + '"');
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/, (_, head) => head + quoteLabel(clean));
     } else if (hasLabel) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"[^"]*"/, (_, head) => head);
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"(?:\\"|[^"])*"/, (_, head) => head);
     } else if (clean) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' "' + clean + '"');
+      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' ' + quoteLabel(clean));
     }
     break;
   }
@@ -172,7 +182,7 @@ export function renameIdInDsl(dsl, oldId, newId, line) {
   if (target < 0) return dsl;
   lines[target] = lines[target].replace(defRe, (_, head, _id, sp) => head + newId + sp);
   // ラベルが ID と同じ文字列(ID をそのまま表示名にしている)なら、表示名も新しい ID に揃える(ID と表示名の食い違いを作らない)
-  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"([^"]*)"/, (all, head, label) => (label === oldId ? `${head}"${newId}"` : all));
+  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"((?:\\"|[^"])*)"/, (all, head, label) => (unquoteLabel(label) === oldId ? `${head}"${newId}"` : all));
   if (others === 0) {
     const connRe = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
     for (let i = 0; i < lines.length; i++) {
@@ -239,8 +249,8 @@ export function searchIdsInFiles(files, query) {
       const text = raw.replace(/\r$/, '');
       const d = text.match(ID_DEF_RE);
       if (d) {
-        const lm = text.slice(d[0].length).match(/^\s*"((?:[^"\\]|\\.)*)"/);
-        if (d[2].toLowerCase().includes(q) || (lm && lm[1].toLowerCase().includes(q))) out.push({ path: f.path, line: i + 1, kind: 'def', id: d[2], text });
+        const lm = text.slice(d[0].length).match(/^\s*"((?:\\"|[^"])*)"/);
+        if (d[2].toLowerCase().includes(q) || (lm && unquoteLabel(lm[1]).toLowerCase().includes(q))) out.push({ path: f.path, line: i + 1, kind: 'def', id: d[2], text });
         return;
       }
       const c = text.match(ID_CONN_RE);

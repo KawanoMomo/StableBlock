@@ -224,10 +224,10 @@ function parseDSL(t){
   for(var i=0;i<ls.length;i++){
     var r=ls[i].trim();if(!r||r[0]==='#')continue;
     if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];continue;}
-    var m=r.match(/^block\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-    if(m){bl.push({id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4")});continue;}
-    m=r.match(/^group\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-    if(m){gr.push({id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF"});continue;}
+    var m=r.match(/^block\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+    if(m){bl.push({id:m[1],label:m[2].replace(/\\\\"/g,'"'),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4")});continue;}
+    m=r.match(/^group\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+    if(m){gr.push({id:m[1],label:m[2].replace(/\\\\"/g,'"'),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF"});continue;}
     m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);
     if(m){cn.push({from:m[1],to:m[3],bidir:m[2]==="-->"});continue;}
   }
@@ -330,7 +330,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, renameIdInDsl, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, renameIdInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -507,14 +507,14 @@ function parseDSL(t){
     var r=ls[i].trim();if(!r||r.startsWith("#"))continue;var ln=i+1;
     try{
       if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/),rt=r.match(/route=(\\S+)/),gw=r.match(/grow=(\\S+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];if(rt)cv.route=rt[1];if(gw)cv.grow=gw[1];continue;}
-      var m=r.match(/^block\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var b={type:"block",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};bl.push(b);bm[b.id]=b;continue;}
-      m=r.match(/^group\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var g2={type:"group",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF",line:ln};gr.push(g2);gm[g2.id]=g2;continue;}
-      m=r.match(/^note\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var n={type:"note",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#FEF3C7",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#92400E",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};nt.push(n);nm[n.id]=n;continue;}
-      m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)\\s*(?:"([^"]*)")?\\s*(.*)/);
-      if(m){cn.push({from:m[1],to:m[3],label:m[4]||"",color:(m[5].match(/color=(\\S+)/)||[])[1]||"#64748B",style:(m[5].match(/style=(\\S+)/)||[])[1]||"solid",width:+(m[5].match(/width=([\\d.]+)/)||[])[1]||1.5,route:(m[5].match(/route=(\\S+)/)||[])[1]||null,lpos:window.StableBlockLabel.parseLpos(m[5]),lposAuto:!window.StableBlockLabel.hasLpos(m[5]),bidir:m[2]==="-->",line:ln});continue;}
+      var m=r.match(/^block\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var b={type:"block",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};bl.push(b);bm[b.id]=b;continue;}
+      m=r.match(/^group\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var g2={type:"group",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF",line:ln};gr.push(g2);gm[g2.id]=g2;continue;}
+      m=r.match(/^note\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
+      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var n={type:"note",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#FEF3C7",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#92400E",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};nt.push(n);nm[n.id]=n;continue;}
+      m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)\\s*(?:"((?:\\\\"|[^"])*)")?\\s*(.*)/);
+      if(m){cn.push({from:m[1],to:m[3],label:window.StableBlockLabel.unquoteLabel(m[4]||""),color:(m[5].match(/color=(\\S+)/)||[])[1]||"#64748B",style:(m[5].match(/style=(\\S+)/)||[])[1]||"solid",width:+(m[5].match(/width=([\\d.]+)/)||[])[1]||1.5,route:(m[5].match(/route=(\\S+)/)||[])[1]||null,lpos:window.StableBlockLabel.parseLpos(m[5]),lposAuto:!window.StableBlockLabel.hasLpos(m[5]),bidir:m[2]==="-->",line:ln});continue;}
       if(r.startsWith("@include")){er.push({line:ln,msg:"@include requires preprocessing (extension host)"});continue;}
       er.push({line:ln,msg:r.substring(0,40)});
     }catch(e){er.push({line:ln,msg:e.message});}
@@ -522,10 +522,10 @@ function parseDSL(t){
   return{canvas:cv,blocks:bl,groups:gr,notes:nt,connections:cn,errors:er,blockMap:bm,groupMap:gm,nm:nm,noteMap:nm};
 }
 
-function upP(tp,id,nx,ny){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+)("+id+")(\\\\s+\\"[^\\"]*\\"\\\\s+at\\\\s+)[\\\\d.]+,[\\\\d.]+(\\\\s+size\\\\s+.*)$","m");dsl=dsl.replace(re,"$1$2$3"+nx+","+ny+"$4");}
-function upS(tp,id,nw,nh){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+\\"[^\\"]*?\\"\\\\s+at\\\\s+[\\\\d.]+,[\\\\d.]+\\\\s+size\\\\s+)[\\\\d.]+x[\\\\d.]+","m");dsl=dsl.replace(re,"$1"+nw+"x"+nh);}
+function upP(tp,id,nx,ny){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+)("+id+")(\\\\s+\\"(?:\\\\\\\\\\"|[^\\"])*\\"\\\\s+at\\\\s+)[\\\\d.]+,[\\\\d.]+(\\\\s+size\\\\s+.*)$","m");dsl=dsl.replace(re,"$1$2$3"+nx+","+ny+"$4");}
+function upS(tp,id,nw,nh){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+\\"(?:\\\\\\\\\\"|[^\\"])*?\\"\\\\s+at\\\\s+[\\\\d.]+,[\\\\d.]+\\\\s+size\\\\s+)[\\\\d.]+x[\\\\d.]+","m");dsl=dsl.replace(re,"$1"+nw+"x"+nh);}
 function upPr(tp,id,prop,val){var lines=dsl.split("\\n"),lr=new RegExp("^\\\\s*"+tp+"\\\\s+"+id+"\\\\s+"),pr=new RegExp(prop+"=\\\\S+");for(var i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,prop+"="+val):lines[i].trimEnd()+" "+prop+"="+val;break;}dsl=lines.join("\\n");}
-function upLb(tp,id,lb){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+)\\"[^\\"]*\\"(\\\\s+at\\\\s+.*)$","m");dsl=dsl.replace(re,'$1"'+lb+'"$2');}
+function upLb(tp,id,lb){var re=new RegExp("^(\\\\s*"+tp+"\\\\s+"+id+"\\\\s+)\\"(?:\\\\\\\\\\"|[^\\"])*\\"(\\\\s+at\\\\s+.*)$","m");dsl=dsl.replace(re,function(_,a,b){return a+window.StableBlockLabel.quoteLabel(lb)+b;});}
 function isIn(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y+p.h;}
 function fCh(gr){return{cb:parsed.blocks.filter(function(b){return isIn(b,gr)}),cg:parsed.groups.filter(function(x){return x.id!==gr.id&&isIn(x,gr)})};}
 // Nested groups (core/layout): note the parents before an edit (parNow); when a child crosses its parent's frame, grow the parent (and its parents) that way (growPar)

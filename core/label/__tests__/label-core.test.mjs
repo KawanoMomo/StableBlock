@@ -148,8 +148,11 @@ test('setConnLabelInDsl matches direction-agnostically like setConnProp', () => 
   assert.equal(setConnLabelInDsl('b -> a "old"', 'a', 'b', 'new'), 'b -> a "new"');
 });
 
-test('setConnLabelInDsl strips double quotes from input', () => {
-  assert.equal(setConnLabelInDsl('a -> b', 'a', 'b', 'say "hi"'), 'a -> b "say hi"');
+// ラベル中の " は落とさず \" で書く(BLK-porter-20260926-0617。以前は " を取り除いていた)
+test('setConnLabelInDsl writes double quotes in the label as \\"', () => {
+  assert.equal(setConnLabelInDsl('a -> b', 'a', 'b', 'say "hi"'), 'a -> b "say \\"hi\\""');
+  assert.equal(setConnLabelInDsl('a -> b "say \\"hi\\"" color=#f00', 'a', 'b', 'bye'), 'a -> b "bye" color=#f00');
+  assert.equal(setConnLabelInDsl('a -> b "say \\"hi\\"" color=#f00', 'a', 'b', ''), 'a -> b color=#f00');
 });
 
 test('setConnLabelInDsl is safe with $ patterns in label', () => {
@@ -455,4 +458,21 @@ test('HTML 版と VSCode 拡張の ID 欄は畳める欄(details)で、ラベル
     assert.ok(src.slice(box, inp).includes('StableBlockLabel.idFieldOpen('), f + ': 開閉が idFieldOpen で決まっていない');
     assert.ok(src.lastIndexOf('setLabel(this.value)', box) > 0 || src.lastIndexOf('sLb(this.value)', box) > 0, f + ': ラベル欄が ID 欄より上に無い');
   }
+});
+
+// ─── ラベルの引用(quoteLabel / unquoteLabel) ───
+import { quoteLabel, unquoteLabel } from '../label-core.mjs';
+
+test('quoteLabel / unquoteLabel: " は \\" で書き、ほかの \\(\\n の印・末尾の \\)はそのまま', () => {
+  assert.equal(quoteLabel('Block "quoted" label'), '"Block \\"quoted\\" label"');
+  assert.equal(unquoteLabel('Block \\"quoted\\" label'), 'Block "quoted" label');
+  assert.equal(quoteLabel('A\\nB'), '"A\\nB"');
+  assert.equal(unquoteLabel('A\\nB'), 'A\\nB');
+  assert.equal(quoteLabel('C:\\'), '"C:\\"');
+  assert.equal(unquoteLabel(undefined), '');
+});
+
+test('renameIdInDsl / searchIdsInFiles: 引用符を含むラベルの行も定義行として扱う', () => {
+  assert.equal(renameIdInDsl('block a "say \\"a\\"" at 1,1 size 4x2\na -> b', 'a', 'z'), 'block z "say \\"a\\"" at 1,1 size 4x2\nz -> b');
+  assert.deepEqual(searchIdsInFiles([{ path: 'q.sb', text: 'block q "Block \\"quoted\\" label" at 1,1 size 4x2\n' }], '"quoted"').map(h => h.id), ['q']);
 });

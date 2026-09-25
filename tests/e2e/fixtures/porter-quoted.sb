@@ -1,0 +1,6 @@
+# ラベルに二重引用符(\")を含む図(persona-data/porter/corpus/13-special-id-chars.sb を元に)
+@canvas width=480 height=260 grid=20
+block id_2a "Block \"quoted\" label" at 1,1 size 8x3 color=#6366F1 text=#FFFFFF round=4
+block a_1_b_2 "Under_score ID" at 12,1 size 8x3 color=#10B981 text=#FFFFFF round=4
+note n1 "\"TBD\" は仮" at 1,6 size 8x2
+id_2a -> a_1_b_2 "say \"ref\""
