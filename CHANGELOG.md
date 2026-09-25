@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-owner-20260926-0609-1: ツールバーの「SVG」「PNG」「透過PNG」「PNGをコピー」が本文だけで決まる同じ絵になる(画面の選択枠・リサイズハンドル・グリッドの点・検索や「未接続を薄く」の薄めが入らず、大きさは表示倍率に依らず SVG は @canvas の寸法、PNG は @canvas × 2)。画面と書き出しの描画は HTML 版と VSCode 拡張で共通の core/render
 - BLK-owner-20260926-0609-2: プロパティ欄の X / Y / W / H の ▲ は 1 つ選択でも複数選択でも値を 1 増やす(▼ は 1 減らす)。HTML 版と VSCode 拡張で同じ向き(core/select stepDelta)。矢印キーは画面の向きのまま
 - BLK-human-20260926-0930: `npm test` のコーパス往復が persona-data の図の崩れで赤くならない(同梱の .sb だけを assert し、persona-data は `test-results/corpus-roundtrip.json` に結果を書くだけ)
 - BLK-owner-20260926-0451-4: block / group / note のラベルをキャンバス上で直せる(ダブルクリック・F2・Enter でその場に入力欄が開き、Enter で確定・Esc で元に戻す・Tab で読み順の次の要素へ。本文で変わるのはラベルの 1 行)。接続した要素をまとめて Ctrl+C → Ctrl+V すると間の接続も同じ属性で複製される。キャンバスを押すとフォーカスがツールバーのボタンから離れ、Enter でボタンが押し直されない(HTML 版 / VSCode 拡張)

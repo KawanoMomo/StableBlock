@@ -115,6 +115,10 @@ export function buildCheckCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockCheck', 'check-core.mjs');
 }
 
+export function buildRenderCoreBrowser(source) {
+  return buildBrowserGlobal(source, 'StableBlockRender', 'render-core.mjs');
+}
+
 export function buildTermsCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockTerms', 'terms-core.mjs');
 }
@@ -160,6 +164,11 @@ function main() {
   const OUT_TERMS_BROWSER = join(__dirname, '..', 'terms', 'terms-core.browser.js');
   writeFileSync(OUT_TERMS_BROWSER, buildTermsCoreBrowser(readFileSync(TERMS_SRC, 'utf8')));
   console.log(`Wrote: ${OUT_TERMS_BROWSER}`);
+
+  const RENDER_SRC = join(__dirname, '..', 'render', 'render-core.mjs');
+  const OUT_RENDER_BROWSER = join(__dirname, '..', 'render', 'render-core.browser.js');
+  writeFileSync(OUT_RENDER_BROWSER, buildRenderCoreBrowser(readFileSync(RENDER_SRC, 'utf8')));
+  console.log(`Wrote: ${OUT_RENDER_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script

@@ -388,6 +388,17 @@ function getWebviewContent(dslText, docPath) {
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
     + '\n;window.StableBlockTerms = { termText, termTitle, termKeys, styleName, lineShapeName, lineModeText, typeName };';
 
+  // ───── 図の描画(render-core.mjs)をインライン埋め込み。画面と SVG / PNG の書き出しが HTML 版と同じ関数を使う ─────
+  let renderCoreScript = '';
+  try {
+    renderCoreScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'render', 'render-core.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load render-core:', e.message);
+  }
+  const renderCoreAsGlobals = renderCoreScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockRender = { matchesSearchItem, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };';
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -434,6 +445,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 <script>${layoutCoreAsGlobals}<\/script>
 <script>${mermaidCoreAsGlobals}<\/script>
 <script>${termsCoreAsGlobals}<\/script>
+<script>${renderCoreAsGlobals}<\/script>
 <script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
 </head><body>
 <div class="toolbar">
@@ -511,22 +523,11 @@ function parNow(){return window.StableBlockLayout.parentMap(boxIt());}
 function growPar(before,moved,seeds){parsed=parseDoc();var ch=window.StableBlockLayout.fitParents(boxIt(),before,moved,1,seeds);ch.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});if(ch.length)parsed=parseDoc();}
 function axSides(ax,d){return window.StableBlockLayout.moveSides(ax==='x'?d:0,ax==='y'?d:0);}
 
-function cPorts(conns,bm,g){return window.StableBlockLabel.computePorts(conns,bm,g);}
 function eP(p,side,d){if(side==='top')return{x:p.x,y:p.y-d};if(side==='bottom')return{x:p.x,y:p.y+d};if(side==='left')return{x:p.x-d,y:p.y};return{x:p.x+d,y:p.y};}
-// 線の形は接続の route、無ければ @canvas 行の route(HTML 版と同じ core/label の connRoute)
-function pathInfo(f,t,fs,ts,c){return window.StableBlockLabel.connPathInfo(f,t,fs,ts,window.StableBlockLabel.connRoute(c||{},parsed.canvas));}
 var _mCtx=document.createElement('canvas').getContext('2d');
+var SVG_FONT='sans-serif';
 function measureLabel(t){_mCtx.font='500 10px sans-serif';return _mCtx.measureText(t).width;}
-function connLabelSvg(c,mid){return connLabelBoxSvg(c,window.StableBlockLabel.labelLayout(mid,c.lpos,measureLabel(c.label)));}
-// 接続ラベル(置き場所 L は core の placeLabels / labelLayout)。block より上の層に白地で描く
-function connLabelBoxSvg(c,L){
-  return'<rect x="'+L.bg.x+'" y="'+L.bg.y+'" width="'+L.bg.w+'" height="'+L.bg.h+'" rx="'+L.bg.rx+'" fill="#FFFFFF" style="pointer-events:none"/>'+
-    '<text x="'+L.tx+'" y="'+L.ty+'" font-size="10" fill="'+c.color+'" text-anchor="'+L.anchor+'" dominant-baseline="central" font-weight="500" style="pointer-events:none">'+esc(c.label)+'</text>';
-}
 
-function getHlIds(){if(!parsed)return null;var ids=new Set();parsed.connections.forEach(function(c){ids.add(c.from);ids.add(c.to);});return ids;}
-function getHlGroups(ids){var gs=new Set();parsed.blocks.forEach(function(b){if(ids.has(b.id)){parsed.groups.forEach(function(gr){if(isIn(b,gr))gs.add(gr.id);});}});return gs;}
-function isHlConn(c,ids){return ids.has(c.from)&&ids.has(c.to);}
 function toggleHL(){highlight=!highlight;var btn=document.getElementById('hl-btn');if(btn)btn.classList.toggle('hl-act',highlight);render();}
 
 function toggleAnno(){
@@ -538,64 +539,9 @@ function toggleAnno(){
 }
 
 function render(){
-  if(!parsed)return;var cv=parsed.canvas,bl=parsed.blocks,gr=parsed.groups,nt=parsed.notes,cn=parsed.connections,bm=parsed.blockMap,g=cv.grid;
-  var hlIds=highlight?getHlIds():null;var hlGr=hlIds?getHlGroups(hlIds):null;var dim=0.15;
-  var normalConns=cn.filter(function(c){return !isAnnoConn(c)});
-  var annoConns=cn.filter(function(c){return isAnnoConn(c)});
-  var aMap=allMap();
-  var s='<svg width="'+(cv.width*zm)+'" height="'+(cv.height*zm)+'" viewBox="0 0 '+cv.width+' '+cv.height+'" xmlns="http://www.w3.org/2000/svg" style="font-family:sans-serif">';
-  s+='<defs><pattern id="gd" width="'+g+'" height="'+g+'" patternUnits="userSpaceOnUse"><circle cx="'+(g/2)+'" cy="'+(g/2)+'" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>';
-  cn.forEach(function(c,i){s+='<marker id="a'+i+'" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="'+c.color+'"/></marker>';});
-  s+='</defs><rect width="100%" height="100%" fill="url(#gd)"/>';
-
-  gr.forEach(function(x){var sl=isSel(x.id);var gHl=hlIds&&!hlGr.has(x.id);var gOp=gHl?dim:searchQ&&!matchSearch(x)?0.2:null;s+='<g data-type="group" data-id="'+x.id+'" style="cursor:grab"'+(gOp!==null?' opacity="'+gOp+'"':'')+'><rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+(sl?'#6366F1':x.borderColor)+'" stroke-width="'+(sl?3:1.5)+'" rx="8" opacity="0.85"'+(sl?' stroke-dasharray="8,4"':'')+'/><text x="'+(x.x*g+8)+'" y="'+(x.y*g+14)+'" font-size="11" font-weight="600" fill="'+x.borderColor+'" opacity="0.9" style="pointer-events:none">'+esc(x.label)+'</text></g>';});
-
-  // Normal connections
-  var ports=cPorts(normalConns,bm,g);
-  var labelItems=[];
-  normalConns.forEach(function(c,i){var p=ports[i];if(!p)return;var d=c.style==="dashed"?' stroke-dasharray="6,3"':'';var cHl=hlIds&&!isHlConn(c,hlIds);var cOp=cHl?dim:null;var ci=cn.indexOf(c);var sOp=searchQ&&!matchSearch(c)?' opacity="0.2"':'';var pi=pathInfo(p.fp,p.tp,p.fs,p.ts,c);s+='<g'+(cOp!==null?' opacity="'+cOp+'"':sOp)+'><path d="'+pi.d+'" fill="none" stroke="'+c.color+'" stroke-width="'+c.width+'"'+d+' marker-end="url(#a'+ci+')"'+(c.bidir?' marker-start="url(#a'+ci+')"':'')+'/>';if(c.label)labelItems.push({conn:c,mid:pi.mid,op:cOp!==null?' opacity="'+cOp+'"':sOp});s+='</g>';});
-
-  bl.forEach(function(b){var sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,ds=b.style==="dashed"?' stroke-dasharray="6,3"':'',ft=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";var bHl=hlIds&&!hlIds.has(b.id);var bOp=bHl?dim:searchQ&&!matchSearch(b)?0.2:null;
-    s+='<g data-type="block" data-id="'+b.id+'" style="cursor:grab"'+(bOp!==null?' opacity="'+bOp+'"':'')+'><rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" stroke="'+(sl?'#FFFFFF':(b.borderColor||b.color))+'" stroke-width="'+sw+'"'+ds+' rx="'+b.round+'" style="filter:'+ft+'"/>';
-    // Split label on literal backslash-n
-    b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*14;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="11" font-weight="600" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">'+esc(ln)+'</text>';});
-    s+='</g>';});
-
-  // Connection labels: block より上に描く(本文に lpos= が無いラベルは block・名前・note・他のラベルを避けた位置に置く)
-  window.StableBlockLabel.placeLabels(labelItems,parsed,measureLabel).forEach(function(L){var it=labelItems.find(function(x){return x.conn===L.conn});s+='<g class="conn-label"'+it.op+'>'+connLabelBoxSvg(L.conn,L)+'</g>';});
-
-  // Annotation layer (on top)
-  if(showAnno){
-    var annoPorts=cPorts(annoConns,aMap,g);
-    annoConns.forEach(function(c,i){var p=annoPorts[i];if(!p)return;
-      var ci=cn.indexOf(c);
-      var pi=pathInfo(p.fp,p.tp,p.fs,p.ts,c);
-      s+='<g>';
-      s+='<path d="'+pi.d+'" fill="none" stroke="'+c.color+'" stroke-width="'+c.width+'" stroke-dasharray="6,3" marker-end="url(#a'+ci+')"'+(c.bidir?' marker-start="url(#a'+ci+')"':'')+'/>';
-      if(c.label)s+=connLabelSvg(c,pi.mid);
-      s+='</g>';});
-    nt.forEach(function(n){var sl=isSel(n.id);
-      s+='<g data-type="note" data-id="'+n.id+'" style="cursor:grab">';
-      s+='<rect x="'+(n.x*g)+'" y="'+(n.y*g)+'" width="'+(n.w*g)+'" height="'+(n.h*g)+'" fill="'+n.color+'" stroke="'+(sl?'#F59E0B':(n.borderColor||'#D97706'))+'" stroke-width="'+(sl?2.5:1)+'" stroke-dasharray="4,2" rx="'+n.round+'" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>';
-      n.label.split("\\\\n").forEach(function(ln,li){var ty=n.y*g+6+li*14;s+='<text x="'+(n.x*g+6)+'" y="'+(ty+10)+'" font-size="11" font-weight="400" fill="'+n.textColor+'" text-anchor="start" style="pointer-events:none">'+esc(ln)+'</text>';});
-      s+='</g>';});
-  }
-
-  // Resize handles
-  sel.forEach(function(si){var it=getIt(si);if(!it)return;
-    var isNote=it.type==='note';
-    var x=it.x*g,y=it.y*g,w=it.w*g,h=it.h*g,hs=10,hit=20;
-    var hColor=isNote?'#F59E0B':'#6366F1';
-    [{cx:x,cy:y,cur:'nw-resize',e:'nw'},{cx:x+w,cy:y,cur:'ne-resize',e:'ne'},{cx:x,cy:y+h,cur:'sw-resize',e:'sw'},{cx:x+w,cy:y+h,cur:'se-resize',e:'se'},{cx:x+w/2,cy:y,cur:'n-resize',e:'n'},{cx:x+w/2,cy:y+h,cur:'s-resize',e:'s'},{cx:x,cy:y+h/2,cur:'w-resize',e:'w'},{cx:x+w,cy:y+h/2,cur:'e-resize',e:'e'}].forEach(function(hd){
-      s+='<rect data-resize="'+hd.e+'" data-rid="'+si.id+'" data-rtype="'+si.type+'" x="'+(hd.cx-hit/2)+'" y="'+(hd.cy-hit/2)+'" width="'+hit+'" height="'+hit+'" fill="transparent" style="cursor:'+hd.cur+'"/>';
-      s+='<rect x="'+(hd.cx-hs/2)+'" y="'+(hd.cy-hs/2)+'" width="'+hs+'" height="'+hs+'" fill="'+hColor+'" stroke="#fff" stroke-width="1.5" rx="2" style="pointer-events:none"/>';
-    });});
-
-  // Snap guides
-  if(snapGuides&&snapGuides.length){snapGuides.forEach(function(sg){s+='<line x1="'+sg.x1+'" y1="'+sg.y1+'" x2="'+sg.x2+'" y2="'+sg.y2+'" stroke="#F59E0B" stroke-width="0.5" stroke-dasharray="4,2" opacity="0.8"/>';});}
-
-  s+='</svg>';
-  document.getElementById('wrap').innerHTML=s;
+  if(!parsed)return;
+  // 画面と書き出しは HTML 版と同じ core/render の renderSvg で描く(画面だけの状態は view で渡す)
+  document.getElementById('wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom:zm,sel:sel,highlight:highlight,search:searchQ,showAnnotations:showAnno,snapGuides:snapGuides,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);
   setupInt();
 }
 
@@ -843,9 +789,11 @@ function go(){parsed=parseDoc();render();props();
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';}
 
 // Export
-function exportSVG(){var svg=document.querySelector('#wrap svg');if(!svg)return;var clone=svg.cloneNode(true);clone.setAttribute('xmlns','http://www.w3.org/2000/svg');vscodeApi.postMessage({type:'exportSVG',data:clone.outerHTML});sendIncDrops('SVG');}
+// 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
+function exportSvgText(){return parsed?window.StableBlockRender.exportSvg(parsed,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
+function exportSVG(){var svg=exportSvgText();if(!svg)return;vscodeApi.postMessage({type:'exportSVG',data:svg});sendIncDrops('SVG');}
 function sendIncDrops(fmt){var d=incDrops();if(d.length)vscodeApi.postMessage({type:'exportDrops',format:fmt,items:d});}
-function pngCanvas(transparent,cb){var svg=document.querySelector('#wrap svg');if(!svg)return;var d=new XMLSerializer().serializeToString(svg),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=parsed.canvas.width*zm*2;c.height=parsed.canvas.height*zm*2;var ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);cb(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
+function pngCanvas(transparent,cb){var d=exportSvgText();if(!d)return;var size=window.StableBlockRender.exportPngSize(parsed.canvas),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=size.width;c.height=size.height;var ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);cb(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function exportPNG(){pngCanvas(false,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
 function exportPNGT(){pngCanvas(true,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
 function copyPNG(){pngCanvas(false,function(c){c.toBlob(function(blob){if(blob&&navigator.clipboard&&navigator.clipboard.write){navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){vscodeApi.postMessage({type:'info',text:'PNG copied to clipboard'});}).catch(function(){vscodeApi.postMessage({type:'info',text:'Clipboard copy failed'});});}else{vscodeApi.postMessage({type:'info',text:'Clipboard API not available'});}});});}
