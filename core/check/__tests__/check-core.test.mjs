@@ -150,6 +150,8 @@ test('checkDiagram: 読めない接続ラベルを、何に掛かるかと直し
   const p2 = parseDSL(t2);
   const paths2 = connectionPaths(p2, 'straight');
   assert.deepEqual(checkDiagram(p2, t2.split('\n'), paths2, labelIssues(placeLabels(paths2, p2), p2)), []);
+});
+
 test('resolveIncludePath: include 元のファイルからの相対パスを / 区切りで解決する', () => {
   assert.equal(resolveIncludePath('05-include.sb', 'shared/common.sb'), 'shared/common.sb');
   assert.equal(resolveIncludePath('corpus/05-include.sb', './shared/common.sb'), 'corpus/shared/common.sb');
