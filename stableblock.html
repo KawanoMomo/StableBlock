@@ -122,6 +122,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/layout/layout-core.browser.js"></script>
 <script src="core/mermaid/mermaid-core.browser.js"></script>
 <script src="core/terms/terms-core.browser.js"></script>
+<script src="core/render/render-core.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -296,27 +297,6 @@ function growParents(before,moved,seeds){parsed=parseDoc();const ch=window.Stabl
 // ═══════════════════════════════════════════════
 // Highlight, Annotations, Search — toggle modes that affect rendering
 // ═══════════════════════════════════════════════
-function getConnectedIds(){
-  // Returns set of all block IDs that participate in any connection
-  if(!parsed)return null;
-  const ids=new Set();
-  parsed.connections.forEach(c=>{ids.add(c.from);ids.add(c.to);});
-  return ids;
-}
-function getHighlightedGroups(connectedIds){
-  // Returns set of group IDs that contain at least one connected block
-  const groups=new Set();
-  parsed.blocks.forEach(b=>{
-    if(connectedIds.has(b.id)){
-      // Find which group contains this block
-      parsed.groups.forEach(gr=>{if(isInside(b,gr))groups.add(gr.id);});
-    }
-  });
-  return groups;
-}
-function isHighlightedConn(c,connectedIds){
-  return connectedIds.has(c.from)&&connectedIds.has(c.to);
-}
 function toggleHighlight(){
   highlight=!highlight;
   document.getElementById('hl-btn').classList.toggle('tb-hl-active',highlight);
@@ -351,110 +331,22 @@ function readInclude(p){if(Object.prototype.hasOwnProperty.call(includeFiles,p))
 // 本文を include 先ごと展開して parse する(parsed と expanded はいつも同じ本文から作る)
 function parseDoc(){expanded=window.StableBlockCheck.expandIncludes(dsl,readInclude,dslFile);return parseDSL(expanded.text);}
 function includeDrops(){return window.StableBlockCheck.includeDrops(expanded);}
-function matchesSearch(item){if(!searchQuery)return true;return item.id.toLowerCase().includes(searchQuery)||item.label.toLowerCase().includes(searchQuery);}
 
 // ═══════════════════════════════════════════════
-// SVG Rendering — builds SVG string from parsed data
+// SVG Rendering — core/render の renderSvg(HTML 版・VSCode 拡張・書き出しで共通)。端点・線の形・ラベルの置き場所は core/label
 // Render order: groups → normal connections → blocks → [annotation layer] → resize handles
 // Respects highlight, annotation edit, and search dimming
 // ═══════════════════════════════════════════════
-// 接続の端点(ポート)は描画と検査で同じ計算を使う(core/label/label-core.mjs)
-function computePorts(connections,itemMap,g){return window.StableBlockLabel.computePorts(connections,itemMap,g);}
-// 線の形は接続の route、無ければ `@canvas` 行の route(core/label の connRoute)
-function connPathInfo(fp,tp,fs,ts,route){
-  const SBL=window.StableBlockLabel;
-  return SBL.connPathInfo(fp,tp,fs,ts,route||SBL.canvasRoute(parsed.canvas));
-}
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 const _measureCtx=document.createElement('canvas').getContext('2d');
+const SVG_FONT="'IBM Plex Sans','Noto Sans JP',sans-serif";
 function measureLabel(t){_measureCtx.font='500 10px "IBM Plex Sans","Noto Sans JP",sans-serif';return _measureCtx.measureText(t).width;}
-function connLabelSvg(c,mid){return connLabelBoxSvg(c,window.StableBlockLabel.labelLayout(mid,c.lpos,measureLabel(c.label)));}
-// 接続ラベル(置き場所 L は core の placeLabels / labelLayout)。block より上の層に白地で描く
-function connLabelBoxSvg(c,L){
-  return`<rect x="${L.bg.x}" y="${L.bg.y}" width="${L.bg.w}" height="${L.bg.h}" rx="${L.bg.rx}" fill="#FFFFFF" style="pointer-events:none"/>`+
-    `<text x="${L.tx}" y="${L.ty}" font-size="10" fill="${c.color}" text-anchor="${L.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${esc(c.label)}</text>`;
-}
 
 function renderSVG(){
   if(!parsed)return;
   renderLineModeBtn();
-  const{canvas,blocks,groups,notes,connections,blockMap}=parsed, g=canvas.grid;
-  const hlIds=highlight?getConnectedIds():null;
-  const hlGroups=hlIds?getHighlightedGroups(hlIds):null;
-  const dim=0.15;
-  const normalConns=connections.filter(c=>!isAnnotationConn(c));
-  const annoConns=connections.filter(c=>isAnnotationConn(c));
-  const allItems=getAllItemMap();
-  let s=`<svg width="${canvas.width*zoom}" height="${canvas.height*zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:'IBM Plex Sans','Noto Sans JP',sans-serif">`;
-  s+=`<defs><pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g/2}" cy="${g/2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
-  connections.forEach((c,i)=>{s+=`<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`;});
-  s+=`</defs><rect width="100%" height="100%" fill="url(#gd)"/>`;
-
-  // Groups
-  groups.forEach(gr=>{const sl=isSel(gr.id);const hlDim=hlIds&&!hlGroups.has(gr.id);const sDim=searchQuery&&!matchesSearch(gr);const op=hlDim?dim:sDim?0.2:null;
-    s+=`<g data-type="group" data-id="${gr.id}" style="cursor:grab"${op!==null?` opacity="${op}"`:''}>`;
-    s+=`<rect x="${gr.x*g}" y="${gr.y*g}" width="${gr.w*g}" height="${gr.h*g}" fill="${gr.color}" stroke="${sl?'#6366F1':gr.borderColor}" stroke-width="${sl?3:1.5}" rx="8" opacity="0.85"${sl?' stroke-dasharray="8,4"':''}/>`;
-    s+=`<text x="${gr.x*g+8}" y="${gr.y*g+14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${esc(gr.label)}</text></g>`;
-  });
-  // Normal connections
-  const ports=computePorts(normalConns,blockMap,g);
-  const labelItems=[];
-  normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:null;
-    const ci=connections.indexOf(c);
-    const pi=connPathInfo(fp,tp,fs,ts,c.route);
-    s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
-    s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
-    if(c.label)labelItems.push({conn:c,mid:pi.mid,op:cop});
-    s+=`</g>`;});
-  // Blocks
-  blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bHl=hlIds&&!hlIds.has(b.id);const bSrch=searchQuery&&!matchesSearch(b);const bop=bHl?dim:bSrch?0.2:null;
-    s+=`<g data-type="block" data-id="${b.id}" style="cursor:grab"${bop!==null?` opacity="${bop}"`:''}>`;
-    s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
-    b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
-    s+=`</g>`;});
-
-  // Connection labels: block より上に描く(本文に lpos= が無いラベルは block・名前・note・他のラベルを避けた位置に置く)
-  window.StableBlockLabel.placeLabels(labelItems,parsed,measureLabel).forEach(L=>{const op=labelItems.find(it=>it.conn===L.conn).op;
-    s+=`<g class="conn-label" data-from="${esc(L.conn.from)}" data-to="${esc(L.conn.to)}"${op!==null?` opacity="${op}"`:''}>${connLabelBoxSvg(L.conn,L)}</g>`;});
-
-  // Annotation layer (on top)
-  if(showAnnotations){
-    const annoPorts=computePorts(annoConns,allItems,g);
-    annoConns.forEach((c,i)=>{const p=annoPorts[i];if(!p)return;const{fp,tp,fs,ts}=p;
-      const ci=connections.indexOf(c);
-      const pi=connPathInfo(fp,tp,fs,ts,c.route);
-      s+=`<g>`;
-      s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
-      if(c.label)s+=connLabelSvg(c,pi.mid);
-      s+=`</g>`;});
-    notes.forEach(n=>{const sl=isSel(n.id);
-      s+=`<g data-type="note" data-id="${n.id}" style="cursor:grab">`;
-      s+=`<rect x="${n.x*g}" y="${n.y*g}" width="${n.w*g}" height="${n.h*g}" fill="${n.color}" stroke="${sl?'#F59E0B':(n.borderColor||'#D97706')}" stroke-width="${sl?2.5:1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
-      n.label.split("\\n").forEach((line,li)=>{const ty=n.y*g+6+li*14;s+=`<text x="${n.x*g+6}" y="${ty+10}" font-size="11" font-weight="400" fill="${n.textColor}" text-anchor="start" style="pointer-events:none">${esc(line)}</text>`;});
-      s+=`</g>`;});
-  }
-
-  // Resize handles for selected items
-  sel.forEach(si=>{
-    const it=getItem(si); if(!it)return;
-    const isNote=it.type==='note';
-    const x=it.x*g, y=it.y*g, w=it.w*g, h=it.h*g;
-    const hs=10, hitS=20;
-    const hColor=isNote?'#F59E0B':'#6366F1';
-    const handles=[
-      {cx:x,    cy:y,    cur:'nw-resize',edge:'nw'},{cx:x+w,  cy:y,    cur:'ne-resize',edge:'ne'},
-      {cx:x,    cy:y+h,  cur:'sw-resize',edge:'sw'},{cx:x+w,  cy:y+h,  cur:'se-resize',edge:'se'},
-      {cx:x+w/2,cy:y,    cur:'n-resize', edge:'n'}, {cx:x+w/2,cy:y+h,  cur:'s-resize', edge:'s'},
-      {cx:x,    cy:y+h/2,cur:'w-resize', edge:'w'}, {cx:x+w,  cy:y+h/2,cur:'e-resize', edge:'e'},
-    ];
-    handles.forEach(hd=>{
-      s+=`<rect data-resize="${hd.edge}" data-rid="${si.id}" data-rtype="${si.type}" x="${hd.cx-hitS/2}" y="${hd.cy-hitS/2}" width="${hitS}" height="${hitS}" fill="transparent" style="cursor:${hd.cur}" />`;
-      s+=`<rect x="${hd.cx-hs/2}" y="${hd.cy-hs/2}" width="${hs}" height="${hs}" fill="${hColor}" stroke="#fff" stroke-width="1.5" rx="2" style="pointer-events:none" />`;
-    });
-  });
-
-  s+=`</svg>`;
-  document.getElementById('svg-wrap').innerHTML=s;
+  // 画面と書き出しは同じ core/render の renderSvg で描く(画面だけの状態は view で渡す)
+  document.getElementById('svg-wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom,sel,highlight,search:searchQuery,showAnnotations,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);
   setupInteractions();
 }
 
@@ -902,8 +794,10 @@ function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeU
 // 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
 const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
-function exportSVG(){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.outerHTML));showExportReport('SVG',includeDrops());}
-function pngCanvas(transparent){const svg=document.querySelector('#svg-wrap svg');if(!svg)return null;const data=new XMLSerializer().serializeToString(svg);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=parsed.canvas.width*zoom*2;c.height=parsed.canvas.height*zoom*2;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
+// 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
+function exportSvgText(){return parsed?window.StableBlockRender.exportSvg(parsed,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
+function exportSVG(){const svg=exportSvgText();if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
+function pngCanvas(transparent){const data=exportSvgText();if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(parsed.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
 function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram_transparent.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}

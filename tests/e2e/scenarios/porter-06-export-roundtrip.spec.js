@@ -1,4 +1,4 @@
-// porter 手順 6: Excel / Mermaid に書き出し、ブロック・接続・ラベル・グループ(と note・色)が落ちていないこと。
+// porter 手順 6: Excel / Mermaid / SVG / PNG に書き出し、ブロック・接続・ラベル・グループ(と note・色)が落ちていないこと。
 // 書き出し先の記法で表せないものは、黙って落とさず画面に知らせる。Excel の接続線は図形に接着され、図形を動かすと付いてくる。
 const fs = require('node:fs');
 const path = require('node:path');
@@ -16,6 +16,44 @@ async function download(page, name, dir) {
   await dl.saveAs(file);
   return file;
 }
+
+// PNG の画素数(IHDR の幅・高さ)
+function pngSize(file) {
+  const b = fs.readFileSync(file);
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+}
+
+test('porter-06: SVG / PNG は画面の選択・グリッド・表示倍率を持ち込まず、本文だけで同じ絵と画素数になる', async ({ page }, testInfo) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const dir = saveDir(testInfo);
+  const svg = page.locator('#svg-wrap svg');
+  const take = async (tag) => {
+    const d = path.join(dir, tag);
+    fs.mkdirSync(d, { recursive: true });
+    return {
+      svg: fs.readFileSync(await download(page, 'SVG', d), 'utf8'),
+      png: pngSize(await download(page, 'PNG', d)),
+      tpng: pngSize(await download(page, '透過PNG', d)),
+    };
+  };
+  const plain = await take('plain');
+  expect(plain.svg).toMatch(/^<svg width="960" height="520" /);           // @canvas の寸法
+  expect(plain.svg).not.toMatch(/data-resize|url\(#gd\)|<pattern/);      // ハンドル・グリッドの点が無い
+  expect(plain.png).toEqual({ w: 1920, h: 1040 });                         // @canvas × 2
+
+  // block を 1 つ選び、「+」で 2 回拡大してから書き出しても同じ
+  await svg.locator('g[data-type="block"][data-id="spiapi"]').click();
+  await expect(svg.locator('[data-resize]').first()).toBeAttached();
+  const before = await svg.getAttribute('width');
+  await page.getByRole('button', { name: '+', exact: true }).click();
+  await page.getByRole('button', { name: '+', exact: true }).click();
+  await expect(svg).not.toHaveAttribute('width', before);
+  const zoomed = await take('zoomed');
+  expect(zoomed.svg).toBe(plain.svg);
+  expect(zoomed.png).toEqual(plain.png);
+  expect(zoomed.tpng).toEqual(plain.png);
+});
 
 test('porter-06: Mermaid に note・色・ラベルが残り、表せないものは画面に出る', async ({ page }, testInfo) => {
   await bootPlain(page);
