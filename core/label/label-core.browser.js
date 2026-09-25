@@ -452,4 +452,29 @@ function labelIssues(placed, parsed) {
   return out;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues };
+// ── コピー / 貼り付けで要素の間の接続も複製する(BLK-owner-20260926-0451-4) ──
+const CONN_LINE = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)$/;
+
+// 本文のうち、両端とも ids に含まれる接続の行(前後の空白を除いた行のまま。ラベル・色・route などの属性を保つ)
+function connLinesAmong(dsl, ids) {
+  const set = ids instanceof Set ? ids : new Set(ids || []);
+  const out = [];
+  for (const raw of String(dsl).split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const m = t.match(CONN_LINE);
+    if (!m) continue;
+    if (set.has(m[2]) && set.has(m[6])) out.push(t);
+  }
+  return out;
+}
+
+// 接続の行の from / to を map({ 旧 ID: 新 ID })で付け替える。両端とも map に無ければ null(貼り付けた要素の間の線だけを足す)
+function remapConnLine(line, map) {
+  const m = String(line).match(CONN_LINE);
+  if (!m || !(m[2] in map) || !(m[6] in map)) return null;
+  return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
+}
+
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

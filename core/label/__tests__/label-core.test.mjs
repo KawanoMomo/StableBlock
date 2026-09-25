@@ -4,6 +4,7 @@ import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
   parseLpos, labelLayout, setConnLabelInDsl,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
+  connLinesAmong, remapConnLine,
 } from '../label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 
@@ -374,4 +375,28 @@ test('planRename: 使えない表記・既にある ID・どこにも無い ID �
   assert.match(planRename(files, 'SpiDrv', 'SpiDrv').error, /同じ/);
   const dup = [{ path: 'd.sb', text: 'block a "A" at 1,1 size 4x2\nblock a "A2" at 8,1 size 4x2\na -> a\n' }];
   assert.match(planRename(dup, 'a', 'b').error, /d\.sb で 2 回定義されている\(L1, L2\)/);
+});
+
+test('connLinesAmong: 両端とも選んだ要素の接続の行だけを、属性ごと返す', () => {
+  const dsl = [
+    '@canvas width=400 height=300 grid=20',
+    'block a "A" at 1,1 size 4x2',
+    'block b "B" at 6,1 size 4x2',
+    'block c "C" at 11,1 size 4x2',
+    'a -> b "req" color=#EF4444 lpos=top',
+    '  b --> c',
+    'c -> a',
+    '# a -> c はコメント',
+  ].join('\r\n');
+  assert.deepEqual(connLinesAmong(dsl, ['a', 'b']), ['a -> b "req" color=#EF4444 lpos=top']);
+  assert.deepEqual(connLinesAmong(dsl, new Set(['a', 'b', 'c'])), ['a -> b "req" color=#EF4444 lpos=top', 'b --> c', 'c -> a']);
+  assert.deepEqual(connLinesAmong(dsl, ['a']), []);
+});
+
+test('remapConnLine: from / to だけを新しい ID に付け替え、片方が無ければ null', () => {
+  const map = { a: '__new_1', b: '__new_2' };
+  assert.equal(remapConnLine('a -> b "req" color=#EF4444', map), '__new_1 -> __new_2 "req" color=#EF4444');
+  assert.equal(remapConnLine('b --> a', map), '__new_2 --> __new_1');
+  assert.equal(remapConnLine('a -> c', map), null);
+  assert.equal(remapConnLine('block a "A" at 1,1 size 4x2', map), null);
 });

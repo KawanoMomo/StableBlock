@@ -102,6 +102,9 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 /* Status */
 #export-report { position:fixed; right:16px; bottom:28px; max-width:460px; padding:10px 14px; background:#422006; border:1px solid #F59E0B; border-radius:6px; color:#FDE68A; font-size:11px; line-height:1.6; z-index:50; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
 #export-report[hidden] { display:none; }
+/* キャンバス上のラベル編集(ダブルクリック / F2 / Enter)。#svg-wrap の外に置き、再描画で消えない */
+.inline-label { position:fixed; z-index:40; box-sizing:border-box; margin:0; padding:2px 6px; border:2px solid var(--accent); border-radius:4px; background:#FFFFFF; color:#0F172A; font:600 12px 'IBM Plex Sans','Noto Sans JP',sans-serif; text-align:center; outline:none; box-shadow:0 4px 12px rgba(0,0,0,0.35); resize:none; }
+textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #export-report ul { margin:4px 0 0 16px; }
 #export-report .hint { color:#D6B98C; font-size:10px; margin-top:4px; }
 #status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
@@ -237,6 +240,7 @@ function undo(){if(!history.length)return;future.push(dsl);dsl=history.pop();sel
 function redo(){if(!future.length)return;history.push(dsl);dsl=future.pop();sel=[];refresh(true);}
 // Clipboard
 let clipboard=null; // [{type,dslLine}]
+let clipConns=[];   // copied connection lines whose both ends are in the clipboard (core/label connLinesAmong)
 const COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626","#1E293B","#0F172A","#334155","#475569"];
 const BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
 function isSel(id){return sel.some(s=>s.id===id)}
@@ -470,7 +474,7 @@ function setupInteractions(){
   // Resize handles
   document.querySelectorAll('[data-resize]').forEach(el=>{
     el.addEventListener('mousedown',e=>{
-      e.preventDefault();e.stopPropagation();
+      e.preventDefault();e.stopPropagation();releaseFocus();
       const edge=el.dataset.resize, id=el.dataset.rid, type=el.dataset.rtype;
       const item=type==="block"?parsed.blockMap[id]:type==="note"?parsed.noteMap[id]:parsed.groupMap[id];
       if(!item)return;
@@ -499,7 +503,7 @@ function setupInteractions(){
   // Drag items
   document.querySelectorAll('#svg-wrap g[data-id]').forEach(el=>{
     el.addEventListener('mousedown',e=>{
-      e.preventDefault();e.stopPropagation();
+      e.preventDefault();e.stopPropagation();releaseFocus();
       const type=el.dataset.type, id=el.dataset.id;
 
       // Selection logic (core/select): Shift adds/removes, otherwise replaces.
@@ -537,6 +541,8 @@ function setupInteractions(){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
         if(moved){const sides=window.StableBlockLayout.moveSides(lastDx,lastDy);growParents(before,items.map(it=>({id:it.id,sides})));refresh();return;}
+        // 動かさずに同じ要素を 2 回続けてクリック(ダブルクリック)するとキャンバス上でラベルを編集する。押すたびに再描画で要素が作り直されるので dblclick イベントには頼らない
+        const now=Date.now();if(!shift&&lastClick&&lastClick.id===id&&now-lastClick.t<450){lastClick=null;startInlineEdit(type,id);return;}lastClick=shift?null:{id,t:now};
         const next=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);
         if(!window.StableBlockSelect.sameSelection(next,sel)){sel=next;renderProps();renderSVG();}
       }
@@ -549,13 +555,58 @@ function setupInteractions(){
   const svg=document.querySelector('#svg-wrap svg');
   if(svg)svg.addEventListener('mousedown',e=>{
     if(e.target.tagName==='svg'||(e.target.tagName==='rect'&&!e.target.closest('g[data-id]')&&!e.target.dataset.resize)){
-      clearSelection();
+      releaseFocus();clearSelection();
     }
   });
 }
 
 // Deselect all (Esc, blank canvas, dark margin of the preview area)
 function clearSelection(){if(!sel.length)return;sel=[];renderProps();renderSVG();}
+// キャンバスを押したらフォーカスをキャンバスへ移す: 押したツールバーのボタンや入力欄にフォーカスが残ると、Enter がそのボタンをもう一度押す。
+// 要素の mousedown は preventDefault(ドラッグ中の文字選択を防ぐ)なので、ブラウザ任せではフォーカスが動かない
+// lastClick: 直前に動かさずにクリックした要素。ほかの所を押す・キーを打つと忘れる(離れた 2 回のクリックをダブルクリックと取らない)
+let lastClick=null;
+document.addEventListener('mousedown',e=>{const g=e.target.closest&&e.target.closest('#svg-wrap g[data-id]');if(!g||!lastClick||g.dataset.id!==lastClick.id)lastClick=null;},true);
+document.addEventListener('keydown',()=>{lastClick=null;},true);
+function releaseFocus(){if(inlineEd)finishInlineEdit(true);const a=document.activeElement;if(a&&a!==document.body&&typeof a.blur==='function')a.blur();}
+
+// ═══════════════════════════════════════════════
+// キャンバス上のラベル編集(ダブルクリック / F2 / Enter)
+// 要素の上に入力欄を重ね、打つたびに本文のラベルの 1 行だけを書き換える(新しい要素の ID はプロパティ欄と同じくラベルに追従)。
+// Enter・欄の外を押すと確定、Esc で開く前に戻す(本文も元のバイトに戻る)。note は複数行(Shift+Enter で改行)。
+// Tab / Shift+Tab は確定して、同じ種類の次 / 前の要素(読み順: 上の行から、左から)のラベル編集へ移る(続けて名付けるのにマウスへ戻らない)
+// ═══════════════════════════════════════════════
+let inlineEd=null;
+function startInlineEdit(type,id){
+  if(inlineEd)finishInlineEdit(true);
+  const it=type==='block'?parsed.blockMap[id]:type==='group'?parsed.groupMap[id]:parsed.noteMap[id];if(!it)return;
+  sel=[{type,id}];renderProps();renderSVG();
+  const g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);if(!g)return;
+  const r=g.querySelector('rect').getBoundingClientRect(),isNote=type==='note',isGroup=type==='group';
+  const el=document.createElement(isNote?'textarea':'input');
+  el.className='inline-label';el.id='inline-label';el.spellcheck=false;el.setAttribute('aria-label','ラベル');
+  el.value=isNote?it.label.split('\\n').join('\n'):it.label;
+  const h=isGroup?Math.max(22,Math.min(r.height,28)):isNote?Math.max(r.height,44):Math.max(r.height,24);
+  Object.assign(el.style,{left:r.left+'px',top:r.top+'px',width:Math.max(r.width,isGroup?140:80)+'px',height:h+'px'});
+  if(isGroup)el.style.textAlign='left';
+  document.body.appendChild(el);
+  const ed={el,type,id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds)};inlineEd=ed;
+  el.addEventListener('input',()=>{if(inlineEd!==ed)return;if(!ed.pushed){pushHistory();ed.pushed=true;}
+    const v=isNote?el.value.replace(/\n/g,'\\n'):el.value;sel=[{type:ed.type,id:ed.id}];
+    updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
+    parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();});
+  el.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);}
+    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
+    else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();const nx=nextInReadingOrder(ed.type,ed.id,e.shiftKey?-1:1);finishInlineEdit(true);if(nx)startInlineEdit(nx.type,nx.id);}});
+  el.addEventListener('blur',()=>{if(inlineEd===ed)finishInlineEdit(true);});
+  el.focus();el.select();
+}
+function nextInReadingOrder(type,id,dir){const list=(type==='block'?parsed.blocks:type==='group'?parsed.groups:parsed.notes).slice().sort((a,b)=>a.y-b.y||a.x-b.x||a.line-b.line);
+  const i=list.findIndex(x=>x.id===id);return i<0?null:list[i+dir]||null;}
+function finishInlineEdit(commit){const ed=inlineEd;if(!ed)return;inlineEd=null;
+  if(!commit&&ed.pushed){dsl=ed.snap;history.pop();sel=[{type:ed.type,id:ed.origId}];autoIds.clear();ed.auto.forEach(x=>autoIds.add(x));}
+  ed.el.remove();refresh(!ed.pushed);}
 
 // ═══════════════════════════════════════════════
 // Property Panel — context-sensitive UI for selected items
@@ -587,7 +638,7 @@ function renderPropsPanel(){
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
       <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
-          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>
+          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
@@ -852,6 +903,7 @@ function getItemDSLLine(type,id){
 function copySelection(){
   if(!sel.length)return;
   clipboard=sel.map(si=>{const line=getItemDSLLine(si.type,si.id);return line?{type:si.type,id:si.id,line:line.trim()}:null;}).filter(Boolean);
+  clipConns=window.StableBlockLabel.connLinesAmong(dsl,clipboard.map(ci=>ci.id));
   lastPaste=null;
 }
 function cutSelection(){
@@ -875,15 +927,17 @@ function pasteClipboard(){
   const skip=new Set(clipboard.map(ci=>ci.id)),src={x:bx,y:by,w:bw,h:bh};
   const p=areaSlot(bw,bh,lastPaste||src,groupOf(src,skip));   // a copy of a block in a group stays in that group
   const dx=p.x-bx,dy=p.y-by;
-  const newSel=[];
+  const newSel=[],idMap={};
   clipboard.forEach(ci=>{
     // Generate unique ID for paste
-    const newId=`__new_${addCounter++}`;
+    const newId=`__new_${addCounter++}`;idMap[ci.id]=newId;
     let line=ci.line.replace(new RegExp(`^(${ci.type}\\s+)${ci.id}`),`$1${newId}`);
     line=line.replace(/at\s+([\d.]+),([\d.]+)/,(m,x,y)=>`at ${+x+dx},${+y+dy}`);
     dsl=dsl.trimEnd()+"\n"+line+"\n";
     newSel.push({type:ci.type,id:newId});
   });
+  // 選んだ要素の間の接続も、貼り付けた要素の間に同じ属性で足す
+  clipConns.forEach(l=>{const nl=window.StableBlockLabel.remapConnLine(l,idMap);if(nl)dsl=dsl.trimEnd()+"\n"+nl+"\n";});
   lastPaste={x:p.x,y:p.y,w:bw,h:bh};
   sel=newSel;
   refresh();
@@ -910,14 +964,19 @@ editor.addEventListener('scroll',()=>{document.getElementById('line-nums').scrol
 document.getElementById('preview-area').addEventListener('mousedown',e=>{
   if(e.target.closest('#svg-wrap svg'))return;
   const r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;   // scrollbar
-  clearSelection();
+  releaseFocus();clearSelection();
 });
+// スクロール・ズームで入力欄が要素からずれるので、そこで確定する
+document.getElementById('preview-area').addEventListener('scroll',()=>{if(inlineEd)finishInlineEdit(true);});
 
 document.getElementById('export-report').addEventListener('click',e=>{e.currentTarget.hidden=true;});
 
 // Keyboard shortcuts
 document.addEventListener('keydown',e=>{
-  const inEditor=document.activeElement===editor || document.activeElement?.closest('#prop-content');
+  // 文字を打つ欄(本文欄・プロパティ欄・検索欄・キャンバス上のラベル編集)にいる間は、図のショートカットに取らない
+  // 欄の onkeydown が先に blur することがあるので、フォーカスだけでなくキーを受けた要素(e.target)も見る
+  const ae=document.activeElement,typing=el=>!!(el&&el!==document.body&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.closest?.('#prop-content')));
+  const inEditor=ae===editor||e.target===editor||typing(ae)||typing(e.target);
   // Ctrl+Z: Undo (always works)
   if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return;}
   // Ctrl+Y or Ctrl+Shift+Z: Redo
@@ -932,6 +991,8 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSelection();return;}
   // Ctrl+V: Paste
   if((e.ctrlKey||e.metaKey)&&e.key==='v'){e.preventDefault();pasteClipboard();return;}
+  // F2 / Enter: キャンバス上でラベルを編集(ボタンにフォーカスがあるときの Enter はそのボタンのもの)
+  if((e.key==='F2'||(e.key==='Enter'&&!(ae&&ae.tagName==='BUTTON')&&!(e.target&&e.target.tagName==='BUTTON')))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInlineEdit(sel[0].type,sel[0].id);return;}
   // Delete / Backspace: delete selected
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
   // Ctrl+A: select all
