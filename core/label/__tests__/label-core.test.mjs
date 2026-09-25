@@ -349,7 +349,7 @@ test('renameIdAcrossDsl: 定義の無い図(@include 先の定義を参照する
   assert.equal(renameIdAcrossDsl(user, 'SpiDrv', 'Spi_Driver'),
     '@include "shared/common.sb"\r\nblock app "App" at 1,1 size 4x2\r\napp -> Spi_Driver "req"\r\n# SpiDrv はここ\r\n');
   const def = '﻿block SpiDrv "SpiDrv" at 1,1 size 4x2\nSpiDrv -> app\n';
-  assert.equal(renameIdAcrossDsl(def, 'SpiDrv', 'Spi_Driver'), '﻿block Spi_Driver "SpiDrv" at 1,1 size 4x2\nSpi_Driver -> app\n');
+  assert.equal(renameIdAcrossDsl(def, 'SpiDrv', 'Spi_Driver'), '﻿block Spi_Driver "Spi_Driver" at 1,1 size 4x2\nSpi_Driver -> app\n');
   assert.equal(renameIdAcrossDsl('block a "A" at 1,1 size 4x2\n', 'SpiDrv', 'X'), 'block a "A" at 1,1 size 4x2\n');
 });
 
@@ -408,4 +408,29 @@ test('chainConnectInDsl: 選んだ順に鎖状に結び、既にある組(向き
   assert.equal(r.dsl, dsl + 'a -> b\nc -> d\n');
   assert.deepEqual(chainConnectInDsl(dsl, ['b', 'c'], [{ from: 'c', to: 'b' }]), { dsl, added: [] });
   assert.equal(chainConnectInDsl('x\n\n', ['a', 'b'], []).dsl, 'x\na -> b\n');
+});
+
+// ─── 読み込んだ図をまたぐ検索(HTML 版のツールバーの検索が、表示中でない図の当たりを並べる) ───
+import { searchIdsInFiles } from '../label-core.mjs';
+
+test('searchIdsInFiles: ID・ラベルに含む定義行と、from / to に含む接続行を図と行で返す(大文字小文字を区別しない)', () => {
+  const files = [
+    { path: 'spi_swc.sb', text: '# SpiDrv の構成\r\nblock SpiDrv "SPI Driver" at 1,1 size 4x2\r\nblock app "App" at 8,1 size 4x2\r\napp -> SpiDrv "spidrv"\r\n' },
+    { path: 'can_swc.sb', text: 'block can "Can" at 1,1 size 4x2\n' },
+    { path: 'shared/common.sb', text: 'block os "OS" at 1,1 size 4x2\nnote n1 "spidrv を使う" at 1,5 size 6x2\n' },
+  ];
+  assert.deepEqual(searchIdsInFiles(files, 'spidrv').map(h => [h.path, h.line, h.kind, h.id]),
+    [['spi_swc.sb', 2, 'def', 'SpiDrv'], ['spi_swc.sb', 4, 'ref', 'SpiDrv'], ['shared/common.sb', 2, 'def', 'n1']]);
+  assert.equal(searchIdsInFiles(files, 'SpiDrv')[1].text, 'app -> SpiDrv "spidrv"');   // 行末の \r は含めない
+  assert.deepEqual(searchIdsInFiles(files, 'driver').map(h => [h.path, h.line]), [['spi_swc.sb', 2]]);   // ラベルで当たる
+  assert.deepEqual(searchIdsInFiles(files, '  '), []);
+  assert.deepEqual(searchIdsInFiles(files, 'nothing'), []);
+});
+
+test('renameIdInDsl: ラベル全体が旧 ID と同じなら表示名も新 ID に揃え、ラベルの一部に含むだけなら触れない', () => {
+  assert.equal(renameIdInDsl('block SpiDrv "SpiDrv" at 1,1 size 4x2\nSpiDrv -> b', 'SpiDrv', 'SpiMasterDrv'),
+    'block SpiMasterDrv "SpiMasterDrv" at 1,1 size 4x2\nSpiMasterDrv -> b');
+  assert.equal(renameIdInDsl('  group  g1  "g1" at 1,1 size 4x2', 'g1', 'Grp'), '  group  Grp  "Grp" at 1,1 size 4x2');
+  assert.equal(renameIdInDsl('block SpiDrv "SpiDrv 本体" at 1,1 size 4x2', 'SpiDrv', 'X'), 'block X "SpiDrv 本体" at 1,1 size 4x2');
+  assert.equal(renameIdInDsl('block a "A" at 1,1 size 4x2\nblock b "a" at 5,1 size 4x2', 'a', 'z'), 'block z "A" at 1,1 size 4x2\nblock b "a" at 5,1 size 4x2');
 });
