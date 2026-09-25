@@ -105,3 +105,54 @@ export function polylineMidpoint(pts) {
   }
   return { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y };
 }
+
+// ─── ID(block / group / note の名前) ───
+// 利用者が決めた表記を保つ: 英数字と `_` だけを使い、大文字と `_` は落とさない。
+
+// ID として使える表記か(英数字と `_` のみ)
+export function isValidId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9_]+$/.test(id);
+}
+
+// ラベルから ID の候補を作る。`Spi_Api` → `Spi_Api`、`App\nSWC` → `App_SWC`。使える文字が無ければ ''
+export function labelToId(label) {
+  let s = String(label).replace(/\n/g, ' ').replace(/[^A-Za-z0-9_\s]/g, '').trim().replace(/\s+/g, '_');
+  if (s.length > 30) s = s.substring(0, 30).replace(/_+$/, '');
+  return s;
+}
+
+// used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
+export function uniqueId(base, used) {
+  const has = used instanceof Set ? id => used.has(id) : id => used.includes(id);
+  if (!has(base)) return base;
+  let n = 2;
+  while (has(`${base}_${n}`)) n++;
+  return `${base}_${n}`;
+}
+
+// oldId を newId に改名する。書き換えるのは定義行(line: 1 始まり。省略時は最初の定義)と、接続行の from / to だけ。
+// ラベル・属性・コメントの中の同じ文字列には触れない。同じ ID の定義が他に残るとき(重複 ID)は接続行を書き換えない。
+export function renameIdInDsl(dsl, oldId, newId, line) {
+  const lines = dsl.split('\n');
+  const defRe = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
+  let target = -1;
+  let others = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(defRe);
+    if (!m || m[2] !== oldId) continue;
+    if (target < 0 && (line == null || i === line - 1)) target = i;
+    else others++;
+  }
+  if (target < 0) return dsl;
+  lines[target] = lines[target].replace(defRe, (_, head, _id, sp) => head + newId + sp);
+  if (others === 0) {
+    const connRe = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(connRe);
+      if (!m || (m[2] !== oldId && m[6] !== oldId)) continue;
+      lines[i] = lines[i].replace(connRe, (_, ind, from, s1, arrow, s2, to) =>
+        ind + (from === oldId ? newId : from) + s1 + arrow + s2 + (to === oldId ? newId : to));
+    }
+  }
+  return lines.join('\n');
+}
