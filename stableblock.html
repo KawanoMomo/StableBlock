@@ -81,6 +81,9 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
 .prop-sub { font-size:9px; color:var(--dim); }
+.prop-id-box > summary { cursor:pointer; text-transform:none; }
+.prop-id-box > summary #prop-id-now { font-family:monospace; color:var(--text,#E2E8F0); }
+.prop-id-box[open] > summary { margin-bottom:4px; }
 .prop-btn { padding:6px 12px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; width:100%; font-family:inherit; }
 .prop-btn:hover { background:#334155; }
 .prop-btn-accent { border-color:var(--accent); color:#A5B4FC; }
@@ -244,6 +247,8 @@ log   -> hal
 // lastAddedId: block placed last by「+ ブロック追加」, lastPaste: area of the last paste — the next one lines up to their right (core/layout placeNext)
 let lastAddedId=null, lastPaste=null;
 let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, searchQuery='';
+// プロパティ欄の ID 欄: 利用者が開いたら、選び直しても開いたまま(core/label idFieldOpen)
+let idOpen=false;
 // selClicked: sel がクリック(Shift+クリック)の順に並んでいるか。justLinked: 直前に結んだ接続(ラベル欄を順に出す)
 let selClicked=false, justLinked=[];
 // Undo/Redo (max 80 levels)
@@ -653,8 +658,8 @@ function renderPropsPanel(){
     <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
     <div class="prop-sub" id="dup-hint" style="margin:-6px 0 10px">複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>
-    <div class="prop-section"><div class="prop-label">ID</div><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub">英数字と _。接続の参照も一緒に変わる</div></div>
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
+    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub">英数字と _。接続の参照も一緒に変わる</div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
@@ -810,7 +815,7 @@ function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=d
   pushHistory();if(!applyRename(s,nv)){if(msg)msg.textContent='この図の本文に定義が無いため変えられません(@include 先)';return;}autoIds.delete(s.id);refresh();}
 function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')||autoIds.has(s.id)))return;const SL=window.StableBlockLabel;const base=SL.labelToId(label);if(!base)return;
   const nid=SL.uniqueId(base,usedIdsExcept(s.id));if(nid===s.id)return;if(!applyRename(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);
-  const inp=document.getElementById('prop-id');if(inp)inp.value=nid;}
+  const inp=document.getElementById('prop-id');if(inp)inp.value=nid;const now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
 
 // ═══════════════════════════════════════════════
 // Editor / Refresh

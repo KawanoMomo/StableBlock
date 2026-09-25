@@ -142,6 +142,13 @@ function labelToId(label) {
   return s;
 }
 
+// プロパティ欄の ID 欄を開いて見せるか。ID はラベルを打てば自動で付くので普段は畳んで今の ID だけを見せ、まだ名前が無い
+// (`__new_` で始まる)とき、一緒に読み込んだほかの図でも使われている(elsewhere。改名が全部の図に及ぶと見せる)とき、
+// 利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
+function idFieldOpen(id, userOpen, elsewhere) {
+  return !!userOpen || !!elsewhere || String(id).startsWith('__new_');
+}
+
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
 function uniqueId(base, used) {
   const has = used instanceof Set ? id => used.has(id) : id => used.includes(id);
@@ -517,4 +524,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
