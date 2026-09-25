@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
-  parseLpos, labelLayout, setConnLabelInDsl,
+  parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
   connLinesAmong, remapConnLine,
 } from '../label-core.mjs';
@@ -399,4 +399,13 @@ test('remapConnLine: from / to だけを新しい ID に付け替え、片方が
   assert.equal(remapConnLine('b --> a', map), '__new_2 --> __new_1');
   assert.equal(remapConnLine('a -> c', map), null);
   assert.equal(remapConnLine('block a "A" at 1,1 size 4x2', map), null);
+});
+
+test('chainConnectInDsl: 選んだ順に鎖状に結び、既にある組(向きを問わず)は足さない', () => {
+  const dsl = 'block a "A" at 1,1 size 2x2\nblock b "B" at 5,1 size 2x2\nblock c "C" at 9,1 size 2x2\nblock d "D" at 13,1 size 2x2\nc -> b\n';
+  const r = chainConnectInDsl(dsl, ['a', 'b', 'c', 'd'], [{ from: 'c', to: 'b' }]);
+  assert.deepEqual(r.added, [{ from: 'a', to: 'b' }, { from: 'c', to: 'd' }]);
+  assert.equal(r.dsl, dsl + 'a -> b\nc -> d\n');
+  assert.deepEqual(chainConnectInDsl(dsl, ['b', 'c'], [{ from: 'c', to: 'b' }]), { dsl, added: [] });
+  assert.equal(chainConnectInDsl('x\n\n', ['a', 'b'], []).dsl, 'x\na -> b\n');
 });
