@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-owner-20260925-1921-6: 書き出しで情報が黙って落ちないようにした。Mermaid は note(旗形ノード)・色(style / linkStyle)・空の group・note との接続(点線)も書き、表せないもの(座標・大きさ、route= / lpos=、存在しない ID への接続)は書き出し後に画面右下へ一覧で示す。Excel の接続線は図形に接着(stCxn / endCxn)され、Excel で図形を動かすと線が付いてくる。note との接続も Excel に出る(HTML 版 / VSCode 拡張、共通ロジックは `core/mermaid/` と `core/excel/`)
 - BLK-owner-20260925-1921-4: ID をプロパティ欄の「ID」で決め・変えられる(表記はそのまま、接続の参照も追従)。新しい要素の ID はラベルの入力に追従し、「ID補正」ボタンは畳んだ(HTML 版と VSCode 拡張)
 - BLK-owner-20260925-1921-1: 作図 UI で置いた要素がキャンバスからはみ出すと `@canvas` 行が自動で広がる。ツール欄でキャンバス寸法を変えられ、ツールバーの「全体表示」(F キー)で図全体を画面に収められる。「+ ブロック追加」「+ グループ追加」は空き位置に並べて置く(HTML 版 / VSCode 拡張)
 - BLK-owner-20260925-1921-2: キャンバスの選択を draw.io と同じ規則にそろえた。選択済みの要素を動かさずにクリックするとその 1 つに絞られ(2 つ選んで結ぶ操作を続けても選択が膨らまない)、Esc とプレビューの余白クリックで選択が外れ、ステータスバーの Selected: N が追従し、本文から消えた要素はプロパティ欄に残らない(HTML 版 / VSCode 拡張、共通ロジックは `core/select/`)

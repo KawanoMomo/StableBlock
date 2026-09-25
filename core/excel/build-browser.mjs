@@ -107,6 +107,10 @@ export function buildLayoutCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockLayout', 'layout-core.mjs');
 }
 
+export function buildMermaidCoreBrowser(source) {
+  return buildBrowserGlobal(source, 'StableBlockMermaid', 'mermaid-core.mjs');
+}
+
 /**
  * CLI entry point.
  */
@@ -133,6 +137,11 @@ function main() {
   const OUT_LAYOUT_BROWSER = join(__dirname, '..', 'layout', 'layout-core.browser.js');
   writeFileSync(OUT_LAYOUT_BROWSER, buildLayoutCoreBrowser(readFileSync(LAYOUT_SRC, 'utf8')));
   console.log(`Wrote: ${OUT_LAYOUT_BROWSER}`);
+
+  const MERMAID_SRC = join(__dirname, '..', 'mermaid', 'mermaid-core.mjs');
+  const OUT_MERMAID_BROWSER = join(__dirname, '..', 'mermaid', 'mermaid-core.browser.js');
+  writeFileSync(OUT_MERMAID_BROWSER, buildMermaidCoreBrowser(readFileSync(MERMAID_SRC, 'utf8')));
+  console.log(`Wrote: ${OUT_MERMAID_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script

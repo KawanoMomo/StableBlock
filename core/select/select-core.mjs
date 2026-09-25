@@ -8,19 +8,19 @@
 // - 離す: 動かさずに離した(クリック)なら、Shift なしのときは押した 1 つに置き換える
 // - 本文の書換えで消えた要素は選択から落とす
 
-function same(a, b) { return a.type === b.type && a.id === b.id; }
-function has(sel, item) { return sel.some(s => same(s, item)); }
+function selSame(a, b) { return a.type === b.type && a.id === b.id; }
+function selHas(sel, item) { return sel.some(s => selSame(s, item)); }
 
 // mousedown で決まる選択。item = {type,id}
 export function pressSelect(sel, item, shift) {
-  if (shift) return has(sel, item) ? sel.filter(s => !same(s, item)) : sel.concat([{ type: item.type, id: item.id }]);
-  return has(sel, item) ? sel.slice() : [{ type: item.type, id: item.id }];
+  if (shift) return selHas(sel, item) ? sel.filter(s => !selSame(s, item)) : sel.concat([{ type: item.type, id: item.id }]);
+  return selHas(sel, item) ? sel.slice() : [{ type: item.type, id: item.id }];
 }
 
 // mouseup で決まる選択。moved は 1 グリッド以上動いたか
 export function releaseSelect(sel, item, shift, moved) {
   if (shift || moved) return sel.slice();
-  return has(sel, item) ? [{ type: item.type, id: item.id }] : sel.slice();
+  return selHas(sel, item) ? [{ type: item.type, id: item.id }] : sel.slice();
 }
 
 // parsed(parseDSL の結果)に無くなった要素を選択から落とす
@@ -32,5 +32,5 @@ export function pruneSelection(sel, parsed) {
 
 // 2 つの選択が同じ要素の並びか(再描画の要否判定用)
 export function sameSelection(a, b) {
-  return a.length === b.length && a.every((s, i) => same(s, b[i]));
+  return a.length === b.length && a.every((s, i) => selSame(s, b[i]));
 }
