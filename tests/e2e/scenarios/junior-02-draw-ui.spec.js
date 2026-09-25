@@ -46,11 +46,12 @@ test('junior-02: 注釈は block と同じ 1 手で置け、そのまま選ん�
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
 
-  // 何も選んでいないツール欄の「+ 注釈追加」1 回で note が入り、編集モードに入らずに選択されている
+  // 注釈だけを触るモード(ツールバーの「✎ 編集」)は無い。何も選んでいないツール欄の「+ 注釈追加」1 回で note が入り、選択されている
+  await expect(page.locator('#anno-edit-btn')).toHaveCount(0);
+  await expect(page.locator('#header')).not.toContainText('✎');
   await props.getByRole('button', { name: '+ 注釈追加' }).click();
   const added = svg.locator('g[data-type="note"][data-id^="__new_"]');
   await expect(added).toHaveCount(1);
-  await expect(page.locator('#anno-edit-btn')).not.toHaveClass(/tb-anno-edit/);
   await expect(props.locator('#prop-id')).toHaveValue(/^__new_/);
 
   // 通常モードのまま block も note も選べる
