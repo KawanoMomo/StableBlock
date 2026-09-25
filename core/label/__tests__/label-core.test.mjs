@@ -162,3 +162,63 @@ test('setConnLabelInDsl preserves leading whitespace and touches first match onl
   const dsl = '  a -> b "one"\na -> b "two"';
   assert.equal(setConnLabelInDsl(dsl, 'a', 'b', 'z'), '  a -> b "z"\na -> b "two"');
 });
+
+// ─── ID ───
+import { isValidId, labelToId, uniqueId, renameIdInDsl } from '../label-core.mjs';
+
+test('labelToId keeps case and underscores', () => {
+  assert.equal(labelToId('Spi_Api'), 'Spi_Api');
+  assert.equal(labelToId('Spi Driver'), 'Spi_Driver');
+  assert.equal(labelToId('App\nSWC'), 'App_SWC');
+  assert.equal(labelToId('SPI ドライバ'), 'SPI');
+  assert.equal(labelToId('ドライバ'), '');
+  assert.equal(labelToId('A'.repeat(40)).length, 30);
+});
+
+test('isValidId accepts alnum and underscore only', () => {
+  assert.ok(isValidId('Spi_Driver'));
+  assert.ok(isValidId('a1'));
+  assert.ok(!isValidId(''));
+  assert.ok(!isValidId('a b'));
+  assert.ok(!isValidId('a-b'));
+  assert.ok(!isValidId('ドライバ'));
+});
+
+test('uniqueId appends _N on collision', () => {
+  assert.equal(uniqueId('a', new Set()), 'a');
+  assert.equal(uniqueId('a', new Set(['a'])), 'a_2');
+  assert.equal(uniqueId('a', ['a', 'a_2']), 'a_3');
+});
+
+test('renameIdInDsl rewrites only the definition and connection endpoints', () => {
+  const dsl = [
+    'block SpiDrv "SpiDrv の上" at 1,1 size 4x2',
+    'block app "App" at 8,1 size 4x2',
+    'app -> SpiDrv "SpiDrv へ"',
+    'SpiDrv --> app color=#EF4444',
+    '# SpiDrv はコメント',
+    'block SpiDrv2 "x" at 1,5 size 4x2',
+    'SpiDrv2 -> app',
+  ].join('\n');
+  const out = renameIdInDsl(dsl, 'SpiDrv', 'Spi_Driver').split('\n');
+  assert.equal(out[0], 'block Spi_Driver "SpiDrv の上" at 1,1 size 4x2');
+  assert.equal(out[2], 'app -> Spi_Driver "SpiDrv へ"');
+  assert.equal(out[3], 'Spi_Driver --> app color=#EF4444');
+  assert.equal(out[4], '# SpiDrv はコメント');
+  assert.equal(out[5], 'block SpiDrv2 "x" at 1,5 size 4x2');
+  assert.equal(out[6], 'SpiDrv2 -> app');
+});
+
+test('renameIdInDsl keeps indentation and spacing', () => {
+  const dsl = '  note  m1 "memo" at 1,1 size 4x2\nm1   ->   b';
+  assert.equal(renameIdInDsl(dsl, 'm1', 'Memo'), '  note  Memo "memo" at 1,1 size 4x2\nMemo   ->   b');
+});
+
+test('renameIdInDsl with duplicate ids renames the given line only and leaves connections', () => {
+  const dsl = 'block a "A" at 1,1 size 4x2\nblock a "A2" at 8,1 size 4x2\na -> b';
+  assert.equal(renameIdInDsl(dsl, 'a', 'a_2', 2), 'block a "A" at 1,1 size 4x2\nblock a_2 "A2" at 8,1 size 4x2\na -> b');
+});
+
+test('renameIdInDsl returns dsl unchanged when the id is absent', () => {
+  assert.equal(renameIdInDsl('block a "A" at 1,1 size 4x2', 'zz', 'y'), 'block a "A" at 1,1 size 4x2');
+});

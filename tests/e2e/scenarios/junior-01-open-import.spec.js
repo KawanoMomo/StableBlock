@@ -26,5 +26,5 @@ test('junior-01: 先輩の .sb を Import で開くと、ブロック数が DSL 
 
   // 眺める: 手本のブロックをクリックすると選択され、プロパティパネルにその名前が出る
   await svg.locator('g[data-type="block"][data-id="spi_d"]').click();
-  await expect(page.locator('#prop-content')).toContainText('spi_d');
+  await expect(page.locator('#prop-content #prop-id')).toHaveValue('spi_d');
 });

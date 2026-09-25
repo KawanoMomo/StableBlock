@@ -14,7 +14,7 @@
       - renderSVG()          Parsed data → SVG with interactions
       - setupInteractions()  Drag, resize, select handlers
       - renderProps()        Property panel for selection
-      - Actions              Add/delete/copy/paste/group/fixNames
+      - Actions              Add/delete/copy/paste/group/renameId
       - Export               SVG/PNG/Mermaid/clipboard
       - Keyboard & editor    Shortcuts, DSL editor sync
 -->
@@ -137,8 +137,6 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb tb-anno-active" id="anno-btn" onclick="toggleAnnotations()" title="注釈の表示/非表示(N キーでも切替)">◇ 注釈</button>
     <button class="tb" id="anno-edit-btn" onclick="toggleAnnotationEdit()" title="注釈だけを触るモード(ブロック/グループをロック)">✎ 編集</button>
-    <div class="sep"></div>
-    <button class="tb" onclick="fixNames(event.shiftKey)" title="__new_ IDをラベルから自動生成">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" onclick="exportSVG()">SVG</button>
     <button class="tb tb-accent" onclick="exportPNG()">PNG</button>
@@ -683,8 +681,9 @@ function renderPropsPanel(){
   const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}: ${item.id}</span>
+    <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
+    <div class="prop-section"><div class="prop-label">ID</div><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div><div class="prop-sub">英数字と _。接続の参照も一緒に変わる</div></div>
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudge('x',1)">▲</button><button class="step-btn dn" onclick="nudge('x',-1)">▼</button></div></div></div>
@@ -717,9 +716,9 @@ function renderPropsPanel(){
 // Actions: single
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
-function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
-function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();}
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;
@@ -774,35 +773,18 @@ function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHi
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const pad=1,labelH=2;const minX=Math.min(...items.map(b=>b.x)),minY=Math.min(...items.map(b=>b.y)),maxX=Math.max(...items.map(b=>b.x+b.w)),maxY=Math.max(...items.map(b=>b.y+b.h));const gx=minX-pad,gy=minY-labelH,gw=maxX-minX+pad*2,gh=maxY-minY+pad+labelH;const gid=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${gx},${gy} size ${gw}x${gh} color=#F1F5F9 border=#94A3B8\n`;sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
-// labelToId: convert label → valid ID (lowercase, alphanum+underscore, max 30 chars)
-// fixNames(all): normal click → rename __new_ only; Shift+click → rename ALL IDs
-// Uses line-based replacement to handle duplicate IDs correctly
-function labelToId(label){let s=label.replace(/\\n/g,' ').replace(/[^a-zA-Z0-9\s]/g,'').trim().replace(/\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/, '');return s;}
-function fixNames(all){
-  if(!parsed)return;
-  const allItems=[...parsed.blocks,...parsed.groups,...parsed.notes];
-  const targets=all?allItems:allItems.filter(x=>x.id.startsWith('__new_'));
-  if(!targets.length)return;
-  pushHistory();
-  const usedIds=new Set(allItems.filter(x=>!targets.includes(x)).map(x=>x.id));
-  const renames=[];
-  targets.forEach(t=>{
-    let base=labelToId(t.label);if(usedIds.has(base)){let n=2;while(usedIds.has(`${base}_${n}`))n++;base=`${base}_${n}`;}
-    usedIds.add(base);renames.push({old:t.id,new:base,line:t.line});
-  });
-  // Line-based replacement for definitions (handles duplicate IDs)
-  const lines=dsl.split("\n");
-  renames.forEach(r=>{
-    const idx=r.line-1;
-    if(idx>=0&&idx<lines.length)lines[idx]=lines[idx].replace(new RegExp(`^(\\s*(?:block|group|note)\\s+)${r.old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}(\\s+)`),`$1${r.new}$2`);
-  });
-  // Connection lines: build first-wins map for ambiguous duplicates
-  const connMap={};renames.forEach(r=>{if(!connMap[r.old])connMap[r.old]=r.new;});
-  for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;for(const[old,nw]of Object.entries(connMap)){const re=new RegExp(`\\b${old.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'g');lines[i]=lines[i].replace(re,nw);}}
-  dsl=lines.join("\n");
-  sel=sel.map(s=>{const r=renames.find(r=>r.old===s.id);return r?{...s,id:r.new}:s;});
-  refresh();
-}
+// ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。
+// __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
+const autoIds=new Set();
+function usedIdsExcept(id){return new Set([...parsed.blocks,...parsed.groups,...parsed.notes].map(x=>x.id).filter(x=>x!==id));}
+function applyRename(s,newId){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&it?it.line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);return true;}
+function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}
+  const SL=window.StableBlockLabel;const err=!SL.isValidId(nv)?'英数字と _ だけが使えます':usedIdsExcept(s.id).has(nv)?`「${nv}」は既に使われています`:'';
+  if(err){if(msg)msg.textContent=err;return;}
+  pushHistory();if(!applyRename(s,nv)){if(msg)msg.textContent='この図の本文に定義が無いため変えられません(@include 先)';return;}autoIds.delete(s.id);refresh();}
+function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')||autoIds.has(s.id)))return;const SL=window.StableBlockLabel;const base=SL.labelToId(label);if(!base)return;
+  const nid=SL.uniqueId(base,usedIdsExcept(s.id));if(nid===s.id)return;if(!applyRename(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);
+  const inp=document.getElementById('prop-id');if(inp)inp.value=nid;}
 
 // ═══════════════════════════════════════════════
 // Editor / Refresh

@@ -245,7 +245,7 @@ function getWebviewContent(dslText) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, renameIdInDsl };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -317,7 +317,6 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
   <div class="sep"></div><button class="tb" onclick="undo()">&#x21A9;</button><button class="tb" onclick="redo()">&#x21AA;</button>
   <div class="sep"></div><button class="tb" id="hl-btn" onclick="toggleHL()" title="H key">&#x25CE; HL</button>
   <div class="sep"></div><button class="tb anno-act" id="anno-btn" onclick="toggleAnno()" title="Show/hide annotations (N key)">&#x25C7; Anno</button><button class="tb" id="anno-edit-btn" onclick="toggleAnnoEdit()" title="Annotation-only mode (locks blocks/groups)">&#x270E; Edit</button>
-  <div class="sep"></div><button class="tb" onclick="fixN(event.shiftKey)" title="Rename __new_ IDs from labels">Fix ID</button>
   <div class="sep"></div><button class="tb" onclick="exportSVG()">SVG</button><button class="tb" onclick="exportPNG()">PNG</button><button class="tb" onclick="exportPNGT()">PNG&#x2205;</button><button class="tb" onclick="copyPNG()">&#x2398; Copy</button><button class="tb" onclick="exportXlsx()">Excel</button>
   <div class="sep"></div><button class="tb" onclick="exportMmd()">Mermaid</button>
   <div class="sep"></div><input class="pi" id="search-input" placeholder="Search..." style="width:100px;font-size:10px" oninput="doSearch(this.value)">
@@ -570,7 +569,8 @@ function propsPanel(){
   var typeLabel=isN?'NOTE':isB?'BLOCK':'GROUP';
   var typeColor=isN?'#F59E0B':isB?'#A5B4FC':'#C4B5FD';
   var colors=isN?NOTE_COLORS:isB?COLORS:BG_COLORS;
-  var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+': '+it.id+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
+  var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
+  h+='<div class="pl">ID</div><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="if(event.key===\\'Enter\\')this.blur()" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div>';
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
   h+=stepperRow("X","sNudge(\\'x\\',-1)","sNudge(\\'x\\',1)",it.x)+stepperRow("Y","sNudge(\\'y\\',-1)","sNudge(\\'y\\',1)",it.y);
   h+=stepperRow("W","sNudgeSz(\\'w\\',-1)","sNudgeSz(\\'w\\',1)",it.w)+stepperRow("H","sNudgeSz(\\'h\\',-1)","sNudgeSz(\\'h\\',1)",it.h);
@@ -600,12 +600,12 @@ function stepper2(label,xd,xi,yd,yi){
 
 // Single-item actions
 function sPr(p,v){if(!sel.length)return;pushH();upPr(sel[0].type,sel[0].id,p,v);go();notify();}
-function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);parsed=parseDSL(dsl);render();
+function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);fLbId(v);parsed=parseDSL(dsl);render();
   document.getElementById('err').innerHTML=parsed.errors.length?'<div class="error">'+parsed.errors.map(function(e){return 'L'+e.line+': '+esc(e.msg)}).join('<br>')+'</div>':'';
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
 function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDSL(dsl);render();notify();}
-function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v.replace(/\\n/g,"\\\\n"));parsed=parseDSL(dsl);render();notify();}
+function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v.replace(/\\n/g,"\\\\n"));fLbId(v);parsed=parseDSL(dsl);render();notify();}
 function sField(f,v){if(!sel.length)return;var n=parseInt(v);if(isNaN(n))return;pushH();var it=getIt(sel[0]);if(!it)return;
   if(f==='x'||f==='y')upP(sel[0].type,sel[0].id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
   else if(f==='w'||f==='h')upS(sel[0].type,sel[0].id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
@@ -648,8 +648,13 @@ function addBlock(){pushH();var id="__new_"+(addC++),p=freeSlot(8,3);dsl=dsl.tri
 function addBlockInGroup(gid){var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var ch=fCh(gr).cb;var bw=8,bh=3,pad=1,labelH=2;var px=gr.x+pad,py=gr.y+labelH;if(ch.length){var sorted=ch.slice().sort(function(a,b){return a.y===b.y?a.x-b.x:a.y-b.y});var last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){upS('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+px+','+py+' size '+bw+'x'+bh+' color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 function addNote(){pushH();var id="__new_"+(addC++),p=freeSlot(8,2);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at '+p.x+','+p.y+' size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!showAnno){showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');}go();notify();}
-function lToId(lb){var s=lb.replace(/\\\\n/g,' ').replace(/[^a-zA-Z0-9\\s]/g,'').trim().replace(/\\s+/g,'_').toLowerCase()||'block';if(s.length>30)s=s.substring(0,30).replace(/_$/,'');return s;}
-function fixN(fa){if(!parsed)return;var all=parsed.blocks.concat(parsed.groups).concat(parsed.notes);var tgts=fa?all:all.filter(function(x){return x.id.indexOf('__new_')===0;});if(!tgts.length)return;pushH();var tSet=new Set(tgts);var used={};all.forEach(function(x){if(!tSet.has(x))used[x.id]=1;});var rns=[];tgts.forEach(function(t){var base=lToId(t.label);if(used[base]){var n=2;while(used[base+'_'+n])n++;base=base+'_'+n;}used[base]=1;rns.push({o:t.id,n:base,ln:t.line});});var ls=dsl.split("\\n");rns.forEach(function(r){var idx=r.ln-1;if(idx>=0&&idx<ls.length)ls[idx]=ls[idx].replace(new RegExp("^(\\\\s*(?:block|group|note)\\\\s+)"+r.o+"(\\\\s+)"),"$1"+r.n+"$2");});var cm={};rns.forEach(function(r){if(!cm[r.o])cm[r.o]=r.n;});for(var i=0;i<ls.length;i++){var m=ls[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;for(var k in cm){ls[i]=ls[i].replace(new RegExp("\\\\b"+k+"\\\\b","g"),cm[k]);}}dsl=ls.join("\\n");sel=sel.map(function(s){var r=rns.filter(function(r){return r.o===s.id;})[0];return r?{type:s.type,id:r.n}:s;});go();notify();}
+// ID: set in the property panel (sId). Renames touch only the definition line and connection endpoints (core/label renameIdInDsl).
+// __new_ items and IDs auto-assigned here (autoIds) follow the label as it is typed (fLbId). IDs of loaded diagrams never follow.
+var autoIds=new Set();
+function usedEx(id){var u=new Set();parsed.blocks.concat(parsed.groups).concat(parsed.notes).forEach(function(x){if(x.id!==id)u.add(x.id);});return u;}
+function applyRn(s,nid){var it=getIt(s);var dup=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(x){return x.id===s.id;}).length>1;var out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,nid,dup&&it?it.line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(function(x){return x.id===s.id?{type:x.type,id:nid}:x;});return true;}
+function sId(v){if(!sel.length)return;var s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}var SL=window.StableBlockLabel;var err=!SL.isValidId(nv)?'Letters, digits and _ only':usedEx(s.id).has(nv)?'"'+nv+'" is already used':'';if(err){if(msg)msg.textContent=err;return;}pushH();if(!applyRn(s,nv)){if(msg)msg.textContent='Defined outside this file (@include)';return;}autoIds.delete(s.id);go();notify();}
+function fLbId(label){var s=sel[0];if(!s||!(s.id.indexOf('__new_')===0||autoIds.has(s.id)))return;var SL=window.StableBlockLabel;var base=SL.labelToId(label);if(!base)return;var nid=SL.uniqueId(base,usedEx(s.id));if(nid===s.id)return;if(!applyRn(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);var inp=document.getElementById('prop-id');if(inp)inp.value=nid;}
 
 // Group selected blocks
 function grpSel(){if(sel.length<2)return;pushH();var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;sel.forEach(function(si){var it=getIt(si);if(!it)return;if(it.x<minX)minX=it.x;if(it.y<minY)minY=it.y;if(it.x+it.w>maxX)maxX=it.x+it.w;if(it.y+it.h>maxY)maxY=it.y+it.h;});var pad=1,gx=Math.max(0,minX-pad),gy=Math.max(0,minY-2),gw=maxX-minX+pad*2,gh=maxY-minY+pad+2;var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "Group" at '+gx+','+gy+' size '+gw+'x'+gh+' color=#F1F5F9 border=#94A3B8\\n';go();notify();}

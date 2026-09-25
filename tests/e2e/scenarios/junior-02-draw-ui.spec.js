@@ -51,13 +51,13 @@ test('junior-02: 注釈は block と同じ 1 手で置け、そのまま選ん�
   const added = svg.locator('g[data-type="note"][data-id^="__new_"]');
   await expect(added).toHaveCount(1);
   await expect(page.locator('#anno-edit-btn')).not.toHaveClass(/tb-anno-edit/);
-  await expect(props).toContainText('__new_');
+  await expect(props.locator('#prop-id')).toHaveValue(/^__new_/);
 
   // 通常モードのまま block も note も選べる
   await svg.locator('g[data-type="block"][data-id="app"]').click();
-  await expect(props).toContainText('app');
+  await expect(props.locator('#prop-id')).toHaveValue('app');
   await svg.locator('g[data-type="note"][data-id="memo"]').click();
-  await expect(props).toContainText('memo');
+  await expect(props.locator('#prop-id')).toHaveValue('memo');
 
   // note をドラッグで動かせる(本文の note 行の座標が変わる)
   const box = await svg.locator('g[data-type="note"][data-id="memo"] rect').first().boundingBox();
@@ -134,11 +134,11 @@ test('junior-02: 本文から消えた要素はプロパティ欄と選択から
   const drop = id => editor.inputValue().then(t => t.split('\n').filter(l => !l.startsWith(`block ${id} `)).join('\n'));
   await editor.fill(await drop('b8'));
   await expect(status(page)).toContainText('Selected: 1');
-  await expect(page.locator('#prop-content')).toContainText('b7');
+  await expect(page.locator('#prop-id')).toHaveValue('b7');
   await editor.fill(await drop('b7'));
   await expect(status(page)).toContainText('Selected: 0');
   await expect(page.locator('#prop-title')).toHaveText('ツール');
-  await expect(page.locator('#prop-content')).not.toContainText('b7');
+  await expect(page.locator('#prop-id')).toHaveCount(0);
 });
 
 test('junior-02: ドラッグは複数選択のまま全部動き、動かさずに離したクリックだけが 1 つに絞る', async ({ page }) => {
@@ -161,7 +161,7 @@ test('junior-02: ドラッグは複数選択のまま全部動き、動かさず
   // 動かさずに離す(クリック)と、押した 1 つに絞られる
   await block(page, 'b2').click();
   await expect(status(page)).toContainText('Selected: 1');
-  await expect(page.locator('#prop-content')).toContainText('b2');
+  await expect(page.locator('#prop-id')).toHaveValue('b2');
 });
 
 // ─── キャンバス: 置いた要素は全部キャンバス内に描かれ(はみ出せば @canvas の 1 行だけが広がる)、「全体表示」で画面に全体を収めて見られる(BLK-owner-20260925-1921-1) ───
@@ -209,7 +209,7 @@ test('junior-02: group と block を作図 UI だけで置くと、キャンバ�
   for (let i = 0; i < 8; i++) {
     const before = await getEditorText(page);
     await page.locator(`#svg-wrap svg g[data-type="group"][data-id="${gid}"]`).click({ position: { x: 40, y: 26 } });
-    await expect(page.locator('#prop-content')).toContainText(`GROUP: ${gid}`);
+    await expect(page.locator("#prop-id")).toHaveValue(gid);
     await page.getByRole('button', { name: '＋ ブロック追加' }).click();
     await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(i + 1);
     // 全部キャンバス内に描かれる
@@ -280,4 +280,47 @@ test('junior-02: 既定の図は 1600px 幅の画面でも右端がプロパテ�
   const fit = await page.locator('#svg-wrap svg').boundingBox();
   expect(fit.x + fit.width).toBeLessThanOrEqual(prop.x);
   await expect(page.locator('#zoom-label')).not.toHaveText('150%');
+});
+
+test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパティ欄の ID で変えると接続も追従する)', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SENPAI);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  await expect(page.getByRole('button', { name: 'ID補正' })).toHaveCount(0);
+
+  // 新しい block はラベルを打つと ID がその表記のまま付く(大文字と _ を落とさない)
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const label = props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  await label.fill('');
+  await label.pressSequentially('Spi_Api');
+  await expect(props.locator('#prop-id')).toHaveValue('Spi_Api');
+  await expect.poll(() => getEditorText(page)).toMatch(/^block Spi_Api "Spi_Api" at /m);
+
+  // 読み込んだ図の block はラベルを変えても ID は動かない。ID 欄で変えると定義行と接続の参照だけが変わる
+  await svg.locator('g[data-type="block"][data-id="spi_d"]').click();
+  const before = (await getEditorText(page)).split('\n');
+  const id = props.locator('#prop-id');
+  await expect(id).toHaveValue('spi_d');
+  await id.fill('bad id');
+  await id.press('Enter');
+  await expect(props.locator('#prop-id-msg')).toContainText('英数字と _');
+  await id.fill('Spi_Driver');
+  await id.press('Enter');
+  await expect(svg.locator('g[data-type="block"][data-id="Spi_Driver"]')).toHaveCount(1);
+  const after = (await getEditorText(page)).split('\n');
+  expect(after.length).toBe(before.length);
+  const changed = before.map((l, i) => [l, after[i]]).filter(([a, b]) => a !== b);
+  expect(changed.map(([, b]) => b)).toEqual([
+    'block Spi_Driver "Spi_Driver"    at 2,8  size 9x3 color=#D97706 text=#FFFFFF round=4',
+    'spi_h -> Spi_Driver',
+    'Spi_Driver -> dma',
+    'Spi_Driver -> mcal',
+  ]);
+  await expect(props.locator('#prop-id')).toHaveValue('Spi_Driver');
+
+  // 既にある ID には変えられない
+  await props.locator('#prop-id').fill('dma');
+  await props.locator('#prop-id').press('Enter');
+  await expect(props.locator('#prop-id-msg')).toContainText('既に使われています');
 });
