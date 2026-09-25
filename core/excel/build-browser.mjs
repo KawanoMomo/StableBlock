@@ -103,6 +103,10 @@ export function buildSelectCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockSelect', 'select-core.mjs');
 }
 
+export function buildLayoutCoreBrowser(source) {
+  return buildBrowserGlobal(source, 'StableBlockLayout', 'layout-core.mjs');
+}
+
 /**
  * CLI entry point.
  */
@@ -124,6 +128,11 @@ function main() {
   const OUT_SELECT_BROWSER = join(__dirname, '..', 'select', 'select-core.browser.js');
   writeFileSync(OUT_SELECT_BROWSER, buildSelectCoreBrowser(readFileSync(SELECT_SRC, 'utf8')));
   console.log(`Wrote: ${OUT_SELECT_BROWSER}`);
+
+  const LAYOUT_SRC = join(__dirname, '..', 'layout', 'layout-core.mjs');
+  const OUT_LAYOUT_BROWSER = join(__dirname, '..', 'layout', 'layout-core.browser.js');
+  writeFileSync(OUT_LAYOUT_BROWSER, buildLayoutCoreBrowser(readFileSync(LAYOUT_SRC, 'utf8')));
+  console.log(`Wrote: ${OUT_LAYOUT_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script

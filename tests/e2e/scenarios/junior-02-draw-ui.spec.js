@@ -163,3 +163,121 @@ test('junior-02: ドラッグは複数選択のまま全部動き、動かさず
   await expect(status(page)).toContainText('Selected: 1');
   await expect(page.locator('#prop-content')).toContainText('b2');
 });
+
+// ─── キャンバス: 置いた要素は全部キャンバス内に描かれ(はみ出せば @canvas の 1 行だけが広がる)、「全体表示」で画面に全体を収めて見られる(BLK-owner-20260925-1921-1) ───
+const SMALL = path.join(FIXTURES, 'junior-small-canvas.sb');
+
+// 描かれている block / group / note の矩形が全部 SVG のキャンバス(viewBox)に収まっているか
+async function outsideCanvas(page) {
+  return page.evaluate(() => {
+    const svg = document.querySelector('#svg-wrap svg');
+    const [, , cw, ch] = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    const out = [];
+    svg.querySelectorAll('g[data-id] > rect').forEach(r => {
+      const x = +r.getAttribute('x'), y = +r.getAttribute('y'), w = +r.getAttribute('width'), h = +r.getAttribute('height');
+      if (x < 0 || y < 0 || x + w > cw || y + h > ch) out.push(r.parentElement.dataset.id);
+    });
+    return out;
+  });
+}
+
+// 本文の行の差分(消えた行)。追加した行は数えない
+function removedLines(before, after) {
+  const a = new Set(after.split('\n'));
+  return before.split('\n').filter(l => !a.has(l));
+}
+
+async function rects(page, type) {
+  return page.evaluate(t => [...document.querySelectorAll(`#svg-wrap svg g[data-type="${t}"] > rect`)].map(r => ({
+    id: r.parentElement.dataset.id, x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height'),
+  })), type);
+}
+
+test('junior-02: group と block を作図 UI だけで置くと、キャンバスが広がり全部が描かれる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SMALL);
+  expect(await getEditorText(page)).toContain('@canvas width=400 height=300 grid=20');
+
+  // group を 1 つ
+  await page.getByRole('button', { name: '+ グループ追加' }).click();
+  const group = page.locator('#svg-wrap svg g[data-type="group"]');
+  await expect(group).toHaveCount(1);
+  const gid = await group.getAttribute('data-id');
+  expect(await outsideCanvas(page)).toEqual([]);
+
+  // group の「＋ ブロック追加」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
+  for (let i = 0; i < 8; i++) {
+    const before = await getEditorText(page);
+    await page.locator(`#svg-wrap svg g[data-type="group"][data-id="${gid}"]`).click({ position: { x: 40, y: 26 } });
+    await expect(page.locator('#prop-content')).toContainText(`GROUP: ${gid}`);
+    await page.getByRole('button', { name: '＋ ブロック追加' }).click();
+    await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(i + 1);
+    // 全部キャンバス内に描かれる
+    expect(await outsideCanvas(page), `${i + 1} 個目の追加後`).toEqual([]);
+    // 既存の行で変わるのは @canvas 行と、伸びた group の行だけ
+    const changed = removedLines(before, await getEditorText(page));
+    for (const l of changed) expect(l, `変わった行: ${l}`).toMatch(new RegExp(`^(@canvas |group ${gid} )`));
+  }
+  const text = await getEditorText(page);
+  const canvasLine = text.split('\n').find(l => l.startsWith('@canvas'));
+  expect(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');   // 広がった
+  expect(canvasLine).toMatch(/^@canvas width=\d+ height=\d+ grid=20$/);   // 属性の並びはそのまま
+
+  // トップの「+ ブロック追加」を 3 回: 同じ位置に重ねず、既存の要素とも重ならない
+  for (let i = 0; i < 3; i++) {
+    await page.locator('#prop-content button', { hasText: '✕' }).click();   // 選択を外してツール欄に戻る
+    await page.getByRole('button', { name: '+ ブロック追加' }).click();
+  }
+  const blocks = await rects(page, 'block');
+  const groups = await rects(page, 'group');
+  expect(blocks).toHaveLength(11);
+  const tops = blocks.slice(-3);
+  const inside = (c, p) => c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h;
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const t of tops) {
+    for (const o of [...blocks, ...groups]) {
+      if (o.id === t.id) continue;
+      expect(hit(t, o), `${t.id} が ${o.id} に重なる`).toBe(false);
+    }
+    expect(groups.some(g => inside(t, g)), `${t.id} が group の中に入った`).toBe(false);
+  }
+  expect(await outsideCanvas(page)).toEqual([]);
+
+  // キャンバス寸法はツール欄でも変えられる(本文の差分は @canvas の 1 行)
+  const beforeW = await getEditorText(page);
+  await page.locator('#prop-content button', { hasText: '✕' }).click();
+  const wInput = page.locator('#canvas-w');
+  const w0 = +(await wInput.inputValue());
+  await wInput.fill(String(w0 + 200));
+  await wInput.press('Enter');
+  const afterW = await getEditorText(page);
+  expect(removedLines(beforeW, afterW)).toEqual([beforeW.split('\n').find(l => l.startsWith('@canvas'))]);
+  expect(afterW).toContain(`@canvas width=${w0 + 200} `);
+
+  // 全体表示: キャンバス全体がプレビュー欄に収まる
+  await page.getByRole('button', { name: '全体表示' }).click();
+  const area = await page.locator('#preview-area').boundingBox();
+  const svgBox = await page.locator('#svg-wrap svg').boundingBox();
+  expect(svgBox.x + svgBox.width).toBeLessThanOrEqual(area.x + area.width);
+  expect(svgBox.y + svgBox.height).toBeLessThanOrEqual(area.y + area.height);
+});
+
+test('junior-02: 既定の図は 1600px 幅の画面でも右端がプロパティ欄に隠れず、全体表示で全体が見える', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await bootPlain(page);
+  const prop = await page.locator('#prop-panel').boundingBox();
+  const area = await page.locator('#preview-area').boundingBox();
+  expect(area.x + area.width).toBeLessThanOrEqual(prop.x + 1);   // プレビュー欄がプロパティ欄の下に潜らない
+  const svgBox = await page.locator('#svg-wrap svg').boundingBox();
+  expect(svgBox.x + svgBox.width).toBeLessThanOrEqual(prop.x);   // 開いた時点で右端まで見える
+  expect(svgBox.y + svgBox.height).toBeLessThanOrEqual(area.y + area.height);
+
+  // −/+ の後に「全体表示」(F キーでも)で戻る
+  await page.getByRole('button', { name: '+', exact: true }).click();
+  await page.getByRole('button', { name: '+', exact: true }).click();
+  await page.locator('#preview-area').click({ position: { x: 2, y: 2 } });
+  await page.keyboard.press('f');
+  const fit = await page.locator('#svg-wrap svg').boundingBox();
+  expect(fit.x + fit.width).toBeLessThanOrEqual(prop.x);
+  await expect(page.locator('#zoom-label')).not.toHaveText('150%');
+});
