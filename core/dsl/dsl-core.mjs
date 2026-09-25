@@ -4,7 +4,7 @@
 // parser が黙って捨てる記法(未知の属性・値の正規化)は往復でバイトが変わるので、コーパス往復テストで見つかる。
 // DOM API は使用禁止 — 純粋関数のみ。
 
-import { parseLpos } from '../label/label-core.mjs';
+import { parseLpos, hasLpos } from '../label/label-core.mjs';
 
 const RE_BLOCK = /^block\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_GROUP = /^group\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
@@ -123,6 +123,7 @@ export function parseDSL(text) {
           width: +(rest?.match(/width=([\d.]+)/)?.[1] || '1.5'),
           route: rest?.match(/route=(\S+)/)?.[1] || null,
           lpos: parseLpos(rest),
+          lposAuto: !hasLpos(rest),
           bidir: arrow === '-->',
           line: ln,
         };

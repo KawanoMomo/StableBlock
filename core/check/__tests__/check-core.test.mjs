@@ -135,3 +135,19 @@ test('check-cli: @include 先の block を横切る線を、図を開かずに i
   writeFileSync(join(dir, 'shared', 'common.sb'), 'block rte "RTE" at 8,5 size 4x2\n');
   assert.deepEqual(checkFile(join(dir, 'a.sb'), 'straight'), []);
 });
+
+test('checkDiagram: 読めない接続ラベルを、何に掛かるかと直し方付きで warn に出す', async () => {
+  const { placeLabels, labelIssues } = await import('../../label/label-core.mjs');
+  const text = '@canvas width=400 height=300 grid=20\nblock a "A" at 1,1 size 4x2\nblock b "B" at 1,8 size 4x2\nnote n "memo" at 0,4 size 3x3\na -> b "hidden" lpos=center\n';
+  const p = parseDSL(text);
+  const paths = connectionPaths(p, 'straight');
+  const d = checkDiagram(p, text.split('\n'), paths, labelIssues(placeLabels(paths, p), p));
+  assert.deepEqual(d.map(x => [x.line, x.level]), [[5, 'warn']]);
+  assert.match(d[0].msg, /接続「a -> b」のラベル「hidden」が note「n」\(L4\)の下に隠れる/);
+  assert.match(d[0].msg, /lpos=/);
+  // lpos= を消せば(既定の置き場所)note を避ける
+  const t2 = text.replace(' lpos=center', '');
+  const p2 = parseDSL(t2);
+  const paths2 = connectionPaths(p2, 'straight');
+  assert.deepEqual(checkDiagram(p2, t2.split('\n'), paths2, labelIssues(placeLabels(paths2, p2), p2)), []);
+});

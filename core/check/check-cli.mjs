@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // 複数の .sb を開かずに検査する: `npm run check -- <file.sb|dir> ...`(dir はその下の .sb を全部)
-// 画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線の横切り)を
+// 画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線の横切り・ラベルの重なり)を
 // `ファイル:行: error|warn: 内容` で出す。@include は読み込んだ先のファイルと行で示す。error があれば終了コード 1。
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDSL } from '../dsl/dsl-core.mjs';
-import { connectionPaths } from '../label/label-core.mjs';
+import { connectionPaths, placeLabels, labelIssues } from '../label/label-core.mjs';
 import { checkDiagram } from './check-core.mjs';
 
 // @include を展開し、展開後の各行がどのファイルの何行目かを返す
@@ -32,7 +32,8 @@ export function expandIncludes(file, seen = new Set()) {
 export function checkFile(file, mode = 'curved') {
   const { lines, origin } = expandIncludes(file);
   const parsed = parseDSL(lines.join('\n'));
-  return checkDiagram(parsed, lines, connectionPaths(parsed, mode)).map(d => ({ ...d, ...(origin[d.line - 1] || { file: resolve(file), line: d.line }) }));
+  const paths = connectionPaths(parsed, mode);
+  return checkDiagram(parsed, lines, paths, labelIssues(placeLabels(paths, parsed), parsed)).map(d => ({ ...d, ...(origin[d.line - 1] || { file: resolve(file), line: d.line }) }));
 }
 
 function collect(p) {

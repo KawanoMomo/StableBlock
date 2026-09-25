@@ -332,7 +332,8 @@ function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
   `</xdr:absoluteAnchor>`;
 }
 
-const Z_ORDER = { group: 0, connection: 1, connlabel: 2, block: 3, note: 4 };
+// 接続ラベルは block より上(block に隠れないように)。note は注釈の層として最前面
+const Z_ORDER = { group: 0, connection: 1, block: 2, connlabel: 3, note: 4 };
 
 function sortByZOrder(items) {
   return [...items].sort((a, b) => {

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sortByZOrder } from '../emitter.js';
 
-test('sortByZOrder: groups < connections < connection-labels < blocks < notes', () => {
+test('sortByZOrder: groups < connections < blocks < connection-labels < notes(ラベルは block に隠れない)', () => {
   const items = [
     { kind: 'note', id: 'n1', srcIndex: 0 },
     { kind: 'block', id: 'b1', srcIndex: 0 },
@@ -12,7 +12,7 @@ test('sortByZOrder: groups < connections < connection-labels < blocks < notes', 
   ];
   const sorted = sortByZOrder(items);
   assert.deepEqual(sorted.map(s => s.kind), [
-    'group', 'connection', 'connlabel', 'block', 'note'
+    'group', 'connection', 'block', 'connlabel', 'note'
   ]);
 });
 

@@ -1,0 +1,34 @@
+# StableBlock v0.7
+@canvas width=960 height=520 grid=20
+
+# Application
+
+
+# Middleware
+
+
+# Platform
+
+
+# Connections
+group Spi_Swc "Spi_Swc" at 1,1 size 20x22 color=#F1F5F9 border=#94A3B8
+block Spi_Api "Spi_Api" at 2,3 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Driver "Spi_Driver" at 11,3 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Hal "Spi_Hal" at 2,7 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Isr "Spi_Isr" at 11,7 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Job "Spi_Job" at 2,11 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Seq "Spi_Seq" at 11,11 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Cfg "Spi_Cfg" at 2,17 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Spi_Dma "Spi_Dma" at 11,17 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+group Spi_Core "Spi_Core" at 1,15 size 19x6 color=#F1F5F9 border=#94A3B8
+note DMA_Spi_Dma "DMA 転送は Spi_Dma 経由" at 22,1 size 8x2 color=#FEF3C7 text=#92400E
+Spi_Api -> Spi_Driver "req"
+Spi_Driver -> Spi_Hal "write"
+Spi_Hal -> Spi_Isr "irq"
+Spi_Isr -> Spi_Job "done"
+Spi_Job -> Spi_Seq "next"
+Spi_Seq -> Spi_Cfg "cfg"
+Spi_Cfg -> Spi_Dma "ch"
+Spi_Dma -> Spi_Isr "tc"
+Spi_Driver -> Spi_Seq "start"
+Spi_Api -> Spi_Cfg "init"

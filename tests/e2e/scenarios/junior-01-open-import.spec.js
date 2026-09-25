@@ -30,3 +30,33 @@ test('junior-01: 先輩の .sb を Import で開くと、ブロック数が DSL 
   await svg.locator('g[data-type="block"][data-id="spi_d"]').click();
   await expect(page.locator('#prop-content #prop-id')).toHaveValue('spi_d');
 });
+
+// 眺める: 1 グリッド間隔で並んだ block の間のラベルも、block の下に隠れず読める(block より上に白地で描かれ、block の名前・他のラベルに掛からない)
+test('junior-01: 詰めて並べた図の接続ラベルが全部 block より上に見え、名前にも互いにも重ならない', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, path.join(FIXTURES, 'owner-critique2-swc.sb'));
+  const svg = page.locator('#svg-wrap svg');
+  const labels = svg.locator('g.conn-label');
+  await expect(labels).toHaveCount(10);
+  const r = await page.evaluate(() => {
+    const svg = document.querySelector('#svg-wrap svg');
+    const all = [...svg.querySelectorAll('g[data-type="block"], g.conn-label')];
+    const lastBlock = all.map(e => e.matches('g.conn-label')).lastIndexOf(false);
+    const firstLabel = all.findIndex(e => e.matches('g.conn-label'));
+    const box = e => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+    const ov = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    const labels = [...svg.querySelectorAll('g.conn-label')].map(g => ({ text: g.textContent, box: box(g.querySelector('rect')) }));
+    const names = [...svg.querySelectorAll('g[data-type="block"] text')].map(t => ({ text: t.textContent, box: box(t) }));
+    const hits = [];
+    labels.forEach((l, i) => {
+      for (const n of names) if (ov(l.box, n.box) > 4) hits.push(`${l.text} が ${n.text} に掛かる`);
+      for (let j = 0; j < i; j++) if (ov(l.box, labels[j].box) > 4) hits.push(`${l.text} が ${labels[j].text} に掛かる`);
+    });
+    return { order: firstLabel > lastBlock, hits, texts: labels.map(l => l.text) };
+  });
+  expect(r.order, 'ラベルが block より先(下)に描かれている').toBe(true);
+  expect(r.hits).toEqual([]);
+  expect(r.texts.sort()).toEqual(['cfg', 'ch', 'done', 'init', 'irq', 'next', 'req', 'start', 'tc', 'write']);
+  // 隠れていないのでラベルの警告は出ない(本文は読み込んだまま)
+  await expect(page.locator('#error-bar')).not.toContainText('ラベル');
+});

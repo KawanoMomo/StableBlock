@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-owner-20260926-0451-2: 接続のラベルが block の下に隠れなくなった(画面・SVG・PNG・Excel でラベルを block より上に白地で描き、本文に lpos= が無いラベルは block の名前・note・他のラベルを避けた位置に置く。避けきれないと警告に出る)
 - BLK-owner-20260926-0451-prune: 線の形の既定を本文の `@canvas` 行の `route=` に持たせた。ツールバー「⌇ 線の形」/ L キーはその 1 行を書き換え(曲線に戻すと消える)、開き直しても・SVG/PNG・検査・VSCode 拡張でも同じ形になる。接続ごとの `route=` が優先
 - BLK-owner-20260925-1921-7: ツールバーとプロパティ欄の入口が「何をするか」の名前と動詞のツールチップを持つ(「◎ 未接続を薄く」「PNGをコピー」「透過PNG」「⌇ 線の形: 曲線」、スタイルは 実線/破線/太線、グループ欄は「+ グループ内にブロック追加」)。語彙は core/terms に 1 か所で、VSCode 拡張も同じ意味の英語。README から実在しない mcp-server/・examples/ の案内を消し、ファイル構成を実在に合わせた
 - BLK-junior-20260925-1921-friction: 「+ ブロック追加」(ツール欄・group 欄)と貼り付け(Ctrl+V)が、直前に置いた block の右隣の空き位置に置き、大きさ・色を引き継ぐ(group の端・キャンバスの端で折り返し、group は下へ伸ばす)。Ctrl+V を続けて押すと複製が格子に並ぶ。block を選ぶとプロパティ欄の先頭に複製のキーを示す(HTML 版 / VSCode 拡張、置き場所は `core/layout` の placeNext)

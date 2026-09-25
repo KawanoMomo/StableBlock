@@ -98,8 +98,8 @@ export function findCrossings(paths, blocks, g, inset = 2) {
 
 const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 
-// 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)
-export function checkDiagram(parsed, lines, paths) {
+// 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)
+export function checkDiagram(parsed, lines, paths, labelIssues) {
   const out = [];
   for (const e of parsed.errors || []) {
     const raw = lines && lines[e.line - 1] !== undefined ? lines[e.line - 1].trim() : null;
@@ -129,6 +129,14 @@ export function checkDiagram(parsed, lines, paths) {
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
       out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(L${block.line})の上を横切る` });
     }
+  }
+  for (const { conn, kind, item } of labelIssues || []) {
+    const head = `接続「${connText(conn)}」のラベル「${conn.label}」`;
+    const msg = kind === 'text' ? `${head}が block「${item.id}」(L${item.line})の名前に重なる`
+      : kind === 'title' ? `${head}が group「${item.id}」(L${item.line})の見出しに重なる`
+      : kind === 'note' ? `${head}が note「${item.id}」(L${item.line})の下に隠れる`
+      : `${head}が接続「${connText(item)}」(L${item.line})のラベルに重なる`;
+    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)` });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
