@@ -233,6 +233,8 @@ log   -> hal
 // lastAddedId: block placed last by「+ ブロック追加」, lastPaste: area of the last paste — the next one lines up to their right (core/layout placeNext)
 let lastAddedId=null, lastPaste=null;
 let zoom=1, parsed=null, sel=[], addCounter=1, suppressSync=false, highlight=false, showAnnotations=true, searchQuery='';
+// selClicked: sel がクリック(Shift+クリック)の順に並んでいるか。justLinked: 直前に結んだ接続(ラベル欄を順に出す)
+let selClicked=false, justLinked=[];
 // Undo/Redo (max 80 levels)
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
@@ -505,11 +507,12 @@ function setupInteractions(){
     el.addEventListener('mousedown',e=>{
       e.preventDefault();e.stopPropagation();releaseFocus();
       const type=el.dataset.type, id=el.dataset.id;
+      if(e.button===2){if(type==='block'||type==='note')startLinkDrag(e,type,id);return;}
 
       // Selection logic (core/select): Shift adds/removes, otherwise replaces.
       // Pressing an already-selected item keeps the multi-selection for drag; releasing without moving narrows it to that item.
       const shift=e.shiftKey, hit={type,id};
-      sel=window.StableBlockSelect.pressSelect(sel,hit,shift);
+      sel=window.StableBlockSelect.pressSelect(sel,hit,shift);selClicked=true;justLinked=[];
       renderProps(); renderSVG();
 
       // Now drag ALL selected items
@@ -636,7 +639,7 @@ function renderPropsPanel(){
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
       </div><div class="prop-sub">要素がはみ出すと自動で広がる。要素より小さくはできない</div></div>
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
-      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ</div>
+      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ。3 つ以上はクリックした順に「a → b → c」で鎖状に結ぶ(Enter でも)。右ボタンで block から block へドラッグしても 1 本結べる</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
           クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
@@ -668,6 +671,15 @@ function renderPropsPanel(){
       </div></div>`;
     html+=`<div class="prop-section"><div class="prop-label">一括 色変更</div><div class="color-grid">${colorDots}</div></div>`;
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
+    if(sel.length>=3&&justLinked.length){
+      html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)">`;});
+      html+=`<div class="prop-sub" style="margin-top:6px">打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る</div></div>`;
+    } else if(sel.length>=3&&chainIds()){
+      const ids=chainIds();
+      html+=`<div class="prop-section"><div class="prop-label">接続</div><button class="prop-btn" id="chain-btn" onclick="connectChain()" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に鎖状に結ぶ(Enter)">${ids.map(esc).join(' → ')}</button>`;
+      html+=`<div class="prop-sub" style="margin-top:6px">クリックした順に ${ids.length-1} 本で結ぶ(Enter でも)。結んだ後にラベルを順に入れられる</div></div>`;
+    }
     if(sel.length===2){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
@@ -682,7 +694,7 @@ function renderPropsPanel(){
         html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
         html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
         html+=`</div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" placeholder="(なし)">`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input" id="conn-label-input" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
         html+=`<div class="prop-sub" style="margin-top:6px">ラベル位置</div><div style="display:flex;gap:4px">${[['right','右'],['left','左'],['top','上'],['bottom','下'],['center','中央']].map(([v,l])=>`<button class="style-btn ${c.lpos===v?'active':''}" onclick="setConnProp('${fa}','${ta}','lpos','${v}')">${l}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
@@ -784,7 +796,27 @@ function batchDelete(){
 // Connection management (two-select) — find, create, remove, flip, bidir, color, width, style
 // ═══════════════════════════════════════════════
 function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
-function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;refresh();}
+function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;justLinked=[];refresh();focusLinkLabel('conn-label-input');}
+// 鎖状に結ぶ: クリックした順(selClicked)で、block / note だけを 3 個以上選んだとき。既にある組は足さない(core/label chainConnectInDsl)
+function chainIds(){if(!selClicked||sel.length<2||sel.some(s=>s.type==='group'))return null;const ids=sel.map(s=>s.id);return window.StableBlockLabel.chainConnectInDsl('',ids,parsed.connections).added.length?ids:null;}
+function connectChain(){const ids=chainIds();if(!ids)return;const r=window.StableBlockLabel.chainConnectInDsl(dsl,ids,parsed.connections);pushHistory();dsl=r.dsl;justLinked=r.added;refresh();focusLinkLabel(null);}
+function focusLinkLabel(id){const el=id?document.getElementById(id):document.querySelector('.link-label[data-i="0"]');if(el){el.focus();el.select&&el.select();}}
+// 右ボタンのドラッグで結ぶ: 始点の block / note から終点の block / note の上で離すと「始点 → 終点」を 1 本足し、そのラベル欄へ。
+// 既に結ばれている組は足さずに 2 つを選ぶだけ。ドラッグ中は点線で行き先を示す
+function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;
+  const pt=ev=>{const m=svg.getScreenCTM();if(!m)return{x:0,y:0};const p=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());return{x:p.x,y:p.y};};
+  const g=document.createElementNS('http://www.w3.org/2000/svg','line'),p0=pt(e);g.id='link-ghost';
+  [['x1',p0.x],['y1',p0.y],['x2',p0.x],['y2',p0.y],['stroke','#6366F1'],['stroke-width','2'],['stroke-dasharray','6,3'],['pointer-events','none']].forEach(([k,v])=>g.setAttribute(k,v));svg.appendChild(g);
+  function onMove(ev){const p=pt(ev);g.setAttribute('x2',p.x);g.setAttribute('y2',p.y);}
+  function onUp(ev){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);g.remove();
+    const t=document.elementFromPoint(ev.clientX,ev.clientY),hit=t&&t.closest?t.closest('#svg-wrap g[data-id]'):null;
+    if(!hit||!/^(block|note)$/.test(hit.dataset.type)||hit.dataset.id===from)return;
+    const to=hit.dataset.id;sel=[{type,id:from},{type:hit.dataset.type,id:to}];selClicked=true;justLinked=[];
+    if(findConnsBetween(from,to).length){renderProps();renderSVG();return;}
+    connectTwo(from,to);}
+  window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);}
+function leaveToCanvas(){if(document.activeElement)document.activeElement.blur();const w=document.getElementById('svg-wrap');if(w){w.setAttribute('tabindex','-1');w.focus({preventScroll:true});}}
+function linkLabelKey(e,i){if(e.key!=='Enter')return;e.preventDefault();const next=document.querySelector(`.link-label[data-i="${i+1}"]`);if(next){next.focus();next.select();}else leaveToCanvas();}
 function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
 function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
 function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
@@ -939,7 +971,7 @@ function pasteClipboard(){
   // 選んだ要素の間の接続も、貼り付けた要素の間に同じ属性で足す
   clipConns.forEach(l=>{const nl=window.StableBlockLabel.remapConnLine(l,idMap);if(nl)dsl=dsl.trimEnd()+"\n"+nl+"\n";});
   lastPaste={x:p.x,y:p.y,w:bw,h:bh};
-  sel=newSel;
+  sel=newSel;selClicked=false;justLinked=[];
   refresh();
 }
 
@@ -995,8 +1027,10 @@ document.addEventListener('keydown',e=>{
   if((e.key==='F2'||(e.key==='Enter'&&!(ae&&ae.tagName==='BUTTON')&&!(e.target&&e.target.tagName==='BUTTON')))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInlineEdit(sel[0].type,sel[0].id);return;}
   // Delete / Backspace: delete selected
   if(e.key==='Delete'||e.key==='Backspace'){if(sel.length>1){e.preventDefault();batchDelete();}else if(sel.length===1){e.preventDefault();deleteItem();}return;}
+  // Enter: クリックした順に選んだ block / note を結ぶ(2 個なら「a → b」、3 個以上なら鎖状)
+  if(e.key==='Enter'&&!e.ctrlKey&&!e.altKey&&!(document.activeElement&&/^(BUTTON|A|SELECT)$/.test(document.activeElement.tagName))&&chainIds()){e.preventDefault();if(sel.length===2)connectTwo(sel[0].id,sel[1].id);else connectChain();return;}
   // Ctrl+A: select all
-  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();const allNotes=showAnnotations?parsed.notes.map(n=>({type:'note',id:n.id})):[];sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id})),...allNotes];renderProps();renderSVG();return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClicked=false;justLinked=[];const allNotes=showAnnotations?parsed.notes.map(n=>({type:'note',id:n.id})):[];sel=[...parsed.blocks.map(b=>({type:'block',id:b.id})),...parsed.groups.map(g=>({type:'group',id:g.id})),...allNotes];renderProps();renderSVG();return;}
   // Arrow keys: move selected
   if(sel.length&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const ax=e.key==='ArrowLeft'||e.key==='ArrowRight'?'x':'y';const d=e.key==='ArrowRight'||e.key==='ArrowDown'?1:-1;if(sel.length>1)batchNudge(ax,d);else nudge(ax,d);return;}
   // H: toggle highlight
@@ -1006,6 +1040,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
 
+// 右ボタンのドラッグは結ぶ操作(startLinkDrag)なので、プレビューでは右クリックのメニューを出さない
+document.getElementById('svg-wrap').addEventListener('contextmenu',e=>e.preventDefault());
 parsed=parseDoc();renderSVG();renderProps();renderErrors();renderStatus();renderLineNums();fitView();
 </script>
 </body>

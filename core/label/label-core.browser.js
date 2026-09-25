@@ -90,6 +90,20 @@ function setConnLabelInDsl(dsl, from, to, label) {
   return lines.join('\n');
 }
 
+// 選んだ順の ID を鎖状に結ぶ(a -> b、b -> c …。Mermaid の a --> b --> c と同じ)。本文の末尾に接続の行を本数ぶん足すだけ。
+// connections(parse 済み)に同じ組の接続が向きを問わず既にあれば足さない。返り値 { dsl, added: [{ from, to }] }
+function chainConnectInDsl(dsl, ids, connections) {
+  const has = (a, b) => (connections || []).some(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
+  const added = [];
+  for (let i = 0; i + 1 < (ids || []).length; i++) {
+    const from = ids[i], to = ids[i + 1];
+    if (from === to || has(from, to) || added.some(c => (c.from === from && c.to === to) || (c.from === to && c.to === from))) continue;
+    added.push({ from, to });
+  }
+  if (!added.length) return { dsl, added };
+  return { dsl: dsl.trimEnd() + '\n' + added.map(c => `${c.from} -> ${c.to}`).join('\n') + '\n', added };
+}
+
 function polylineMidpoint(pts) {
   let total = 0;
   const segs = [];
@@ -477,4 +491,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

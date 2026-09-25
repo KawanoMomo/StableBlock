@@ -101,6 +101,70 @@ test('junior-02: 8 block に 10 本、毎回 2 個選択の状態から結べる
   for (const [x, y] of PAIRS) expect(text).toContain(`${x} -> ${y}`);
 });
 
+test('junior-02: 3 個以上をクリックした順に選ぶと鎖状に結べ、結んだ直後にラベルを順に打てる(Enter で次へ)。右ボタンのドラッグでも 1 本結べる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const props = page.locator('#prop-content');
+  const before = await getEditorText(page);
+
+  // クリックした順(b1 → b2 → b3 → b4)。入口は 2 個の「a → b」と同じ場所・同じ形
+  await block(page, 'b1').click();
+  for (const id of ['b2', 'b3', 'b4']) await block(page, id).click({ modifiers: ['Shift'] });
+  await expect(status(page)).toContainText('Selected: 4');
+  await props.getByRole('button', { name: 'b1 → b2 → b3 → b4', exact: true }).click();
+  await expect(status(page)).toContainText('Conn: 3');
+  // 本文は接続の行が本数ぶん末尾に足されるだけ
+  expect(await getEditorText(page)).toBe(before.trimEnd() + '\nb1 -> b2\nb2 -> b3\nb3 -> b4\n');
+
+  // 結んだ直後は 1 本目のラベル欄にフォーカス。打って Enter で次の接続へ、最後の Enter でキャンバスへ戻る
+  await expect(page.locator('.link-label[data-i="0"]')).toBeFocused();
+  await page.keyboard.type('req');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');                        // 2 本目はラベル無し
+  await page.keyboard.type('done');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toContain('b1 -> b2 "req"\nb2 -> b3\nb3 -> b4 "done"');
+  await expect(page.locator('.link-label')).toHaveCount(3);
+  await expect(page.locator('#prop-content input:focus')).toHaveCount(0);
+
+  // 既にある組は二重に足さない(b4 → b3 は b3 -> b4 があるので足さない)。キャンバスで Enter でも結べる
+  await block(page, 'b8').click();
+  for (const id of ['b4', 'b3']) await block(page, id).click({ modifiers: ['Shift'] });
+  await expect(props.getByRole('button', { name: 'b8 → b4 → b3', exact: true })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toContainText('Conn: 4');
+  expect(await getEditorText(page)).toMatch(/b3 -> b4 "done"\nb8 -> b4\n$/);
+
+  // 2 個の「a → b」も結んだ直後にラベル欄へ。打って Enter で確定
+  await block(page, 'b5').click();
+  await block(page, 'b6').click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: 'b5 → b6', exact: true }).click();
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('cfg');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toMatch(/b5 -> b6 "cfg"\n$/);
+  await expect(page.locator('#prop-content input:focus')).toHaveCount(0);
+
+  // Ctrl+A(順が決まらない選び方)では鎖の入口を出さない
+  await page.keyboard.press('Control+a');
+  await expect(status(page)).toContainText('Selected: 8');
+  await expect(props.locator('#chain-btn')).toHaveCount(0);
+  // 右ボタンで block から block へドラッグすると 1 本結べ、そのままラベルを打てる(クリック 1 回で 1 本)
+  await page.keyboard.press('Escape');
+  const center = async id => { const bb = await block(page, id).locator('rect').first().boundingBox(); return { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 }; };
+  const p6 = await center('b6'), p7 = await center('b7');
+  await page.mouse.move(p6.x, p6.y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(p7.x, p7.y, { steps: 5 });
+  await expect(page.locator('#link-ghost')).toHaveCount(1);          // ドラッグ中は点線で行き先を示す
+  await page.mouse.up({ button: 'right' });
+  await expect(page.locator('#link-ghost')).toHaveCount(0);
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('seq');
+  expect(await getEditorText(page)).toMatch(/b6 -> b7 "seq"\n$/);
+  await expect(status(page)).toContainText('Selected: 2');
+});
+
 test('junior-02: Esc とプレビューの余白クリックで選択が外れる', async ({ page }) => {
   await bootPlain(page);
   await importSb(page, SRC);
