@@ -63,16 +63,6 @@ E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.j
 `npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線が別の block の上を横切る)を
 `ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
 
-### MCPサーバー
-
-LLMから図を操作するためのMCPサーバー（18ツール）。
-
-```bash
-cd mcp-server
-uv sync
-uv run stableblock-mcp
-```
-
 ## DSL構文
 
 ```
@@ -113,19 +103,21 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **接続管理** — 2ブロック選択時に接続・削除・方向変更・双方向切替・色・太さ・スタイル
 - **矢印キー移動** — 選択アイテムを矢印キーで1グリッド単位ずつ移動
 - **スナップガイド** — ドラッグ中に他ブロックとの整列ガイドラインを表示
-- **検索/フィルタ** — ツールバーの検索欄でID・ラベル検索、非マッチ要素を薄暗く
-- **ハイライトモード** — 接続のないブロックをトーンダウン表示（H キー）
+- **検索/フィルタ** — ツールバーの「🔍 ID・ラベルで検索」欄で絞り込み、外れた要素を薄く表示
+- **未接続を薄く** — 接続の無いブロックを薄く表示(ツールバー「◎ 未接続を薄く」/ H キー)
+- **線の形** — route を書いていない接続の形を 曲線 → 直線 → 直角 と切り替える(ツールバー「⌇ 線の形」/ L キー)。接続ごとの形はプロパティ欄の「線の形」
+- **全体表示** — 図の全体を画面に収める(ツールバー「全体表示」/ F キー)
 - **ID** — プロパティ欄の「ID」で決める・変える(英数字と `_`、表記はそのまま)。接続の参照も一緒に変わる。新しい要素の ID はラベルの入力に追従する
 
 ### 注釈レイヤー
 - **`note` DSL構文** — ブロックの上位レイヤーに注釈を配置
-- **表示/非表示トグル** — ◇ 注釈ボタン / N キー
+- **注釈を表示** — 表示・非表示を切り替える(ツールバー「◇ 注釈を表示」/ N キー)
 - **選択・追加** — 表示中の注釈はブロックと同じにクリックで選び、ドラッグ・ハンドルで動かす。何も選んでいないツール欄の「+ 注釈追加」で置く
 - **注釈→ブロック接続** — 常に破線で描画
 
 ### エクスポート/変換
 - **SVG / PNG / 透過PNG** — ツールバーから直接出力
-- **クリップボードコピー** — PNG画像をクリップボードに
+- **PNGをコピー** — PNG画像をクリップボードに(ツールバー「PNGをコピー」)
 - **Mermaid変換** — flowchart TD 形式でエクスポート
 - **.sb 保存/読込** — DSLファイルの入出力
 - **@include** — 共通パーツのインクルード
@@ -137,13 +129,6 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **Git Visual Diff** — HEADとのサイドバイサイドSVG差分表示
 - **Ctrl+Z/Y/C/X/V/A** — ショートカットキー対応
 
-### MCPサーバー（18ツール）
-- `sb_new` / `sb_open` / `sb_save` / `sb_show` / `sb_undo`
-- `sb_add_block` / `sb_add_group` / `sb_connect` / `sb_remove` / `sb_modify`
-- `sb_modify_connection` / `sb_move_to_group` / `sb_fix_ids`
-- `sb_from_template` / `sb_auto_layout` / `sb_validate_layout`
-- `sb_resize_canvas` / `sb_export_svg`
-
 ## ファイル構成
 
 ```
@@ -154,16 +139,19 @@ stableblock/
 ├── VERSION              # バージョン一元管理
 ├── bump-version.sh      # バージョン更新スクリプト
 ├── stableblock.html     # スタンドアロン版（これ1つで完結）
-├── examples/            # サンプル .sb ファイル
-├── vscode-stableblock/  # VSCode拡張
-│   ├── package.json
-│   ├── README.md
-│   ├── src/extension.js
-│   ├── syntaxes/stableblock.tmLanguage.json
-│   └── language-configuration.json
-└── mcp-server/          # MCPサーバー
-    ├── pyproject.toml
-    └── src/stableblock_mcp/
+├── run-tests.bat        # 単体テストの実行
+├── build-vscode.bat     # VSCode拡張のビルドとインストール
+├── package.json         # テスト(npm test / npm run test:e2e)の依存
+├── playwright.config.js # E2E の設定
+├── core/                # HTML版と VSCode拡張の共通コア(DSL・ラベル・選択・配置・検査・画面の語彙・Excel/Mermaid 書き出し)
+├── tests/               # コーパス往復テストと E2E(tests/e2e/scenarios)
+├── docs/                # ECN と ADR
+└── vscode-stableblock/  # VSCode拡張
+    ├── package.json
+    ├── README.md
+    ├── src/extension.js
+    ├── syntaxes/stableblock.tmLanguage.json
+    └── language-configuration.json
 ```
 
 ## ライセンス

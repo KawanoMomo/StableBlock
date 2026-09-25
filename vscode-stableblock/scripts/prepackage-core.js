@@ -24,6 +24,7 @@ const ASSETS = [
   path.join("core", "select", "select-core.mjs"),
   path.join("core", "layout", "layout-core.mjs"),
   path.join("core", "mermaid", "mermaid-core.mjs"),
+  path.join("core", "terms", "terms-core.mjs"),
   path.join("core", "excel", "emitter.js"),
   path.join("core", "excel", "jszip.min.js"),
   path.join("core", "excel", "template-skeleton"),

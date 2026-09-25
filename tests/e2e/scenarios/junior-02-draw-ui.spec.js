@@ -206,12 +206,12 @@ test('junior-02: group と block を作図 UI だけで置くと、キャンバ�
   const gid = await group.getAttribute('data-id');
   expect(await outsideCanvas(page)).toEqual([]);
 
-  // group の「＋ ブロック追加」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
+  // group の「+ グループ内にブロック追加」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
   for (let i = 0; i < 8; i++) {
     const before = await getEditorText(page);
     await page.locator(`#svg-wrap svg g[data-type="group"][data-id="${gid}"]`).click({ position: { x: 40, y: 26 } });
     await expect(page.locator("#prop-id")).toHaveValue(gid);
-    await page.getByRole('button', { name: '＋ ブロック追加' }).click();
+    await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
     await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(i + 1);
     // 全部キャンバス内に描かれる
     expect(await outsideCanvas(page), `${i + 1} 個目の追加後`).toEqual([]);

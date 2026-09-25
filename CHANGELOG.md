@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-owner-20260925-1921-7: ツールバーとプロパティ欄の入口が「何をするか」の名前と動詞のツールチップを持つ(「◎ 未接続を薄く」「PNGをコピー」「透過PNG」「⌇ 線の形: 曲線」、スタイルは 実線/破線/太線、グループ欄は「+ グループ内にブロック追加」)。語彙は core/terms に 1 か所で、VSCode 拡張も同じ意味の英語。README から実在しない mcp-server/・examples/ の案内を消し、ファイル構成を実在に合わせた
 - BLK-junior-20260925-1921-friction: 「+ ブロック追加」(ツール欄・group 欄)と貼り付け(Ctrl+V)が、直前に置いた block の右隣の空き位置に置き、大きさ・色を引き継ぐ(group の端・キャンバスの端で折り返し、group は下へ伸ばす)。Ctrl+V を続けて押すと複製が格子に並ぶ。block を選ぶとプロパティ欄の先頭に複製のキーを示す(HTML 版 / VSCode 拡張、置き場所は `core/layout` の placeNext)
 - BLK-owner-20260925-2011-prune: 注釈を触る入口を通常モードの 1 つに統合(ツールバーの「✎ 編集」の注釈だけモードを畳み、「◇ 注釈」は表示/非表示の切替として残して title に置き方・選び方を案内)。VSCode 拡張で note が選べなかった不具合(選択の整理が noteMap を見ていた)も直した
 - BLK-owner-20260925-1921-5: エラー表示が理由を示す(書き間違えた語・欠けた部分と書式)。存在しない ID への接続をエラーに、block の重なり・線が別の block の上を横切ること・同じ組の 2 本目を警告に出し、ステータスバーに Err / Warn の数。`npm run check -- <.sb|フォルダ>` で図を開かずに同じ診断(HTML 版 / VSCode 拡張 / CLI 共通の `core/check/`)
