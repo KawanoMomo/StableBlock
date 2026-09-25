@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops } from '../check-core.mjs';
+import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -274,4 +274,15 @@ test('findStraddles / checkDiagram: group の枠をまたぐ block・group を�
   assert.match(warns[1].msg, /^block「EEP」/);
   // 収まっていれば何も言わない
   assert.deepEqual(check('group g "G" at 1,1 size 20x10\nblock a "A" at 2,3 size 6x3\n').filter(d => /枠/.test(d.msg)), []);
+});
+
+test('findOutside / checkDiagram: キャンバスの外にはみ出す要素を、はみ出す向きとグリッド数とともに警告する', () => {
+  const text = '@canvas width=400 height=200 grid=20 grow=off\ngroup g "G" at 0,0 size 10x5\nblock a "A" at 1,1 size 4x2\nblock b "B" at 18,8 size 4x4\nnote n "N" at 1,9 size 3x2\n';
+  const p = parseDSL(text);
+  const got = findOutside(p.canvas, [...p.blocks, ...p.groups, ...p.notes]).map(o => `${o.item.id}:${o.right},${o.bottom}`);
+  assert.deepEqual(got, ['b:2,2', 'n:0,1']);
+  const msgs = check(text).filter(d => /キャンバス/.test(d.msg));
+  assert.deepEqual(msgs.map(d => [d.line, d.level]), [[4, 'warn'], [5, 'warn']]);
+  assert.match(msgs[0].msg, /block「b」がキャンバス\(400×200\)の外に右へ 2・下へ 2 グリッドはみ出している/);
+  assert.match(msgs[1].msg, /note「n」がキャンバス\(400×200\)の外に下へ 1 グリッド/);
 });

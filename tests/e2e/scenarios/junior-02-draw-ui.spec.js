@@ -671,3 +671,44 @@ test('junior-02: プロパティ欄の X / Y / W / H の ▲ は 1 つ選択で�
   await expect.poll(() => line('app')).toContain('at 4,3 size 11x2');
   await expect.poll(() => line('dma')).toContain('at 14,7 size 10x3');
 });
+
+test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動で広げる」を外して固定でき、広がった直後は「元の寸法に戻して固定」で戻せる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SMALL);
+  const canvasLine = async () => (await getEditorText(page)).split('\n').find(l => l.startsWith('@canvas'));
+  const grew = page.locator('#status #canvas-grew');
+  const bar = page.locator('#error-bar');
+
+  // 既定は自動で広げる。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
+  await expect(page.locator('#canvas-grow')).toBeChecked();
+  await page.getByRole('button', { name: '+ ブロック追加' }).click();
+  const x = page.locator('#prop-content div:has(> .prop-sub:text-is("X")) input');
+  await x.fill('30');
+  await expect.poll(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');
+  await expect(grew).toContainText('400×300 →');
+  await expect(bar.getByText('キャンバス')).toBeHidden();
+
+  // 「元の寸法に戻して固定」1 回で元の寸法に戻り、本文の差分は @canvas の 1 行(grow=off)。はみ出した block はエラー欄に出て、画面にも描かれたまま
+  const before = await getEditorText(page);
+  await grew.getByRole('button', { name: '元の寸法に戻して固定' }).click();
+  await expect.poll(canvasLine).toBe('@canvas width=400 height=300 grid=20 grow=off');
+  expect(removedLines(before, await getEditorText(page))).toHaveLength(1);
+  await expect(grew).toHaveCount(0);
+  await expect(bar).toContainText('キャンバス(400×300)の外に右へ');
+  await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toBeVisible();
+
+  // 固定中は GUI の操作でも広げない(X を 31 にしても @canvas はそのまま)。ツール欄のチェックは外れている
+  await x.fill('31');
+  await expect.poll(async () => (await getEditorText(page)).includes(' at 31,')).toBe(true);
+  expect(await canvasLine()).toBe('@canvas width=400 height=300 grid=20 grow=off');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#canvas-grow')).not.toBeChecked();
+
+  // はみ出しを直して(X を 2 に)チェックを戻すと grow=off が消え、元の 1 行に戻る
+  await page.locator('#svg-wrap svg g[data-type="block"]').click();
+  await x.fill('2');
+  await expect(bar.getByText('キャンバス')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await page.locator('#canvas-grow').check();
+  await expect.poll(canvasLine).toBe('@canvas width=400 height=300 grid=20');
+});

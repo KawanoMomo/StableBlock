@@ -341,7 +341,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const checkCoreAsGlobals = checkCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };';
+    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -363,7 +363,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -412,6 +412,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .inline-label{position:fixed;z-index:40;box-sizing:border-box;margin:0;padding:2px 6px;border:2px solid #6366F1;border-radius:4px;background:#fff;color:#0F172A;font:600 12px sans-serif;text-align:center;outline:none;box-shadow:0 4px 12px rgba(0,0,0,.35);resize:none}
 textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 #wrap{background:#fff;border-radius:6px;display:inline-block;line-height:0}
+#wrap svg{overflow:visible}
 #propPanel{width:200px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
 .error{background:var(--vscode-inputValidation-errorBackground,#5a1d1d);color:#f88;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-size:11px}
 .error.warn-only{background:#422006;color:#FDE68A}.error .dg-warn{color:#FDE68A}
@@ -460,7 +461,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 </div>
 <div id="err"></div>
 <div class="main"><div id="preview"><div id="wrap"></div></div><div id="propPanel"></div></div>
-<div id="stats" class="stats"></div>
+<div class="stats"><span id="stats"></span> <span id="cvgrew" style="color:#FDE68A"></span></div>
 
 <script>
 var vscodeApi = acquireVsCodeApi();
@@ -479,11 +480,19 @@ var BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCF
 var NOTE_COLORS=["#FEF3C7","#FEE2E2","#DBEAFE","#DCFCE7","#F5F3FF","#FCE7F3","#CFFAFE","#FFF7ED","#F1F5F9","#FEF9C3","#ECFDF5","#F8FAFC"];
 
 function pushH(){hist.push(dsl);if(hist.length>80)hist.shift();fut.length=0;}
-function undo(){if(!hist.length)return;fut.push(dsl);dsl=hist.pop();sel=[];go();notify(true);}
-function redo(){if(!fut.length)return;hist.push(dsl);dsl=fut.pop();sel=[];go();notify(true);}
-// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げてから本文に返す(undo/redo は noGrow)
-function growCv(){var p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,p.blocks.concat(p.groups,p.notes));if(nd===dsl)return false;dsl=nd;return true;}
-function notify(noGrow){if(!noGrow&&growCv())go();vscodeApi.postMessage({type:"dslUpdate",dsl:dsl});}
+function undo(){if(!hist.length)return;fut.push(dsl);dsl=hist.pop();sel=[];grewFrom=null;go();notify(true);}
+function redo(){if(!fut.length)return;hist.push(dsl);dsl=fut.pop();sel=[];grewFrom=null;go();notify(true);}
+// GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げてから本文に返す(undo/redo は noGrow)。@canvas に grow=off があれば広げない(core/layout)
+// grewFrom: 自動で広げる前の寸法。下端の「Restore size and fix」の戻し先(HTML 版の「元の寸法に戻して固定」と同じ)
+var grewFrom=null;
+function growCv(){var p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,p.blocks.concat(p.groups,p.notes));if(nd===dsl)return false;if(!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;return true;}
+function notify(noGrow){if(!noGrow&&growCv())go();showGrew();vscodeApi.postMessage({type:"dslUpdate",dsl:dsl});}
+function showGrew(){var el=document.getElementById('cvgrew'),c=parsed&&parsed.canvas;if(!el)return;if(!grewFrom||!c||(grewFrom.width===c.width&&grewFrom.height===c.height)){el.innerHTML='';return;}
+  el.innerHTML='Canvas grown '+grewFrom.width+'x'+grewFrom.height+' &rarr; '+c.width+'x'+c.height+' <button class="sbtn" id="cv-fix" onclick="cvFix()" title="Restore the size before it grew and stop growing it (grow=off on the @canvas line)">Restore size and fix</button>';}
+// 自動で広げる前の寸法に戻し、grow=off を書く(本文の差分は @canvas の 1 行)
+function cvFix(){if(!grewFrom)return;var L=window.StableBlockLayout,f=grewFrom;pushH();grewFrom=null;dsl=L.setCanvasGrowInDsl(L.setCanvasInDsl(dsl,f.width,f.height),false);go();notify();}
+// 「はみ出したら自動で広げる」の切替。外すと @canvas 行に grow=off を書く
+function cvGrow(on){var nd=window.StableBlockLayout.setCanvasGrowInDsl(dsl,on);if(nd===dsl)return;pushH();grewFrom=null;dsl=nd;go();notify();}
 function isSel(id){return sel.some(function(s){return s.id===id});}
 function getIt(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]||parsed.nm[s.id];}
 function isAnnoConn(c){return !!(parsed.nm[c.from]||parsed.nm[c.to]);}
@@ -495,7 +504,7 @@ function parseDSL(t){
   for(var i=0;i<ls.length;i++){
     var r=ls[i].trim();if(!r||r.startsWith("#"))continue;var ln=i+1;
     try{
-      if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/),rt=r.match(/route=(\\S+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];if(rt)cv.route=rt[1];continue;}
+      if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/),rt=r.match(/route=(\\S+)/),gw=r.match(/grow=(\\S+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];if(rt)cv.route=rt[1];if(gw)cv.grow=gw[1];continue;}
       var m=r.match(/^block\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
       if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var b={type:"block",id:m[1],label:m[2],x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};bl.push(b);bm[b.id]=b;continue;}
       m=r.match(/^group\\s+(\\S+)\\s+"([^"]*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
@@ -628,6 +637,7 @@ function propsPanel(){
         '<button class="pbtn" data-term="add-block" onclick="addBlock()" title="Add a block right of the last one added (same size and color)">+ Block</button>'+
         '<button class="pbtn" data-term="add-group" onclick="addGroup()" title="Add a group at a free spot">+ Group</button>'+
         '<button class="pbtn" data-term="add-note" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" title="Add a note at a free spot">+ Note</button>'+
+        '<div class="pl">CANVAS</div><label style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
         '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click two blocks, then press "a &rarr; b"</div>'+
         '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: dim unlinked N: show notes</div>';
