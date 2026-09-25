@@ -746,8 +746,10 @@ function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.b
   const pad=1,labelH=2,p=L.placeNext(all.filter(x=>x!==gr&&isInside(x,gr)),w,h,{prev,x0:gr.x+pad,y0:gr.y+labelH,cols:gr.x+gr.w-pad});
   const gw=Math.max(gr.w,p.x+w+pad-gr.x),gh=Math.max(gr.h,p.y+h+pad-gr.y);if(gw!==gr.w||gh!==gr.h){updateSize('group',gr.id,gw,gh);parsed=parseDSL(dsl);}
   return p;}
+// The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
+function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}
 function addBlock(){pushHistory();const id=`__new_${addCounter++}`,prev=lastAddedId&&parsed.blockMap[lastAddedId]||null;
-  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,prev&&groupOf(prev));dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
+  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
 function addBlockInGroup(gid){const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
   let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||!isInside(prev,gr))prev=findChildren(gr).childBlocks.sort((a,b)=>a.y===b.y?a.x-b.x:a.y-b.y).pop()||null;
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
