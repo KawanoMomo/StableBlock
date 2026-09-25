@@ -88,6 +88,10 @@ function activate(context) {
         if (msg.type === "info") {
           vscode.window.showInformationMessage(msg.text);
         }
+        if (msg.type === "exportDrops") {
+          // 書き出し先の記法で表せず落ちたもの(core/mermaid・core/excel が列挙)。.sb には残っている
+          vscode.window.showWarningMessage(msg.format + " に書き出せなかったもの(" + msg.items.length + " 件): " + msg.items.join(" / "));
+        }
       }, null, context.subscriptions);
     }
 
@@ -232,7 +236,7 @@ function getWebviewContent(dslText) {
   // 末尾で window.StableBlockExcel として一括公開する
   const emitterAsGlobals = emitterScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx };';
+    + '\n;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx, connectionSiteIndex, listXlsxDrops };';
   const templateFilesJson = JSON.stringify(templateFiles);
 
   // ───── 接続ラベル共有ロジック(label-core.mjs)をインライン埋め込み ─────
@@ -268,6 +272,17 @@ function getWebviewContent(dslText) {
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
     + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, fitZoom, stepZoom };';
+
+  // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
+  let mermaidCoreScript = '';
+  try {
+    mermaidCoreScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'mermaid', 'mermaid-core.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load mermaid-core:', e.message);
+  }
+  const mermaidCoreAsGlobals = mermaidCoreScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockMermaid = { mermaidLabel, mermaidIds, toMermaid };';
 
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
@@ -310,6 +325,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>${labelCoreAsGlobals}<\/script>
 <script>${selectCoreAsGlobals}<\/script>
 <script>${layoutCoreAsGlobals}<\/script>
+<script>${mermaidCoreAsGlobals}<\/script>
 <script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
 </head><body>
 <div class="toolbar">
@@ -664,7 +680,7 @@ function matchSearch(item){if(!searchQ)return true;var q=searchQ.toLowerCase();i
 function doSearch(q){searchQ=q.trim();render();}
 
 // Mermaid export
-function exportMmd(){if(!parsed)return;var lines=["flowchart TD"],bm=parsed.blockMap;parsed.blocks.forEach(function(b){var lb=b.label.replace(/\\\\n/g,"<br/>");lines.push("    "+b.id+'["'+lb+'"]');});parsed.groups.forEach(function(g){var lb=g.label.replace(/\\\\n/g,"<br/>");lines.push("    subgraph "+g.id+'["'+lb+'"]');var ch=fCh(g);ch.cb.forEach(function(cb){lines.push("        "+cb.id);});lines.push("    end");});parsed.connections.forEach(function(c){var arrow=c.bidir?"<-->":"-->";var lb=c.label?' |"'+c.label+'"|':"";lines.push("    "+c.from+" "+arrow+lb+" "+c.to);});vscodeApi.postMessage({type:'exportMmd',data:lines.join("\\n")});}
+function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(r.dropped.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:r.dropped});}
 
 // Refresh
 function go(){parsed=parseDSL(dsl);render();props();
@@ -686,6 +702,7 @@ function exportXlsx(){
       var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
       var b64=btoa(binary);
       vscodeApi.postMessage({type:'exportXlsx',data:b64});
+      var drops=window.StableBlockExcel.listXlsxDrops(parsed);if(drops.length)vscodeApi.postMessage({type:'exportDrops',format:'Excel',items:drops});
     }).catch(function(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});});
   }catch(e){vscodeApi.postMessage({type:'info',text:'Excel エクスポート失敗: '+e.message});}
 }

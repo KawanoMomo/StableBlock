@@ -249,8 +249,20 @@ export function computeConnectionEndpoints(conn, blockMap, gridPx) {
   };
 }
 
-export function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
+// Connection site index of the rect / roundRect presets (DrawingML cxnLst order: t, l, b, r)
+const CXN_SITE = { top: 0, left: 1, bottom: 2, right: 3 };
+export function connectionSiteIndex(side) {
+  return CXN_SITE[side] ?? 0;
+}
+
+// glue: { st: { id, idx }, end: { id, idx } } — shape ids the connector is glued to, so that
+// moving a shape in Excel drags the line with it. Omitted → a free line (legacy behavior).
+export function buildConnectionShape(conn, connIndex, endpoints, shapeId, glue) {
   const { x1, y1, x2, y2 } = endpoints;
+  const glueXml = glue
+    ? (glue.st ? `<a:stCxn id="${glue.st.id}" idx="${glue.st.idx}"/>` : '') +
+      (glue.end ? `<a:endCxn id="${glue.end.id}" idx="${glue.end.idx}"/>` : '')
+    : '';
   const minX = Math.min(x1, x2);
   const minY = Math.min(y1, y2);
   const absDx = Math.abs(x2 - x1);
@@ -268,7 +280,7 @@ export function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
     `<xdr:cxnSp macro="">` +
       `<xdr:nvCxnSpPr>` +
         `<xdr:cNvPr id="${shapeId}" name="conn:${connIndex}"/>` +
-        `<xdr:cNvCxnSpPr/>` +
+        (glueXml ? `<xdr:cNvCxnSpPr>${glueXml}</xdr:cNvCxnSpPr>` : `<xdr:cNvCxnSpPr/>`) +
       `</xdr:nvCxnSpPr>` +
       `<xdr:spPr>` +
         `<a:xfrm flipH="${flipH}" flipV="${flipV}"><a:off x="0" y="0"/><a:ext cx="${absDx}" cy="${absDy}"/></a:xfrm>` +
@@ -335,21 +347,27 @@ export function buildDrawingXml(ast) {
 
   (ast.groups || []).forEach((g, i) => items.push({ kind: 'group', data: g, srcIndex: i }));
 
-  // Pre-compute all connection ports together (multi-conn distribution requires it)
-  const allPorts = computeAllPorts(ast.connections || [], ast.blockMap || {}, gridPx);
-  (ast.connections || []).forEach((c, i) => {
+  // Pre-compute all connection ports together (multi-conn distribution requires it).
+  // Block-to-block connections and connections touching a note (annotation, drawn dashed) are
+  // distributed separately, as the SVG renderer does.
+  const conns = ast.connections || [];
+  const noteMap = ast.noteMap || {};
+  const isAnno = c => !!(noteMap[c.from] || noteMap[c.to]);
+  const allPorts = computeAllPorts(conns.map(c => (isAnno(c) ? { ...c, from: '\0', to: '\0' } : c)), ast.blockMap || {}, gridPx);
+  const annoIdx = conns.map((c, i) => i).filter(i => isAnno(conns[i]));
+  const annoPorts = computeAllPorts(annoIdx.map(i => conns[i]), { ...(ast.blockMap || {}), ...noteMap }, gridPx);
+  annoIdx.forEach((ci, k) => { allPorts[ci] = annoPorts[k]; });
+  conns.forEach((c, i) => {
     const port = allPorts[i];
-    if (!port) {
-      console.warn(`[excel-emitter] skipping connection: ${c.from} -> ${c.to} (endpoint missing)`);
-      return;
-    }
+    if (!port) return;   // endpoint missing — listed by listXlsxDrops()
     const ep = {
       x1: pxToEmu(port.fp.x),
       y1: pxToEmu(port.fp.y),
       x2: pxToEmu(port.tp.x),
       y2: pxToEmu(port.tp.y)
     };
-    items.push({ kind: 'connection', data: c, srcIndex: i, endpoints: ep, connIndex: i });
+    const data = isAnno(c) ? { ...c, style: 'dashed' } : c;
+    items.push({ kind: 'connection', data, srcIndex: i, endpoints: ep, connIndex: i, sides: { fs: port.fs, ts: port.ts } });
     if (c.label) {
       items.push({ kind: 'connlabel', data: c, srcIndex: i, endpoints: ep, connIndex: i });
     }
@@ -360,11 +378,22 @@ export function buildDrawingXml(ast) {
 
   const sorted = sortByZOrder(items);
 
+  // Shape ids follow the z-order; connectors are written before the shapes they glue to,
+  // so the ids of blocks / notes are assigned up front.
+  const idOf = {};
+  sorted.forEach((item, k) => { if (item.kind === 'block' || item.kind === 'note') idOf[item.data.id] = k + 1; });
+  const glueOf = item => {
+    const c = item.data;
+    const st = idOf[c.from] != null ? { id: idOf[c.from], idx: connectionSiteIndex(item.sides.fs) } : null;
+    const end = idOf[c.to] != null ? { id: idOf[c.to], idx: connectionSiteIndex(item.sides.ts) } : null;
+    return st || end ? { st, end } : undefined;
+  };
+
   let shapeId = 1;
   const anchorXmls = sorted.map(item => {
     switch (item.kind) {
       case 'group': return buildGroupShape(item.data, shapeId++, gridPx);
-      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++);
+      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++, glueOf(item));
       case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++);
       case 'block': return buildBlockShape(item.data, shapeId++, gridPx);
       case 'note': return buildNoteShape(item.data, shapeId++, gridPx);
@@ -378,6 +407,18 @@ export function buildDrawingXml(ast) {
     ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     anchorXmls.join('') +
     `</xdr:wsDr>`;
+}
+
+// What the Excel output cannot carry, one line each (the UI shows it to the user after the export).
+// Connections whose endpoint is not in the diagram are not drawn.
+export function listXlsxDrops(ast) {
+  const known = { ...(ast.blockMap || {}), ...(ast.noteMap || {}) };
+  const dropped = [];
+  for (const c of ast.connections || []) {
+    const miss = [c.from, c.to].filter(x => !known[x]);
+    if (miss.length) dropped.push(`接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}(${miss.join(', ')} が図に無い)`);
+  }
+  return dropped;
 }
 
 function resolveJSZip(opts) {
