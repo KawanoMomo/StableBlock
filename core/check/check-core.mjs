@@ -61,6 +61,22 @@ export function findOverlaps(blocks) {
   return out;
 }
 
+// group の枠をまたぐ block / group の組(一部だけ重なり、どちらも相手の内側に無い)。group の子は座標で決まるので、
+// またいだ要素はどの group に属するかが画面と本文で食い違う。group 同士の組は後に書かれた方を item にして 1 回だけ数える
+export function findStraddles(blocks, groups) {
+  const inside = (c, p) => c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h;
+  const gs = groups || [];
+  const out = [];
+  for (const g of gs) {
+    for (const it of [...(blocks || []), ...gs]) {
+      if (it === g || overlapArea(it, g) === 0 || inside(it, g) || inside(g, it)) continue;
+      if (gs.includes(it) && gs.indexOf(it) < gs.indexOf(g)) continue;
+      out.push({ item: it, group: g });
+    }
+  }
+  return out;
+}
+
 // 線分 p-q が矩形 r(px, {x,y,w,h})の内部を通るか(Liang-Barsky)
 export function segmentHitsRect(p, q, r) {
   const dx = q.x - p.x, dy = q.y - p.y;
@@ -123,6 +139,9 @@ export function checkDiagram(parsed, lines, paths, labelIssues) {
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
     out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(L${p.line})に重なっている` });
+  }
+  for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(L${group.line})の枠をまたいでいる` });
   }
   if (paths) {
     const g = parsed.canvas.grid;

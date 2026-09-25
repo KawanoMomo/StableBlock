@@ -379,3 +379,86 @@ test('junior-02: ツール欄の「+ ブロック追加」は直前の block の
   expect(bs[1].x).toBe(bs[0].x + bs[0].w + 1);                                    // 右隣(1 グリッド空ける)
   expect(bs[2].x).toBe(bs[1].x + bs[1].w + 1);
 });
+
+// ─── 入れ子の group: 親の中で「選択をグループ化」「+ グループ内にブロック追加」「移動」をしても子は親の内側に収まり、
+//     親に足した block は親の直下に入る。枠をまたぐ配置は警告に出る(BLK-owner-20260926-0451-1) ───
+const boxes = text => Object.fromEntries([...text.matchAll(/^(block|group) (\S+) "[^"]*" at (\d+),(\d+) size (\d+)x(\d+)/gm)]
+  .map(m => [m[2], { type: m[1], id: m[2], x: +m[3], y: +m[4], w: +m[5], h: +m[6] }]));
+const within = (c, p, m = 0) => c.x >= p.x + m && c.y >= p.y + m && c.x + c.w <= p.x + p.w - m && c.y + c.h <= p.y + p.h - m;
+const hits = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+// 要素の親 = 内側に含む group のうち最も小さいもの(画面の判定と同じ)
+const parentOf = (all, id) => Object.values(all).filter(g => g.type === 'group' && g.id !== id && within(all[id], g))
+  .sort((a, b) => a.w * a.h - b.w * b.h)[0]?.id ?? null;
+
+test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の内側に収まり、親に足した block は親の直下に入る', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+
+  // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ グループ内にブロック追加」が効く
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  await label().fill('ECU');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('ECU');
+  await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(1);
+  await label().fill('CPU');
+  for (const name of ['RAM', 'Flash']) {
+    await selectGroup('ECU');
+    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await label().fill(name);
+  }
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
+
+  // 親の中の 2 つを「選択をグループ化」: 新しい group は親の内側に 1 グリッド以上空けて収まり、ほかの block に掛からない
+  await svg.locator('g[data-type="block"][data-id="CPU"]').click();
+  await svg.locator('g[data-type="block"][data-id="RAM"]').click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: '選択をグループ化' }).click();
+  await label().fill('MCU');
+  await expect(props.locator('#prop-id')).toHaveValue('MCU');
+  let all = boxes(await getEditorText(page));
+  expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
+  expect(hits(all.MCU, all.Flash), 'MCU が Flash に掛かる').toBe(false);
+  expect(parentOf(all, 'CPU')).toBe('MCU');
+  expect(parentOf(all, 'Flash')).toBe('ECU');
+
+  // 子 group を持つ親に「+ グループ内にブロック追加」: 子 group の中にも枠の上にも置かれず、親の直下に入る
+  for (const name of ['CAN_Trcv', 'EEPROM']) {
+    await selectGroup('ECU');
+    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await label().fill(name);
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    all = boxes(await getEditorText(page));
+    expect(parentOf(all, name), `${name} の親`).toBe('ECU');
+    expect(hits(all[name], all.MCU), `${name} が MCU に掛かる`).toBe(false);
+  }
+
+  // 子の block を矢印キーで子 group の下端より下へ: 子 group と親が広がり、兄弟は取り込まれずに押し出される
+  await svg.locator('g[data-type="block"][data-id="CPU"]').click();
+  const before = await getEditorText(page);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
+  const after = await getEditorText(page);
+  all = boxes(after);
+  expect(all.CPU.y).toBe(boxes(before).CPU.y + 5);
+  expect(parentOf(all, 'CPU')).toBe('MCU');
+  expect(within(all.CPU, all.MCU, 1), JSON.stringify(all)).toBe(true);
+  expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
+  for (const id of ['Flash', 'CAN_Trcv', 'EEPROM']) {
+    expect(parentOf(all, id), `${id} が MCU に取り込まれた`).toBe('ECU');
+    expect(hits(all[id], all.MCU), `${id} が MCU に掛かる`).toBe(false);
+  }
+  // 本文で変わるのは座標・大きさの行だけ(行数・順は同じ)
+  expect(after.split('\n').length).toBe(before.split('\n').length);
+  after.split('\n').forEach((l, i) => { if (l !== before.split('\n')[i]) expect(l).toMatch(/^(@canvas |block |group )/); });
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+
+  // 枠をまたぐ配置は警告に出る(本文で group をずらした場合)
+  const editor = page.locator('#editor');
+  await editor.fill(after.replace(/^(group MCU "MCU" at )(\d+),/m, (m, a, x) => `${a}${+x + 6},`));
+  await expect(page.locator('#error-bar')).toContainText('group「MCU」が group「ECU」');
+  await expect(page.locator('#error-bar')).toContainText('枠をまたいでいる');
+});

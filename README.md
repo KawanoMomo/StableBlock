@@ -60,7 +60,7 @@ E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.j
 
 ### 図の検査(開かずに)
 
-`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線が別の block の上を横切る)を
+`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・group の枠をまたぐ block や group・線が別の block の上を横切る)を
 `ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
 
 ### ID の参照元探しと全図の改名(開かずに)
