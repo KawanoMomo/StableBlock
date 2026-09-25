@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, segmentHitsRect, findCrossings, checkDiagram } from '../check-core.mjs';
+import { explainLine, findOverlaps, segmentHitsRect, findCrossings, findStraddles, checkDiagram } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -184,4 +184,25 @@ test('check-cli --refs / --rename: 図を開かずに参照元を探し、@inclu
   // 既にある ID への改名は、どの図も書き換えない
   assert.match(renameAcross([dir], 'os', 'Spi_Driver').error, /既に定義されている/);
   assert.equal(readFileSync(join(root, 'shared', 'common.sb'), 'utf8'), common.replace('block SpiDrv', 'block Spi_Driver'));
+});
+
+test('findStraddles / checkDiagram: group の枠をまたぐ block・group を警告、内側・外側・入れ子は数えない', () => {
+  const text = [
+    'group ECU "ECU" at 1,1 size 20x10',
+    'group MCU "MCU" at 2,3 size 24x6',
+    'block CPU "CPU" at 3,5 size 6x3',
+    'block EEP "EEP" at 19,2 size 6x3',
+    'block out "out" at 30,1 size 6x3',
+    'group in "in" at 3,4 size 8x5',
+  ].join('\n');
+  const p = parseDSL(text);
+  const got = findStraddles(p.blocks, p.groups).map(({ item, group }) => `${item.id}/${group.id}`).sort();
+  // MCU は ECU の右端を越える(1 回だけ数える)。EEP は ECU と MCU の枠をまたぐ。CPU・in は内側、out は外側
+  assert.deepEqual(got, ['EEP/ECU', 'EEP/MCU', 'MCU/ECU']);
+  const warns = check(text).filter(d => /枠をまたいでいる/.test(d.msg));
+  assert.deepEqual(warns.map(d => d.line), [2, 4, 4]);
+  assert.match(warns[0].msg, /group「MCU」が group「ECU」\(L1\)の枠をまたいでいる/);
+  assert.match(warns[1].msg, /^block「EEP」/);
+  // 収まっていれば何も言わない
+  assert.deepEqual(check('group g "G" at 1,1 size 20x10\nblock a "A" at 2,3 size 6x3\n').filter(d => /枠/.test(d.msg)), []);
 });

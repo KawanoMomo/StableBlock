@@ -144,4 +144,176 @@ function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom };
+// ── 入れ子の group(親 group は子を内側に収める) ──
+// group の子は座標だけで決まる(子の矩形が親の矩形の内側にある)。GUI の操作(移動・大きさ変更・グループ化・group 内への追加)で
+// 子が親の枠をまたいだら、枠を越えた向きに親を広げる(親の親も同じ)。本文で変わるのは広がった group の行だけ。
+
+function inside(c, p) { return c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h; }
+function area(r) { return r.w * r.h; }
+function overlapArea(a, b) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+// 要素ごとの親 group の ID({ id: 親 ID })。親は要素を内側に含む group のうち最も小さいもの。同じ大きさの group 同士は親子にしない。
+// items: block / group(/ note)の {type, id, x, y, w, h}。note は group の子として扱わない(注釈は枠に属さない)。
+function parentMap(items) {
+  const list = (items || []).filter(Boolean);
+  const groups = list.filter(g => g.type === 'group');
+  const out = {};
+  for (const it of list) {
+    if (it.type === 'note') continue;
+    let best = null;
+    for (const g of groups) {
+      if (g === it || g.id === it.id || !inside(it, g)) continue;
+      if (it.type === 'group' && area(g) <= area(it)) continue;
+      if (!best || area(g) < area(best)) best = g;
+    }
+    if (best) out[it.id] = best.id;
+  }
+  return out;
+}
+
+// 動いた量(グリッド)から、枠を越えうる辺('l' 't' 'r' 'b')
+function moveSides(dx, dy) {
+  const s = [];
+  if (dx < 0) s.push('l'); if (dx > 0) s.push('r');
+  if (dy < 0) s.push('t'); if (dy > 0) s.push('b');
+  return s;
+}
+
+// リサイズハンドルの向き(n / s / e / w の組み合わせ)から、広がりうる辺
+function edgeSides(edge) {
+  const s = [];
+  for (const [k, v] of [['w', 'l'], ['e', 'r'], ['n', 't'], ['s', 'b']]) if ((edge || '').includes(k)) s.push(v);
+  return s;
+}
+
+// 親 p を、子 c が sides の辺で margin グリッド以上内側に来るまで広げた矩形(変える必要が無ければ p と同じ値)
+function growToContain(p, c, sides, margin = 1) {
+  let x = p.x, y = p.y, r = p.x + p.w, b = p.y + p.h;
+  const all = sides || ['l', 't', 'r', 'b'];
+  if (all.includes('l') && c.x - margin < x) x = Math.max(0, c.x - margin);
+  if (all.includes('t') && c.y - margin < y) y = Math.max(0, c.y - margin);
+  if (all.includes('r') && c.x + c.w + margin > r) r = c.x + c.w + margin;
+  if (all.includes('b') && c.y + c.h + margin > b) b = c.y + c.h + margin;
+  return { x, y, w: r - x, h: b - y };
+}
+
+// 操作の後、動いた要素が操作前の親の枠をまたいでいれば親を広げ、広がった親についてその親も同じようにする。
+// 広がった group が、それまで重なっていなかった要素(兄弟・親の外の要素)に掛かるなら、その要素を広がった分だけ同じ向きへ
+// 押し出す(group なら中身ごと。押し出した要素がさらに別の要素に掛かれば、それも押す)。広げた group が黙って兄弟を
+// 子に取り込んだり、兄弟の枠をまたいだりしない。押し出した要素が親をはみ出せば、その親も広げる。
+// items: 操作後の block / group の矩形。parents: 操作前の parentMap。moved: [{ id, sides }](sides は枠を越えうる辺)。
+// 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない。親も一緒に動いた要素は相対位置が変わらないので見ない。
+// 返り値: 動いた・広がった要素の [{ type, id, x, y, w, h }](呼び出し側が本文の行の at / size に書く)。
+function fitParents(items, parents, moved, margin = 1) {
+  const byId = new Map((items || []).filter(Boolean).map(i => [i.id, { ...i }]));
+  const movedIds = new Set((moved || []).map(m => m.id));
+  const queue = (moved || []).filter(m => !movedIds.has(parents[m.id])).map(m => ({ id: m.id, sides: m.sides }));
+  const changed = new Map();
+  const chain = id => { const out = []; for (let p = parents[id], n = 0; p && n < 100; p = parents[p], n++) out.push(p); return out; };
+  const isDesc = (id, anc) => chain(id).includes(anc);
+  const shift = (q, dx, dy) => {
+    for (const it of byId.values()) {
+      if (it.id !== q.id && !isDesc(it.id, q.id)) continue;
+      it.x = Math.max(0, it.x + dx); it.y = Math.max(0, it.y + dy);
+      changed.set(it.id, it);
+    }
+  };
+  // 矩形 from が to に広がった・動いたとき、新しく掛かる要素を押す。skip: 押さない ID(自分・中身・祖先)
+  const push = (from, to, owner, depth) => {
+    if (depth > 50) return;
+    const d = { l: from.x - to.x, t: from.y - to.y, r: (to.x + to.w) - (from.x + from.w), b: (to.y + to.h) - (from.y + from.h) };
+    const anc = new Set(chain(owner));
+    for (const q of [...byId.values()]) {
+      if (q.id === owner || movedIds.has(q.id) || anc.has(q.id) || isDesc(q.id, owner)) continue;
+      if (overlapArea(q, from) > 0) continue;
+      // 広がった向きの先にあって、その向きと直交する範囲が重なる要素だけ。元の隙間(1 グリッドまで)を保つ分だけ押す
+      const hx = q.x < to.x + to.w && to.x < q.x + q.w, hy = q.y < to.y + to.h && to.y < q.y + q.h;
+      const fr = from.x + from.w, fb = from.y + from.h, tr = to.x + to.w, tb = to.y + to.h;
+      let dx = 0, dy = 0;
+      if (d.b > 0 && hx && q.y >= fb) dy = Math.max(0, tb + Math.min(1, q.y - fb) - q.y);
+      else if (d.r > 0 && hy && q.x >= fr) dx = Math.max(0, tr + Math.min(1, q.x - fr) - q.x);
+      else if (d.t > 0 && hx && q.y + q.h <= from.y) dy = -Math.max(0, q.y + q.h - (to.y - Math.min(1, from.y - q.y - q.h)));
+      else if (d.l > 0 && hy && q.x + q.w <= from.x) dx = -Math.max(0, q.x + q.w - (to.x - Math.min(1, from.x - q.x - q.w)));
+      if (!dx && !dy) continue;
+      const old = { x: q.x, y: q.y, w: q.w, h: q.h };
+      shift(q, dx, dy);
+      push(old, q, q.id, depth + 1);
+      queue.push({ id: q.id, sides: moveSides(dx, dy) });
+    }
+  };
+  for (let guard = 0; queue.length && guard < 1000; guard++) {
+    const { id, sides } = queue.shift();
+    const it = byId.get(id), pid = parents[id], p = pid && byId.get(pid);
+    if (!it || !p || !sides || !sides.length) continue;
+    if (overlapArea(it, p) === 0) continue;
+    const n = growToContain(p, it, sides, margin);
+    const grew = [];
+    if (n.x < p.x) grew.push('l'); if (n.y < p.y) grew.push('t');
+    if (n.x + n.w > p.x + p.w) grew.push('r'); if (n.y + n.h > p.y + p.h) grew.push('b');
+    if (!grew.length) continue;
+    const old = { x: p.x, y: p.y, w: p.w, h: p.h };
+    Object.assign(p, n);
+    changed.set(pid, p);
+    push(old, p, pid, 0);
+    queue.push({ id: pid, sides: grew });
+  }
+  return [...changed.values()].map(({ type, id, x, y, w, h }) => ({ type: type || 'group', id, x, y, w, h }));
+}
+
+// 「選択をグループ化」の新しい group の矩形。選んだ要素の外接矩形に、左右下 1・上 2(ラベルの帯)の余白を付ける。
+// 余白が選んでいない要素の枠をまたぐ(一部だけ重なる)なら、その辺の余白を 1、0 と詰める。親 group(parent)があれば、
+// 1 を超える余白は親の内側 1 グリッドに収まる範囲に詰める(親の枠に重ねない。足りない分は fitParents で親が広がる)。
+// members: 選んだ要素。others: 選んでいない block / group(親 group 自身を含めてよい。選んだ要素を内側に含む group は見ない)。
+function groupRectFor(members, others, parent) {
+  const ms = (members || []).filter(Boolean);
+  if (!ms.length) return null;
+  const minX = Math.min(...ms.map(m => m.x)), minY = Math.min(...ms.map(m => m.y));
+  const maxX = Math.max(...ms.map(m => m.x + m.w)), maxY = Math.max(...ms.map(m => m.y + m.h));
+  const bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  const ids = new Set(ms.map(m => m.id));
+  const obs = (others || []).filter(o => o && !ids.has(o.id) && !inside(bbox, o));
+  const want = { t: 2, l: 1, r: 1, b: 1 };
+  const m = { t: 0, l: 0, r: 0, b: 0 };
+  const rectOf = k => {
+    const x = Math.max(0, minX - k.l), y = Math.max(0, minY - k.t);
+    return { x, y, w: maxX + k.r - x, h: maxY + k.b - y };
+  };
+  const straddles = r => obs.some(o => overlapArea(r, o) > 0 && !inside(o, r));
+  const inParent = (r, side) => !parent || (side === 'l' ? r.x >= parent.x + 1 : side === 't' ? r.y >= parent.y + 1
+    : side === 'r' ? r.x + r.w <= parent.x + parent.w - 1 : r.y + r.h <= parent.y + parent.h - 1);
+  for (const side of ['t', 'l', 'r', 'b']) {
+    for (let k = want[side]; k >= 1; k--) {
+      const cand = { ...m, [side]: k }, r = rectOf(cand);
+      if (straddles(r)) continue;
+      if (k > 1 && !inParent(r, side)) continue;
+      m[side] = k;
+      break;
+    }
+  }
+  return rectOf(m);
+}
+
+// group gr の直下の block(子 group の中の block は含まない)のうち、読み順で最後のもの。無ければ null
+function lastChildBlock(items, gr) {
+  const list = (items || []).filter(Boolean), parents = parentMap(list);
+  const kids = list.filter(b => b.type === 'block' && parents[b.id] === gr.id);
+  kids.sort((a, b) => a.y === b.y ? a.x - b.x : a.y - b.y);
+  return kids.pop() || null;
+}
+
+// 「+ グループ内にブロック追加」と group 内への貼り付けの置き場所。gr の内側(左右下 1・上 2 のラベルの帯)に placeNext で並べる。
+// 避けるのは gr と重なる要素すべて(子・孫・子 group の枠・gr の枠をまたぐもの)。gr を含む親は避けない。
+// 返り値 { x, y, group }。group は置いた要素が収まるよう右・下に広げた gr の矩形(広げる必要が無ければ gr と同じ値)。
+function placeInGroup(items, gr, w, h, prev) {
+  const pad = 1, labelH = 2;
+  const obs = (items || []).filter(x => x && x.id !== gr.id && overlapArea(x, gr) > 0 && !inside(gr, x));
+  const p = placeNext(obs, w, h, { prev, x0: gr.x + pad, y0: gr.y + labelH, cols: gr.x + gr.w - pad });
+  const group = { x: gr.x, y: gr.y, w: Math.max(gr.w, p.x + w + pad - gr.x), h: Math.max(gr.h, p.y + h + pad - gr.y) };
+  return { x: p.x, y: p.y, group };
+}
+
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };
