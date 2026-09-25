@@ -164,6 +164,80 @@ function renameIdInDsl(dsl, oldId, newId, line) {
   return lines.join('\n');
 }
 
+// ─── 図をまたぐ ID の参照探しと改名(CLI `npm run check -- --refs / --rename` と VSCode 拡張の F2 が共用) ───
+// 書き換えるのは定義行の ID と接続行の from / to だけ。ラベル・属性・コメント・座標の行は 1 バイトも変えない。
+
+const ID_DEF_RE = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
+const ID_CONN_RE = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
+
+// 本文の中で id を定義している行(def)と、接続の from / to に書いている行(ref)。line は 1 始まり、text は行末の \r を除く
+function findIdInDsl(dsl, id) {
+  const out = [];
+  String(dsl).split('\n').forEach((raw, i) => {
+    const text = raw.replace(/\r$/, '');
+    const d = text.match(ID_DEF_RE);
+    if (d) { if (d[2] === id) out.push({ line: i + 1, kind: 'def', text }); return; }
+    const c = text.match(ID_CONN_RE);
+    if (c && (c[2] === id || c[6] === id)) out.push({ line: i + 1, kind: 'ref', text });
+  });
+  return out;
+}
+
+// 1 行の中で ID が書かれている位置(定義行の ID、接続の from / to)。[{ id, start, end }](列は 0 始まり、end は含まない)
+function idSpansInLine(text) {
+  const d = text.match(ID_DEF_RE);
+  if (d) return [{ id: d[2], start: d[1].length, end: d[1].length + d[2].length }];
+  const c = text.match(ID_CONN_RE);
+  if (!c) return [];
+  const from = c[1].length, to = from + c[2].length + c[3].length + c[4].length + c[5].length;
+  return [{ id: c[2], start: from, end: from + c[2].length }, { id: c[6], start: to, end: to + c[6].length }];
+}
+
+// 1 枚の本文で oldId を newId に改名する。その図が oldId を定義していれば定義行と接続(renameIdInDsl)、
+// 定義していなければ(@include 先など別の図の定義を参照しているだけなら)接続の from / to だけ
+function renameIdAcrossDsl(dsl, oldId, newId) {
+  const refs = findIdInDsl(dsl, oldId);
+  if (refs.some(r => r.kind === 'def')) return renameIdInDsl(dsl, oldId, newId);
+  if (!refs.length) return dsl;
+  const lines = String(dsl).split('\n');
+  for (const r of refs) {
+    lines[r.line - 1] = lines[r.line - 1].replace(ID_CONN_RE, (_, ind, from, s1, arrow, s2, to) =>
+      ind + (from === oldId ? newId : from) + s1 + arrow + s2 + (to === oldId ? newId : to));
+  }
+  return lines.join('\n');
+}
+
+// 複数の図(files: [{ path, text }])にまたがる改名の計画。書き込みは呼び出し側。
+// 戻り値: { error } か { changes: [{ path, text(改名後の全文), lines: [{ line, before, after }] }], defs: 定義している図の数 }
+// newId が使えない表記・どこかの図で既に定義されている・oldId がどの図にも無いときは error を返し、何も変えない
+function planRename(files, oldId, newId) {
+  if (!isValidId(newId)) return { error: `「${newId}」は ID に使えない(英数字と _ だけ)` };
+  if (oldId === newId) return { error: '改名前と同じ ID' };
+  const taken = [];
+  let defs = 0, found = 0;
+  for (const f of files) {
+    const hits = findIdInDsl(f.text, oldId);
+    const own = hits.filter(h => h.kind === 'def');
+    // 1 枚の中の重複 ID は、接続がどちらを指すか決まらない(ECN-013)ので改名しない
+    if (own.length > 1) return { error: `「${oldId}」が ${f.path} で ${own.length} 回定義されている(${own.map(h => `L${h.line}`).join(', ')})。先に 1 つにする` };
+    found += hits.length;
+    defs += hits.some(h => h.kind === 'def') ? 1 : 0;
+    for (const h of findIdInDsl(f.text, newId)) if (h.kind === 'def') taken.push(`${f.path}:${h.line}`);
+  }
+  if (taken.length) return { error: `「${newId}」は既に定義されている: ${taken.join(', ')}` };
+  if (!found) return { error: `「${oldId}」を定義・参照している図が無い` };
+  const changes = [];
+  for (const f of files) {
+    const text = renameIdAcrossDsl(f.text, oldId, newId);
+    if (text === f.text) continue;
+    const a = f.text.split('\n'), b = text.split('\n');
+    const lines = [];
+    a.forEach((l, i) => { if (l !== b[i]) lines.push({ line: i + 1, before: l.replace(/\r$/, ''), after: b[i].replace(/\r$/, '') }); });
+    changes.push({ path: f.path, text, lines });
+  }
+  return { changes, defs };
+}
+
 // ─── 接続の端点(ポート)と経路の点列。描画(HTML版 / VSCode拡張)と検査(core/check)が同じ計算を使う ───
 // 座標: 要素は grid 単位、戻り値は px(grid * g)。
 
@@ -378,4 +452,4 @@ function labelIssues(placed, parsed) {
   return out;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues };

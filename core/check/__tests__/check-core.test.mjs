@@ -151,3 +151,37 @@ test('checkDiagram: 読めない接続ラベルを、何に掛かるかと直し
   const paths2 = connectionPaths(p2, 'straight');
   assert.deepEqual(checkDiagram(p2, t2.split('\n'), paths2, labelIssues(placeLabels(paths2, p2), p2)), []);
 });
+
+test('check-cli --refs / --rename: 図を開かずに参照元を探し、@include 先を含めて全図を 1 操作で改名する', async () => {
+  const { mkdirSync, writeFileSync, readFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { findRefs, renameAcross } = await import('../check-cli.mjs');
+  const root = join(process.cwd(), 'test-results', 'check-cli-rename');
+  rmSync(root, { recursive: true, force: true });
+  const dir = join(root, 'diagrams');
+  mkdirSync(join(root, 'shared'), { recursive: true });
+  mkdirSync(dir, { recursive: true });
+  const common = '﻿# 共通部\r\nblock SpiDrv "SPI" at 1,1 size 4x2\r\nblock os "OS" at 1,5 size 4x2\r\n';
+  writeFileSync(join(root, 'shared', 'common.sb'), common);                       // フォルダの外の include 先
+  const swc = '@include "../shared/common.sb"\r\nblock app "App" at 8,1 size 4x2 color=#3B82F6\r\napp -> SpiDrv "SpiDrv を呼ぶ"\r\nSpiDrv -> os\r\n';
+  writeFileSync(join(dir, 'spi_swc.sb'), swc);
+  writeFileSync(join(dir, 'can_swc.sb'), 'block can "Can" at 1,1 size 4x2\n');
+
+  const refs = findRefs([dir], 'SpiDrv');
+  assert.deepEqual(refs.map(r => [r.file.endsWith('common.sb') ? 'common' : 'swc', r.line, r.kind]),
+    [['swc', 3, 'ref'], ['swc', 4, 'ref'], ['common', 2, 'def']]);
+
+  const dry = renameAcross([dir], 'SpiDrv', 'Spi_Driver', true);
+  assert.equal(dry.changes.length, 2);
+  assert.equal(readFileSync(join(dir, 'spi_swc.sb'), 'utf8'), swc);                // --dry-run は書かない
+
+  const plan = renameAcross([dir], 'SpiDrv', 'Spi_Driver');
+  assert.equal(plan.error, undefined);
+  assert.equal(readFileSync(join(root, 'shared', 'common.sb'), 'utf8'), common.replace('block SpiDrv', 'block Spi_Driver'));
+  assert.equal(readFileSync(join(dir, 'spi_swc.sb'), 'utf8'),
+    '@include "../shared/common.sb"\r\nblock app "App" at 8,1 size 4x2 color=#3B82F6\r\napp -> Spi_Driver "SpiDrv を呼ぶ"\r\nSpi_Driver -> os\r\n');
+  assert.deepEqual(findRefs([dir], 'SpiDrv'), []);
+  // 既にある ID への改名は、どの図も書き換えない
+  assert.match(renameAcross([dir], 'os', 'Spi_Driver').error, /既に定義されている/);
+  assert.equal(readFileSync(join(root, 'shared', 'common.sb'), 'utf8'), common.replace('block SpiDrv', 'block Spi_Driver'));
+});

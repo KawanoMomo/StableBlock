@@ -6,7 +6,7 @@
  * bidirectional sync: editor changes update preview, preview drag/edit updates editor.
  *
  * Extension host (this file, Node.js):
- *   - activate(): registers commands (preview, undo, redo, copy, paste, diff)
+ *   - activate(): registers commands (preview, undo, redo, copy, paste, diff) and the ID rename (F2) / references (Shift+F12) providers
  *   - getWebviewContent(): returns HTML with embedded JS for the preview panel
  *   - getDiffContent(): returns side-by-side visual diff HTML
  *
@@ -136,6 +136,64 @@ function activate(context) {
     }
   });
   context.subscriptions.push(diffCmd);
+
+  // ID の改名(F2「シンボルの名前変更」)と参照一覧(Shift+F12「すべての参照を検索」)。ワークスペースの全 .sb をまたいで、
+  // CLI(npm run check -- --rename / --refs)と同じ core/label の planRename / findIdInDsl を使う。書き換えるのは定義行と接続の from / to だけ
+  const idAt = async (doc, pos) => {
+    const core = await loadLabelCore();
+    const span = core.idSpansInLine(doc.lineAt(pos.line).text).find((x) => pos.character >= x.start && pos.character <= x.end);
+    return span ? { core, id: span.id, range: new vscode.Range(pos.line, span.start, pos.line, span.end) } : null;
+  };
+  const workspaceSb = async (doc) => {
+    const uris = await vscode.workspace.findFiles("**/*.{sb,stableblock}", "**/node_modules/**");
+    if (!uris.some((u) => u.toString() === doc.uri.toString())) uris.push(doc.uri);
+    return Promise.all(uris.map(async (uri) => ({ uri, path: vscode.workspace.asRelativePath(uri), text: (await vscode.workspace.openTextDocument(uri)).getText() })));
+  };
+  context.subscriptions.push(
+    vscode.languages.registerRenameProvider({ language: "stableblock" }, {
+      async prepareRename(doc, pos) {
+        const at = await idAt(doc, pos);
+        if (!at) throw new Error("ID(定義行の 2 語目か、接続の両端)の上で F2 を押す");
+        return { range: at.range, placeholder: at.id };
+      },
+      async provideRenameEdits(doc, pos, newName) {
+        const at = await idAt(doc, pos);
+        if (!at) throw new Error("ID(定義行の 2 語目か、接続の両端)の上で F2 を押す");
+        const files = await workspaceSb(doc);
+        const plan = at.core.planRename(files, at.id, newName);
+        if (plan.error) throw new Error(plan.error);
+        const edit = new vscode.WorkspaceEdit();
+        for (const c of plan.changes) {
+          const f = files.find((x) => x.path === c.path);
+          for (const l of c.lines) edit.replace(f.uri, new vscode.Range(l.line - 1, 0, l.line - 1, l.before.length), l.after);
+        }
+        return edit;
+      },
+    }),
+    vscode.languages.registerReferenceProvider({ language: "stableblock" }, {
+      async provideReferences(doc, pos) {
+        const at = await idAt(doc, pos);
+        if (!at) return [];
+        const out = [];
+        for (const f of await workspaceSb(doc)) {
+          for (const r of at.core.findIdInDsl(f.text, at.id)) out.push(new vscode.Location(f.uri, new vscode.Range(r.line - 1, 0, r.line - 1, r.text.length)));
+        }
+        return out;
+      },
+    })
+  );
+}
+
+// core/label/label-core.mjs(ESM)を拡張ホストで読む。リポジトリ内レイアウトと VSIX 同梱レイアウト(prepackage-core.js がコピー)の両方
+let labelCorePromise;
+function loadLabelCore() {
+  if (!labelCorePromise) {
+    const path = require("path"), fs = require("fs"), { pathToFileURL } = require("url");
+    const roots = [path.resolve(__dirname, "..", ".."), path.resolve(__dirname, "..")];
+    const root = roots.find((r) => fs.existsSync(path.join(r, "core", "label", "label-core.mjs"))) || roots[0];
+    labelCorePromise = import(pathToFileURL(path.join(root, "core", "label", "label-core.mjs")).href);
+  }
+  return labelCorePromise;
 }
 
 function getDiffContent(oldDsl, newDsl) {

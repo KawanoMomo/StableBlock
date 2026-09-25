@@ -63,6 +63,13 @@ E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.j
 `npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線が別の block の上を横切る)を
 `ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
 
+### ID の参照元探しと全図の改名(開かずに)
+
+- `npm run check -- --refs SpiDrv <file.sb | フォルダ> ...` — ID を定義・参照している図と行を一覧する(`@include` 先を含む)
+- `npm run check -- --rename SpiDrv Spi_Driver <file.sb | フォルダ> ... [--dry-run]` — 全図で ID を改名する。書き換えるのは定義行と接続の from / to だけで、
+  座標・サイズ・ラベル・コメントの行は 1 バイトも変えない。改名先が既にどこかの図で定義されていれば、どの図も書き換えない
+- VSCode 拡張では ID の上で F2(シンボルの名前変更)と Shift+F12(すべての参照を検索)が同じ処理でワークスペースの全 .sb をまたぐ
+
 ## DSL構文
 
 ```
