@@ -282,7 +282,7 @@ function getWebviewContent(dslText) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, fitZoom, stepZoom };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -357,6 +357,8 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>
 var vscodeApi = acquireVsCodeApi();
 var dsl = ${dslJson};
+// lastAddedId / lastPaste: the next "+ Block" / paste lines up to their right (core/layout placeNext)
+var lastAddedId=null,lastPaste=null;
 var zm=1,parsed=null,sel=[],hist=[],fut=[],addC=1,highlight=false,showAnno=true,searchQ="",snapGuides=[];
 var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
 var BG_COLORS=["#EEF2FF","#F5F3FF","#FCE7F3","#FEE2E2","#FEF3C7","#FFF7ED","#DCFCE7","#D1FAE5","#CFFAFE","#DBEAFE","#F1F5F9","#F8FAFC"];
@@ -580,6 +582,7 @@ function propsPanel(){
   var typeColor=isN?'#F59E0B':isB?'#A5B4FC':'#C4B5FD';
   var colors=isN?NOTE_COLORS:isB?COLORS:BG_COLORS;
   var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
+  h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
   h+='<div class="pl">ID</div><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="if(event.key===\\'Enter\\')this.blur()" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div>';
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
   h+=stepperRow("X","sNudge(\\'x\\',-1)","sNudge(\\'x\\',1)",it.x)+stepperRow("Y","sNudge(\\'y\\',-1)","sNudge(\\'y\\',1)",it.y);
@@ -639,9 +642,9 @@ function delItems(items){items.forEach(function(si){var lines=dsl.split("\\n"),r
 // Copy / Cut / Paste
 var clipboard=null;
 function getLine(tp,id){var lines=dsl.split("\\n"),re=new RegExp("^\\\\s*"+tp+"\\\\s+"+id+"\\\\s+");for(var i=0;i<lines.length;i++){if(re.test(lines[i]))return lines[i].trim();}return null;}
-function copySel(){if(!sel.length)return;clipboard=sel.map(function(si){var ln=getLine(si.type,si.id);return ln?{type:si.type,id:si.id,line:ln}:null;}).filter(Boolean);}
+function copySel(){if(!sel.length)return;clipboard=sel.map(function(si){var ln=getLine(si.type,si.id);return ln?{type:si.type,id:si.id,line:ln}:null;}).filter(Boolean);lastPaste=null;}
 function cutSel(){if(!sel.length)return;copySel();pushH();delItems(sel);sel=[];go();notify();}
-function pasteSel(){if(!clipboard||!clipboard.length)return;pushH();var ns=[];clipboard.forEach(function(ci){var nid="__new_"+(addC++);var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+2)+","+(+y+2)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});sel=ns;go();notify();}
+function pasteSel(){if(!clipboard||!clipboard.length)return;var rects=clipboard.map(function(ci){var m=ci.line.match(/at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)/);return m?{x:+m[1],y:+m[2],w:+m[3],h:+m[4]}:null;}).filter(Boolean);if(!rects.length)return;var bx=Math.min.apply(null,rects.map(function(r){return r.x})),by=Math.min.apply(null,rects.map(function(r){return r.y}));var bw=Math.max.apply(null,rects.map(function(r){return r.x+r.w}))-bx,bh=Math.max.apply(null,rects.map(function(r){return r.y+r.h}))-by;pushH();var skip={};clipboard.forEach(function(ci){skip[ci.id]=1});var src={x:bx,y:by,w:bw,h:bh};var p=areaSlot(bw,bh,lastPaste||src,groupOf(src,skip));var dx=p.x-bx,dy=p.y-by;var ns=[];clipboard.forEach(function(ci){var nid="__new_"+(addC++);var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+dx)+","+(+y+dy)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});lastPaste={x:p.x,y:p.y,w:bw,h:bh};sel=ns;go();notify();}
 
 // Connection management (two-select)
 function findCB(a,b){return parsed.connections.filter(function(c){return(c.from===a&&c.to===b)||(c.from===b&&c.to===a)});}
@@ -654,8 +657,12 @@ function setCC(a,b,col){setCP(a,b,"color",col);}
 
 // Add
 function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot(parsed.blocks.concat(parsed.groups,parsed.notes),w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
-function addBlock(){pushH();var id="__new_"+(addC++),p=freeSlot(8,3);dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+p.x+','+p.y+' size 8x3 color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
-function addBlockInGroup(gid){var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var ch=fCh(gr).cb;var bw=8,bh=3,pad=1,labelH=2;var px=gr.x+pad,py=gr.y+labelH;if(ch.length){var sorted=ch.slice().sort(function(a,b){return a.y===b.y?a.x-b.x:a.y-b.y});var last=sorted[sorted.length-1];px=last.x+last.w+pad;py=last.y;if(px+bw>gr.x+gr.w-pad){px=gr.x+pad;py=last.y+last.h+pad;}if(py+bh>gr.y+gr.h){upS('group',gid,gr.w,py+bh-gr.y+pad);parsed=parseDSL(dsl);}}dsl=dsl.trimEnd()+"\\nblock "+id+' "New Block" at '+px+','+py+' size '+bw+'x'+bh+' color=#3B82F6 text=#FFFFFF round=4\\n';sel=[{type:"block",id:id}];go();notify();}
+function blockLine(id,p,src){var w=src?src.w:8,h=src?src.h:3;var l='block '+id+' "New Block" at '+p.x+','+p.y+' size '+w+'x'+h+' color='+(src?src.color:'#3B82F6')+' text='+(src?src.textColor:'#FFFFFF')+' round='+(src?src.round:4);if(src&&src.borderColor)l+=' border='+src.borderColor;if(src&&src.style&&src.style!=='solid')l+=' style='+src.style;return l;}
+function groupOf(r,skip){return parsed.groups.filter(function(g){return !(skip&&skip[g.id])&&isIn(r,g)}).sort(function(a,b){return a.w*a.h-b.w*b.h})[0]||null;}
+function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.concat(parsed.groups,parsed.notes);if(!gr)return L.placeNext(all,w,h,{prev:prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});var pad=1,labelH=2,p=L.placeNext(all.filter(function(x){return x!==gr&&isIn(x,gr)}),w,h,{prev:prev,x0:gr.x+pad,y0:gr.y+labelH,cols:gr.x+gr.w-pad});var gw=Math.max(gr.w,p.x+w+pad-gr.x),gh=Math.max(gr.h,p.y+h+pad-gr.y);if(gw!==gr.w||gh!==gr.h){upS('group',gr.id,gw,gh);parsed=parseDSL(dsl);}return p;}
+function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
+function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
+function addBlockInGroup(gid){var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||!isIn(prev,gr))prev=fCh(gr).cb.sort(function(a,b){return a.y===b.y?a.x-b.x:a.y-b.y}).pop()||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 function addNote(){pushH();var id="__new_"+(addC++),p=freeSlot(8,2);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at '+p.x+','+p.y+' size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!showAnno){showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');}go();notify();}
 // ID: set in the property panel (sId). Renames touch only the definition line and connection endpoints (core/label renameIdInDsl).

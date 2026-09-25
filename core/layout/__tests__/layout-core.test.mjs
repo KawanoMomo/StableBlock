@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, fitZoom, stepZoom,
+  contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -98,4 +98,39 @@ test('stepZoom: 0.25 刻み、端数からは刻みに戻る', () => {
   assert.equal(stepZoom(0.25, -1), 0.25);
   assert.equal(stepZoom(0.1, -1), 0.1);   // 全体表示で 0.25 未満になっていても − で大きくならない
   assert.equal(stepZoom(0.1, 1), 0.25);
+});
+
+test('placeNext: 直前に置いたものの右隣に、同じ行で並べる', () => {
+  const a = { x: 1, y: 1, w: 8, h: 3 };
+  assert.deepEqual(placeNext([a], 8, 3, { prev: a, cols: 48 }), { x: 10, y: 1 });
+});
+
+test('placeNext: 行の右端を超えたら次の行の左端へ(同じ大きさなら縦もそろう)', () => {
+  const items = [], cols = 28;   // 8 幅 + 間 1 で 1 行に 3 個
+  let prev = null;
+  for (let i = 0; i < 8; i++) {
+    const p = placeNext(items, 8, 3, { prev, cols });
+    prev = { ...p, w: 8, h: 3 };
+    items.push(prev);
+  }
+  assert.deepEqual(items.map(r => `${r.x},${r.y}`), ['1,1', '10,1', '19,1', '1,5', '10,5', '19,5', '1,9', '10,9']);
+});
+
+test('placeNext: 直前より前の穴は埋めず、ほかの要素とは重ならない', () => {
+  const g = { x: 20, y: 0, w: 10, h: 10 };   // 右にある別の要素
+  const a = { x: 1, y: 1, w: 8, h: 3 }, b = { x: 10, y: 1, w: 8, h: 3 };
+  const p = placeNext([g, a, b], 8, 3, { prev: b, cols: 48 });
+  assert.deepEqual(p, { x: 31, y: 1 });
+});
+
+test('placeNext: prev が無ければ領域の左上から(group の中: x0 / y0 / cols で領域を渡す)', () => {
+  assert.deepEqual(placeNext([], 8, 3, { x0: 6, y0: 7, cols: 24 }), { x: 6, y: 7 });
+  const c1 = { x: 6, y: 7, w: 8, h: 3 };
+  assert.deepEqual(placeNext([c1], 8, 3, { prev: c1, x0: 6, y0: 7, cols: 24 }), { x: 15, y: 7 });
+  const c2 = { x: 15, y: 7, w: 8, h: 3 };
+  assert.deepEqual(placeNext([c1, c2], 8, 3, { prev: c2, x0: 6, y0: 7, cols: 24 }), { x: 6, y: 11 });   // group の下へ伸ばす
+});
+
+test('placeNext: 行に収まらない幅でも止まらない', () => {
+  assert.deepEqual(placeNext([], 60, 3, { cols: 48 }), { x: 1, y: 1 });
 });

@@ -325,3 +325,57 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await props.locator('#prop-id').press('Enter');
   await expect(props.locator('#prop-id-msg')).toContainText('既に使われています');
 });
+
+// ─── 置く: group の中に block 8 個を同じ大きさ・同じ色で並べる(BLK-junior-20260925-1921-friction) ───
+const BLANK = path.join(FIXTURES, 'junior-blank.sb');
+const boxesOf = text => [...text.matchAll(/^block (\S+) "[^"]*" at (\d+),(\d+) size (\d+)x(\d+) color=(\S+)/gm)]
+  .map(m => ({ id: m[1], x: +m[2], y: +m[3], w: +m[4], h: +m[5], color: m[6] }));
+
+test('junior-02: group の「ブロック追加」1 回と Ctrl+C → Ctrl+V で、8 個が同じ大きさ・色で group の中に並ぶ', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+
+  await props.getByRole('button', { name: /グループ追加/ }).click();
+  await props.getByRole('button', { name: /ブロック追加/ }).click();              // group 欄の追加
+  await expect(props.locator('#dup-hint')).toContainText('Ctrl+C → Ctrl+V');      // 複製の入口が見える
+  await props.locator('.color-dot').nth(3).click();                               // 1 個目だけ色を決める
+  await page.keyboard.press('Control+c');
+  for (let i = 0; i < 7; i++) await page.keyboard.press('Control+v');
+
+  const text = await page.locator('#editor').inputValue();
+  const bs = boxesOf(text);
+  expect(bs).toHaveLength(8);
+  expect(new Set(bs.map(b => `${b.w}x${b.h} ${b.color}`)).size).toBe(1);        // 同じ大きさ・色
+  const g = text.match(/^group (\S+) "[^"]*" at (\d+),(\d+) size (\d+)x(\d+)/m).slice(2).map(Number);
+  for (const b of bs) {                                                           // 全部 group の中
+    expect(b.x >= g[0] && b.y >= g[1] && b.x + b.w <= g[0] + g[2] && b.y + b.h <= g[1] + g[3], `${b.id} が group の外`).toBe(true);
+  }
+  for (const a of bs) for (const b of bs) if (a !== b) {                          // 重ならない
+    expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.id} と ${b.id} が重なる`).toBe(true);
+  }
+  expect(new Set(bs.map(b => b.x)).size).toBeLessThanOrEqual(4);                  // グリッドに揃う(列がそろう)
+  expect(new Set(bs.map(b => b.y)).size).toBeLessThanOrEqual(4);
+});
+
+test('junior-02: ツール欄の「+ ブロック追加」は直前の block の大きさ・色を引き継ぎ、その右隣に置く', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await props.locator('.color-dot').nth(3).click();
+  const w = props.locator('.prop-label', { hasText: 'サイズ' }).locator('xpath=..').locator('input').first();
+  await w.fill('6');
+  await page.keyboard.press('Escape');                                            // ツール欄に戻る
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+
+  const bs = boxesOf(await page.locator('#editor').inputValue());
+  expect(bs).toHaveLength(3);
+  expect(new Set(bs.map(b => `${b.w}x${b.h} ${b.color}`)).size).toBe(1);
+  expect(bs.map(b => b.y)).toEqual([bs[0].y, bs[0].y, bs[0].y]);                  // 同じ行
+  expect(bs[1].x).toBe(bs[0].x + bs[0].w + 1);                                    // 右隣(1 グリッド空ける)
+  expect(bs[2].x).toBe(bs[1].x + bs[1].w + 1);
+});
