@@ -18,6 +18,10 @@ test('junior-01: 先輩の .sb を Import で開くと、ブロック数が DSL 
   const svg = page.locator('#svg-wrap svg');
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(count('block'));
   await expect(svg.locator('g[data-type="group"]')).toHaveCount(count('group'));
+  // note も既定で描かれている(注釈の表示を切り替えなくても見える)
+  expect(count('note')).toBe(1);
+  await expect(svg.locator('g[data-type="note"]')).toHaveCount(count('note'));
+  await expect(svg.locator('g[data-type="note"][data-id="memo"]')).toBeVisible();
   expect(count('block')).toBe(8);
 
   // 眺める: 手本のブロックをクリックすると選択され、プロパティパネルにその名前が出る
