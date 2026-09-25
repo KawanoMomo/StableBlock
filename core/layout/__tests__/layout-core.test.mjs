@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -133,4 +133,24 @@ test('placeNext: prev が無ければ領域の左上から(group の中: x0 / y0
 
 test('placeNext: 行に収まらない幅でも止まらない', () => {
   assert.deepEqual(placeNext([], 60, 3, { cols: 48 }), { x: 1, y: 1 });
+});
+
+test('setCanvasRouteInDsl: @canvas 行の route= だけを書き換え、曲線に戻すと消して元のバイトに戻る', () => {
+  const src = '# 図\n@canvas width=400 height=300 grid=20\nblock a "A" at 1,1 size 4x2\n';
+  const s1 = setCanvasRouteInDsl(src, 'straight');
+  assert.equal(s1, '# 図\n@canvas width=400 height=300 grid=20 route=straight\nblock a "A" at 1,1 size 4x2\n');
+  const s2 = setCanvasRouteInDsl(s1, 'ortho');
+  assert.equal(s2, src.replace('grid=20', 'grid=20 route=ortho'));
+  assert.equal(setCanvasRouteInDsl(s2, 'curved'), src);
+  assert.equal(setCanvasRouteInDsl(src, 'curved'), src);
+  // route が行の途中にあっても、ほかの属性と CRLF は触らない
+  assert.equal(setCanvasRouteInDsl('@canvas route=ortho width=400\r\nx\r\n', 'straight'), '@canvas route=straight width=400\r\nx\r\n');
+  assert.equal(setCanvasRouteInDsl('@canvas route=ortho width=400\r\nx\r\n', 'curved'), '@canvas width=400\r\nx\r\n');
+});
+
+test('setCanvasRouteInDsl: @canvas 行が無ければ先頭のコメントの後に 1 行足す(曲線なら何も足さない)', () => {
+  const src = '# 図\nblock a "A" at 1,1 size 4x2\n';
+  assert.equal(setCanvasRouteInDsl(src, 'ortho'), '# 図\n@canvas route=ortho\nblock a "A" at 1,1 size 4x2\n');
+  assert.equal(setCanvasRouteInDsl(src, 'curved'), src);
+  assert.equal(setCanvasRouteInDsl('block a "A" at 1,1 size 4x2\r\n', 'straight'), '@canvas route=straight\r\nblock a "A" at 1,1 size 4x2\r\n');
 });

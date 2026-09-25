@@ -224,15 +224,46 @@ export function pathPoints(fp, tp, fs, ts, mode, steps = 24) {
   return pts;
 }
 
-// block 同士の接続(note が端の注釈線を除く)の経路。mode は接続に route が無いときの線モード
+// 描く経路の SVG path(d)とラベルを置く中点。画面・SVG・PNG で同じ形を描く(HTML版 / 拡張で共用)
+export function connPathInfo(fp, tp, fs, ts, mode) {
+  if (mode === 'straight') return { d: `M${fp.x},${fp.y} L${tp.x},${tp.y}`, mid: { x: (fp.x + tp.x) / 2, y: (fp.y + tp.y) / 2 } };
+  if (mode === 'ortho') {
+    const pts = orthoPoints(fp, tp, fs, ts);
+    return { d: 'M' + pts.map(p => `${p.x},${p.y}`).join(' L'), mid: polylineMidpoint(pts) };
+  }
+  const { c1, c2 } = bezierControls(fp, tp, fs, ts);
+  return { d: `M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`, mid: bezierMidpoint(fp, c1, c2, tp) };
+}
+
+// 図全体の既定の線の形(本文の `@canvas ... route=straight`)。書いていなければ・知らない値なら曲線
+export function canvasRoute(canvas) {
+  const r = canvas && canvas.route;
+  return r === 'straight' || r === 'ortho' ? r : 'curved';
+}
+
+// 接続の線の形: 接続行の route= が先、無ければ `@canvas` 行の route=(図全体の既定)、どちらも無ければ曲線。
+// GUI はこの 2 つ以外に線の形の状態を持たない
+export function connRoute(c, canvas) {
+  return c.route || canvasRoute(canvas);
+}
+
+// ツールバーの「線の形」(L キー)が次に書く図全体の既定: 曲線 → 直線 → 直角 → 曲線
+export function nextCanvasRoute(route) {
+  const order = ['curved', 'straight', 'ortho'];
+  return order[(order.indexOf(canvasRoute({ route })) + 1) % order.length];
+}
+
+// block 同士の接続(note が端の注釈線を除く)の経路。線の形は connRoute(接続の route → `@canvas` の route)。
+// mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)
 export function connectionPaths(parsed, mode) {
   const g = parsed.canvas.grid;
   const conns = parsed.connections.filter(c => !(parsed.noteMap[c.from] || parsed.noteMap[c.to]));
   const ports = computePorts(conns, parsed.blockMap, g);
+  const canvas = parsed.canvas.route ? parsed.canvas : { route: mode };
   const out = [];
   conns.forEach((c, i) => {
     const p = ports[i];
-    if (p) out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, c.route || mode) });
+    if (p) out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, connRoute(c, canvas)) });
   });
   return out;
 }

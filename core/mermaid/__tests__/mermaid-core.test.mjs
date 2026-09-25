@@ -93,3 +93,8 @@ test('mermaidIds: Mermaid の予約語・記号入りの ID は置き換えて�
   assert.ok(text.includes('s --> sb_end'));
   assert.ok(dropped.some(d => d.includes('ID end')));
 });
+
+test('toMermaid: @canvas の route=(図全体の既定の線の形)も落ちたことを数える', () => {
+  const { dropped } = toMermaid(parseDSL('@canvas width=400 route=straight\nblock a "A" at 1,1 size 4x2\nblock b "B" at 8,1 size 4x2\nblock c "C" at 15,1 size 4x2\na -> b\nb -> c\n'));
+  assert.ok(dropped.some(d => d.includes('route=') && d.includes('2 本')));
+});

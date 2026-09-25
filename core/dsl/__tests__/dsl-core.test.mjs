@@ -22,6 +22,7 @@ const DEFAULT_DSL = HTML.match(/let dsl = `([\s\S]*?)`;/)[1];
 const SAMPLES = {
   default: DEFAULT_DSL,
   crlf: '@canvas width=400 height=200 grid=20\r\nblock ui "UI" at 1,1 size 5x3 color=#3B82F6 text=#FFFFFF round=4\r\nblock core "Core" at 10,1 size 5x3\r\nui -> core "request"\r\n',
+  canvasRoute: '@canvas width=400 route=ortho grid=20\nblock a "A" at 1,1 size 2x2\nblock b "B" at 6,1 size 2x2\na -> b\n',
   bom: '﻿# 先頭に BOM\n@canvas width=400\ngroup g "G" at 0,0 size 10x10 color=#EEF2FF border=#818CF8\n',
   mixed: '  block a "A\\nB" at 1.5,2 size 4x2 style=dashed border=#000\n\tnote n "メモ" at 0,0 size 3x1\na --> n "l" color=#f00 width=2 route=ortho lpos=top\nb -> c\nゴミ行\nblock a "dup" at 0,0 size 1x1\n@include "x.sb"\n',
 };
@@ -64,4 +65,12 @@ test('serializeDSL: parser が黙って捨てる記法は往復で差分にな�
 
 test('serializeDSL: core の parseDSL 以外の結果は拒否する', () => {
   assert.throws(() => serializeDSL(strip(parseDSL('a -> b'))), /parsed\.source/);
+});
+
+test('parseDSL: @canvas 行の route=(図全体の既定の線の形)を canvas.route に読む。書いていなければ持たない', () => {
+  assert.equal(parseDSL('@canvas width=400 route=straight\n').canvas.route, 'straight');
+  assert.equal(parseDSL('@canvas width=400\n').canvas.route, undefined);
+  const p = parseDSL('@canvas width=400 grid=20 route=ortho\n');
+  p.canvas.route = 'straight';
+  assert.equal(serializeDSL(p), '@canvas width=400 grid=20 route=straight\n');
 });

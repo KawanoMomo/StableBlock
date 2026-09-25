@@ -78,14 +78,33 @@ test('junior-06: ツールバーとプロパティ欄の入口は、名前とツ
   await expect(page.getByRole('button', { name: '透過PNG' })).toBeVisible();
   await expect(page.locator('#search-input')).toHaveAttribute('placeholder', '🔍 ID・ラベルで検索');
 
-  // 線の形: 押すと何を切り替えたかと今の値が出る
+  // 線の形: 押すと何を切り替えたかと今の値が出て、図全体の既定として本文の @canvas 行に書かれる
+  // (表示だけの状態を持たない。曲線に戻すと route= が消えて元の本文に戻る)
   const lm = page.locator('#line-mode-btn');
+  const editor = page.locator('#editor');
+  const conn = svg.locator('path[marker-end]').first();
   await expect(lm).toHaveText('⌇ 線の形: 曲線');
+  await expect(lm).toHaveAttribute('title', /@canvas 行に書く/);
+  await expect(conn).toHaveAttribute('d', / C/);
   await lm.click();
   await expect(lm).toHaveText('╱ 線の形: 直線');
+  await expect(editor).toHaveValue(/^@canvas width=600 height=300 grid=20 route=straight\n/);
+  await expect(conn).toHaveAttribute('d', /^M[\d.]+,[\d.]+ L[\d.]+,[\d.]+$/);
   await lm.click();
   await expect(lm).toHaveText('⊾ 線の形: 直角');
-  await lm.click();
+  await expect(editor).toHaveValue(/^@canvas width=600 height=300 grid=20 route=ortho\n/);
+  // 本文を開き直しても(同じ本文を貼り直しても)同じ形になる
+  const text = await editor.inputValue();
+  await setText(page, text.replace('route=ortho', 'route=straight'));
+  await expect(lm).toHaveText('╱ 線の形: 直線');
+  await setText(page, text);
+  await expect(lm).toHaveText('⊾ 線の形: 直角');
+  await page.keyboard.press('Escape');
+  await svg.click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('l');
+  await expect(lm).toHaveText('⌇ 線の形: 曲線');
+  await expect(editor).toHaveValue(/^@canvas width=600 height=300 grid=20\n/);
+  await expect(conn).toHaveAttribute('d', / C/);
 
   // block を選ぶ: 種類とスタイルは日本語
   await svg.locator('g[data-type="block"][data-id="a"]').click();
