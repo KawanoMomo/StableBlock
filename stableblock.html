@@ -566,7 +566,7 @@ function renderPropsPanel(){
     title.textContent='ツール';
     {
       el.innerHTML=`<div class="prop-section">
-        <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()" data-term="add-block" title="ブロックを空き位置に追加する">+ ブロック追加</button>
+        <button class="prop-btn prop-btn-accent" style="margin-bottom:6px" onclick="addBlock()" data-term="add-block" title="直前に足したブロックの右隣に、同じ大きさ・色で追加する">+ ブロック追加</button>
         <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;margin-bottom:6px" onclick="addGroup()" data-term="add-group" title="グループを空き位置に追加する">+ グループ追加</button>
         <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" data-term="add-note" title="注釈を空き位置に追加する">+ 注釈追加</button>
       </div>
@@ -668,7 +668,7 @@ function renderPropsPanel(){
   }
   if(!isBlock&&!isNote){
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
-    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup('${item.id}')" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中の空き位置にブロックを追加する">+ グループ内にブロック追加</button></div>`;
+    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup('${item.id}')" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ グループ内にブロック追加</button></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;

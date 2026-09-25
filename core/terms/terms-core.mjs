@@ -28,10 +28,10 @@ const SB_TERMS_TABLE = {
   'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },
   'search': { ja: ['🔍 ID・ラベルで検索', 'ID・ラベルで絞り込み、外れた要素を薄くする'], en: ['Search ID / label', 'Filter by ID / label and dim the rest'] },
   // プロパティ欄
-  'add-block': { ja: ['+ ブロック追加', 'ブロックを空き位置に追加する'], en: ['+ Block', 'Add a block at a free spot'] },
+  'add-block': { ja: ['+ ブロック追加', '直前に足したブロックの右隣に、同じ大きさ・色で追加する'], en: ['+ Block', 'Add a block right of the last one added (same size and color)'] },
   'add-group': { ja: ['+ グループ追加', 'グループを空き位置に追加する'], en: ['+ Group', 'Add a group at a free spot'] },
   'add-note': { ja: ['+ 注釈追加', '注釈を空き位置に追加する'], en: ['+ Note', 'Add a note at a free spot'] },
-  'add-block-in-group': { ja: ['+ グループ内にブロック追加', 'このグループの中の空き位置にブロックを追加する'], en: ['+ Block in Group', 'Add a block at a free spot inside this group'] },
+  'add-block-in-group': { ja: ['+ グループ内にブロック追加', 'このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する'], en: ['+ Block in Group', 'Add a block inside this group, right of its last block (same size and color)'] },
 };
 
 const SB_STYLE_NAMES = {

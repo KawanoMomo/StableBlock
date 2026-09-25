@@ -550,7 +550,7 @@ function propsPanel(){
   if(!sel.length){
     {
       el.innerHTML='<div class="pl" style="margin-top:0">TOOLS</div>'+
-        '<button class="pbtn" data-term="add-block" onclick="addBlock()" title="Add a block at a free spot">+ Block</button>'+
+        '<button class="pbtn" data-term="add-block" onclick="addBlock()" title="Add a block right of the last one added (same size and color)">+ Block</button>'+
         '<button class="pbtn" data-term="add-group" onclick="addGroup()" title="Add a group at a free spot">+ Group</button>'+
         '<button class="pbtn" data-term="add-note" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" title="Add a note at a free spot">+ Note</button>'+
         '<div class="pl">CONNECT</div>'+
@@ -611,7 +611,7 @@ function propsPanel(){
   }
   if(!isB&&!isN){
     h+='<div class="pl">Border</div><div class="cg">'+COLORS.map(function(c){return'<div class="cd'+(it.borderColor===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'border\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
-    h+='<button class="pbtn" style="background:#6366F1;color:#fff;border-color:#6366F1;margin-top:8px" data-term="add-block-in-group" onclick="addBlockInGroup(\\''+it.id+'\\')" title="Add a block at a free spot inside this group">+ Block in Group</button>';
+    h+='<button class="pbtn" style="background:#6366F1;color:#fff;border-color:#6366F1;margin-top:8px" data-term="add-block-in-group" onclick="addBlockInGroup(\\''+it.id+'\\')" title="Add a block inside this group, right of its last block (same size and color)">+ Block in Group</button>';
   }
   h+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:12px" onclick="sDel()">Delete</button>';
   el.innerHTML=h;
