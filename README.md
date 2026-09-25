@@ -57,6 +57,8 @@ JS エミッタの単体・golden ファイルテストを実行（Node.js組み
 E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.js`): 初回だけ `npm install` と `npx playwright install chromium`、以後 `npm run test:e2e`。
 静的サーバは worker ごとに `python -m http.server` を `SB_PORT`(既定 8901)+ worker 番号から起こす。`SB_PORT` に既にこのリポジトリの server があれば再利用する。
 結果・保存物は `test-results/` 配下のみ(コーパス往復テストの結果は `test-results/corpus-roundtrip.json`)。
+コーパス往復(`tests/corpus-roundtrip.test.js`)が assert するのは同梱の .sb(`core/excel/fixtures`・`tests/e2e/fixtures`)だけ。persona-data の .sb は JSON に `{total, passed, failed[]}` を書き、崩れた一覧を console に出すだけで赤にしない。
+自分の変更で往復を壊していないかは、main(`git checkout --detach main`)と自分の branch で `node --test tests/corpus-roundtrip.test.js` を回し、JSON の `passed` が main の値より減っていないことで見る。
 
 ### 図の検査(開かずに)
 
