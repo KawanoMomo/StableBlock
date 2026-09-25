@@ -108,6 +108,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/excel/template-inline.js"></script>
 <script src="core/excel/emitter.browser.js"></script>
 <script src="core/label/label-core.browser.js"></script>
+<script src="core/select/select-core.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -516,13 +517,10 @@ function setupInteractions(){
       const type=el.dataset.type, id=el.dataset.id;
       if(type!=='note'&&annotationEdit)return;
 
-      // Selection logic: Shift adds, otherwise replaces
-      if(e.shiftKey){
-        if(isSel(id)) sel=sel.filter(s=>s.id!==id); else sel.push({type,id});
-      } else {
-        if(!isSel(id)) sel=[{type,id}];
-        // if already selected, keep current multi-sel for drag
-      }
+      // Selection logic (core/select): Shift adds/removes, otherwise replaces.
+      // Pressing an already-selected item keeps the multi-selection for drag; releasing without moving narrows it to that item.
+      const shift=e.shiftKey, hit={type,id};
+      sel=window.StableBlockSelect.pressSelect(sel,hit,shift);
       renderProps(); renderSVG();
 
       // Now drag ALL selected items
@@ -543,16 +541,19 @@ function setupInteractions(){
       let moved=false, histPushed=false;
 
       function onMove(ev){
+        const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
+        if(!moved&&!dx&&!dy)return;   // a click with hand jitter below one grid is not a drag
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;
-        const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
         items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));
         parsed=parseDSL(dsl); renderSVG(); syncEditor();
       }
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
-        if(!moved)return; refresh();
+        if(moved){refresh();return;}
+        const next=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);
+        if(!window.StableBlockSelect.sameSelection(next,sel)){sel=next;renderProps();renderSVG();}
       }
       window.addEventListener('mousemove',onMove);
       window.addEventListener('mouseup',onUp);
@@ -563,10 +564,13 @@ function setupInteractions(){
   const svg=document.querySelector('#svg-wrap svg');
   if(svg)svg.addEventListener('mousedown',e=>{
     if(e.target.tagName==='svg'||(e.target.tagName==='rect'&&!e.target.closest('g[data-id]')&&!e.target.dataset.resize)){
-      sel=[]; renderProps(); renderSVG();
+      clearSelection();
     }
   });
 }
+
+// Deselect all (Esc, blank canvas, dark margin of the preview area)
+function clearSelection(){if(!sel.length)return;sel=[];renderProps();renderSVG();}
 
 // ═══════════════════════════════════════════════
 // Property Panel — context-sensitive UI for selected items
@@ -574,7 +578,13 @@ function setupInteractions(){
 // Multi-select: batch operations + connection UI (2 items) + group selected
 // Single select: full property editor (block/group/note specific)
 // ═══════════════════════════════════════════════
+// Every selection change goes through renderProps: drop items the DSL no longer has, then keep the status bar's Selected: N in step
 function renderProps(){
+  if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);
+  renderPropsPanel();
+  if(parsed)renderStatus();
+}
+function renderPropsPanel(){
   const el=document.getElementById('prop-content'), title=document.getElementById('prop-title');
 
   if(sel.length===0){
@@ -600,7 +610,7 @@ function renderProps(){
           <span style="color:var(--muted)">Ctrl+Z</span> 戻る <span style="color:var(--muted)">Ctrl+Y</span> やり直し<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切取<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼付 <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
-          <span style="color:var(--muted)">Delete</span> 削除<br>
+          <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
           <span style="color:var(--muted)">H</span> ハイライト <span style="color:var(--muted)">N</span> 注釈<br>
           <span style="color:var(--muted)">L</span> 線モード切替
         </div>`;
@@ -861,9 +871,17 @@ editor.addEventListener('input',()=>{
   if(!editorHistTimer){pushHistory();}
   clearTimeout(editorHistTimer);
   editorHistTimer=setTimeout(()=>{editorHistTimer=null;},1000);
-  dsl=editor.value;parsed=parseDSL(dsl);renderSVG();renderErrors();renderStatus();renderLineNums();
+  // renderProps drops selected items the new text no longer has (and refreshes Selected: N) before the SVG draws them
+  dsl=editor.value;parsed=parseDSL(dsl);renderProps();renderSVG();renderErrors();renderStatus();renderLineNums();
 });
 editor.addEventListener('scroll',()=>{document.getElementById('line-nums').scrollTop=editor.scrollTop;});
+
+// Clicking the preview area outside the canvas (the dark margin) deselects, like clicking blank canvas
+document.getElementById('preview-area').addEventListener('mousedown',e=>{
+  if(e.target.closest('#svg-wrap svg'))return;
+  const r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;   // scrollbar
+  clearSelection();
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown',e=>{
@@ -872,6 +890,8 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='z'&&!e.shiftKey){e.preventDefault();undo();return;}
   // Ctrl+Y or Ctrl+Shift+Z: Redo
   if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();return;}
+  // Esc: deselect (also from a property-panel field, which it leaves; the DSL editor keeps Esc)
+  if(e.key==='Escape'&&document.activeElement!==editor){if(inEditor)document.activeElement.blur();clearSelection();return;}
   // Below only when not editing text
   if(inEditor)return;
   // Ctrl+C: Copy

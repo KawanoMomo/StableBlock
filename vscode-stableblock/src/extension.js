@@ -247,6 +247,17 @@ function getWebviewContent(dslText) {
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
     + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl };';
 
+  // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
+  let selectCoreScript = '';
+  try {
+    selectCoreScript = fs.readFileSync(path.join(REPO_ROOT, 'core', 'select', 'select-core.mjs'), 'utf8');
+  } catch (e) {
+    console.error('[stableblock] Failed to load select-core:', e.message);
+  }
+  const selectCoreAsGlobals = selectCoreScript
+    .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection };';
+
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -286,6 +297,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 <script>${jszipScript}<\/script>
 <script>${emitterAsGlobals}<\/script>
 <script>${labelCoreAsGlobals}<\/script>
+<script>${selectCoreAsGlobals}<\/script>
 <script>window.StableBlockTemplateFiles = ${templateFilesJson};<\/script>
 </head><body>
 <div class="toolbar">
@@ -465,27 +477,33 @@ function setupInt(){
   document.querySelectorAll('#wrap g[data-id]').forEach(function(el){el.addEventListener('mousedown',function(e){
     e.preventDefault();e.stopPropagation();var tp=el.dataset.type,id=el.dataset.id;
     if(tp!=='note'&&annoEdit)return;
-    if(e.shiftKey){if(isSel(id))sel=sel.filter(function(s){return s.id!==id});else sel.push({type:tp,id:id});}
-    else{if(!isSel(id))sel=[{type:tp,id:id}];}
+    var shift=e.shiftKey,hit={type:tp,id:id};sel=window.StableBlockSelect.pressSelect(sel,hit,shift);
     render();props();
     var sc=svgSc(),mx0=e.clientX,my0=e.clientY,ds=new Map();
     sel.forEach(function(si){var it=getIt(si);if(!it)return;ds.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y});
       if(si.type==="group"){var ch=fCh(it);ch.cb.forEach(function(b){if(!ds.has(b.id))ds.set(b.id,{type:"block",id:b.id,sx:b.x,sy:b.y});});ch.cg.forEach(function(x){if(!ds.has(x.id))ds.set(x.id,{type:"group",id:x.id,sx:x.x,sy:x.y});});}});
     var items=Array.from(ds.values()),moved=false,hp=false,dragIds=new Set();items.forEach(function(it){dragIds.add(it.id);});
-    function onM(ev){if(!hp){pushH();hp=true;}moved=true;var dx=Math.round((ev.clientX-mx0)*sc.sx/g),dy=Math.round((ev.clientY-my0)*sc.sy/g);items.forEach(function(it){upP(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy));});parsed=parseDSL(dsl);
+    function onM(ev){var dx=Math.round((ev.clientX-mx0)*sc.sx/g),dy=Math.round((ev.clientY-my0)*sc.sy/g);if(!moved&&!dx&&!dy)return;if(!hp){pushH();hp=true;}moved=true;items.forEach(function(it){upP(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy));});parsed=parseDSL(dsl);
       // Snap guides
       snapGuides=[];var thresh=0.5;var selItems=sel.map(function(si){return getIt(si)}).filter(Boolean);var others=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(o){return !dragIds.has(o.id)});selItems.forEach(function(si){var sx=si.x,sy=si.y,smx=si.x+si.w/2,smy=si.y+si.h/2,sex=si.x+si.w,sey=si.y+si.h;others.forEach(function(o){var ox=o.x,oy=o.y,omx=o.x+o.w/2,omy=o.y+o.h/2,oex=o.x+o.w,oey=o.y+o.h;if(Math.abs(sx-ox)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-oex)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(smx-omx)<=thresh)snapGuides.push({x1:smx*g,y1:0,x2:smx*g,y2:parsed.canvas.height});if(Math.abs(sx-oex)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-ox)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(sy-oy)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oey)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});if(Math.abs(smy-omy)<=thresh)snapGuides.push({x1:0,y1:smy*g,x2:parsed.canvas.width,y2:smy*g});if(Math.abs(sy-oey)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oy)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});});});
       render();}
-    function onU(){window.removeEventListener('mousemove',onM);window.removeEventListener('mouseup',onU);snapGuides=[];if(!moved)return;go();notify();}
+    function onU(){window.removeEventListener('mousemove',onM);window.removeEventListener('mouseup',onU);snapGuides=[];if(moved){go();notify();return;}
+      var nx=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);if(!window.StableBlockSelect.sameSelection(nx,sel)){sel=nx;render();props();}}
     window.addEventListener('mousemove',onM);window.addEventListener('mouseup',onU);});});
 
   // Deselect
   var svg=document.querySelector('#wrap svg');
-  if(svg)svg.addEventListener('mousedown',function(e){if(e.target.tagName==='svg'||(e.target.tagName==='rect'&&!e.target.closest('g[data-id]')&&!e.target.dataset.resize)){sel=[];render();props();}});
+  if(svg)svg.addEventListener('mousedown',function(e){if(e.target.tagName==='svg'||(e.target.tagName==='rect'&&!e.target.closest('g[data-id]')&&!e.target.dataset.resize)){clrSel();}});
 }
+// Deselect all (Esc, blank canvas, margin of the preview)
+function clrSel(){if(!sel.length)return;sel=[];render();props();}
 
 // Property Panel
-function props(){
+// Every selection change goes through props: drop items the DSL no longer has, then keep Sel: N in step
+function props(){if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);propsPanel();if(parsed)selStat();}
+function selStat(){document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
+  document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';}
+function propsPanel(){
   var el=document.getElementById('propPanel');
   if(!sel.length){
     if(annoEdit){
@@ -656,6 +674,7 @@ function sz(d){zm=Math.max(0.25,Math.min(3,zm+d*0.25));document.getElementById('
 // Keyboard
 document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
+  if(e.key==='Escape'){if(inInput)document.activeElement.blur();clrSel();return;}
   if(inInput)return;
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}
@@ -691,6 +710,12 @@ window.addEventListener('message',function(event){
   if(msg.type==='copy'){copySel();return;}
   if(msg.type==='cut'){cutSel();return;}
   if(msg.type==='paste'){pasteSel();return;}
+});
+
+document.getElementById('preview').addEventListener('mousedown',function(e){
+  if(e.target.closest('#wrap svg'))return;
+  var r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;
+  clrSel();
 });
 
 parsed=parseDSL(dsl);go();

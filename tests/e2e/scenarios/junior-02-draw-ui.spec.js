@@ -74,3 +74,92 @@ test('junior-02: 注釈は block と同じ 1 手で置け、そのまま選ん�
   await expect(svg.locator('g[data-type="block"], g[data-type="group"], g[data-type="note"]')).toHaveCount(0);
   expect(await getEditorText(page)).not.toMatch(/^\s*note\s/m);
 });
+
+// ─── 選択: 2 つ選んで結ぶ操作を 10 本続けても、毎回 2 個選択から結べる(BLK-owner-20260925-1921-2) ───
+const SRC = path.join(FIXTURES, 'junior-8blocks.sb');
+const PAIRS = [['b1', 'b2'], ['b2', 'b3'], ['b3', 'b4'], ['b1', 'b5'], ['b5', 'b6'], ['b6', 'b7'], ['b7', 'b8'], ['b2', 'b6'], ['b3', 'b7'], ['b4', 'b8']];
+
+const block = (page, id) => page.locator(`#svg-wrap svg g[data-type="block"][data-id="${id}"]`);
+const status = page => page.locator('#status');
+
+test('junior-02: 8 block に 10 本、毎回 2 個選択の状態から結べる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+  await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(8);
+
+  for (const [i, [x, y]] of PAIRS.entries()) {
+    await block(page, x).click();                          // 選択済み(前の組の 2 つ目)でも、その 1 つに置き換わる
+    await expect(status(page)).toContainText('Selected: 1');
+    await block(page, y).click({ modifiers: ['Shift'] });
+    await expect(status(page)).toContainText('Selected: 2');
+    await expect(page.locator('#prop-title')).toHaveText('2個選択中');
+    await page.getByRole('button', { name: `${x} → ${y}`, exact: true }).click();
+    await expect(status(page)).toContainText(`Conn: ${i + 1}`);
+  }
+  const text = await page.locator('#editor').inputValue();
+  for (const [x, y] of PAIRS) expect(text).toContain(`${x} -> ${y}`);
+});
+
+test('junior-02: Esc とプレビューの余白クリックで選択が外れる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+
+  await block(page, 'b1').click();
+  await block(page, 'b2').click({ modifiers: ['Shift'] });
+  await expect(status(page)).toContainText('Selected: 2');
+  await page.keyboard.press('Escape');
+  await expect(status(page)).toContainText('Selected: 0');
+  await expect(page.locator('#prop-title')).toHaveText('ツール');
+
+  // キャンバスの外(プレビュー欄の暗い余白)をクリック
+  await block(page, 'b3').click();
+  await expect(status(page)).toContainText('Selected: 1');
+  const svgBox = await page.locator('#svg-wrap svg').boundingBox();
+  const area = await page.locator('#preview-area').boundingBox();
+  const mx = svgBox.x + 20, my = svgBox.y + svgBox.height + 40;
+  expect(my).toBeLessThan(area.y + area.height - 20);        // 余白が画面にある
+  await page.mouse.click(mx, my);
+  await expect(status(page)).toContainText('Selected: 0');
+  await expect(page.locator('#prop-title')).toHaveText('ツール');
+});
+
+test('junior-02: 本文から消えた要素はプロパティ欄と選択から消える', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+
+  await block(page, 'b7').click();
+  await block(page, 'b8').click({ modifiers: ['Shift'] });
+  await expect(status(page)).toContainText('Selected: 2');
+  const editor = page.locator('#editor');
+  const drop = id => editor.inputValue().then(t => t.split('\n').filter(l => !l.startsWith(`block ${id} `)).join('\n'));
+  await editor.fill(await drop('b8'));
+  await expect(status(page)).toContainText('Selected: 1');
+  await expect(page.locator('#prop-content')).toContainText('b7');
+  await editor.fill(await drop('b7'));
+  await expect(status(page)).toContainText('Selected: 0');
+  await expect(page.locator('#prop-title')).toHaveText('ツール');
+  await expect(page.locator('#prop-content')).not.toContainText('b7');
+});
+
+test('junior-02: ドラッグは複数選択のまま全部動き、動かさずに離したクリックだけが 1 つに絞る', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+
+  await block(page, 'b1').click();
+  await block(page, 'b2').click({ modifiers: ['Shift'] });
+  const box = await block(page, 'b2').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 45, { steps: 5 });   // 2 グリッド下へ
+  await page.mouse.up();
+  await expect(status(page)).toContainText('Selected: 2');
+  const text = await page.locator('#editor').inputValue();
+  const y1 = +text.match(/block b1 "Spi_Api"\s+at 1,(\d+) /)[1], y2 = +text.match(/block b2 "Spi_Hw"\s+at 10,(\d+) /)[1];
+  expect(y1).toBeGreaterThan(1);
+  expect(y2).toBe(y1);                                         // 2 つとも同じだけ動いた
+
+  // 動かさずに離す(クリック)と、押した 1 つに絞られる
+  await block(page, 'b2').click();
+  await expect(status(page)).toContainText('Selected: 1');
+  await expect(page.locator('#prop-content')).toContainText('b2');
+});

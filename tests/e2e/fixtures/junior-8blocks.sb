@@ -1,0 +1,11 @@
+# junior 手順 2 の途中: block 8 個を置いたところ(これから作図 UI で 10 本結ぶ)
+@canvas width=760 height=260 grid=20
+
+block b1 "Spi_Api"  at 1,1 size 6x3
+block b2 "Spi_Hw"   at 10,1 size 6x3
+block b3 "Spi_Dma"  at 19,1 size 6x3
+block b4 "Spi_Irq"  at 28,1 size 6x3
+block b5 "Spi_Cfg"  at 1,8 size 6x3
+block b6 "Spi_Job"  at 10,8 size 6x3
+block b7 "Spi_Seq"  at 19,8 size 6x3
+block b8 "Spi_Det"  at 28,8 size 6x3
