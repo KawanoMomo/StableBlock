@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseDSL, serializeDSL } from '../dsl-core.mjs';
-import { parseLpos } from '../../label/label-core.mjs';
+import { parseLpos, hasLpos } from '../../label/label-core.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML = readFileSync(join(__dirname, '..', '..', '..', 'stableblock.html'), 'utf8');
@@ -15,7 +15,7 @@ function htmlParseDSL() {
   assert.ok(start >= 0, 'stableblock.html に parseDSL が見つからない');
   const end = HTML.indexOf('\n}\n', start);
   const src = HTML.slice(start, end + 2);
-  return new Function('window', `${src}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos } });
+  return new Function('window', `${src}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos, hasLpos } });
 }
 const DEFAULT_DSL = HTML.match(/let dsl = `([\s\S]*?)`;/)[1];
 

@@ -263,7 +263,7 @@ function parseDSL(text){
       m=raw.match(/^note\s+(\S+)\s+"([^"]*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,label,x,y,w,h,rest]=m;if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"([^"]*)")?\s*(.*)/);
-      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),bidir:arrow==="-->",line:ln});continue;}
+      if(m){const[,from,arrow,to,label,rest]=m;connections.push({from,to,label:label||"",color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),lposAuto:!window.StableBlockLabel.hasLpos(rest),bidir:arrow==="-->",line:ln});continue;}
       errors.push({line:ln,msg:raw.substring(0,40)});
     }catch(e){errors.push({line:ln,msg:e.message});}
   }
@@ -362,8 +362,9 @@ function connPathInfo(fp,tp,fs,ts,route){
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 const _measureCtx=document.createElement('canvas').getContext('2d');
 function measureLabel(t){_measureCtx.font='500 10px "IBM Plex Sans","Noto Sans JP",sans-serif';return _measureCtx.measureText(t).width;}
-function connLabelSvg(c,mid){
-  const L=window.StableBlockLabel.labelLayout(mid,c.lpos,measureLabel(c.label));
+function connLabelSvg(c,mid){return connLabelBoxSvg(c,window.StableBlockLabel.labelLayout(mid,c.lpos,measureLabel(c.label)));}
+// 接続ラベル(置き場所 L は core の placeLabels / labelLayout)。block より上の層に白地で描く
+function connLabelBoxSvg(c,L){
   return`<rect x="${L.bg.x}" y="${L.bg.y}" width="${L.bg.w}" height="${L.bg.h}" rx="${L.bg.rx}" fill="#FFFFFF" style="pointer-events:none"/>`+
     `<text x="${L.tx}" y="${L.ty}" font-size="10" fill="${c.color}" text-anchor="${L.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${esc(c.label)}</text>`;
 }
@@ -391,12 +392,13 @@ function renderSVG(){
   });
   // Normal connections
   const ports=computePorts(normalConns,blockMap,g);
+  const labelItems=[];
   normalConns.forEach((c,i)=>{const p=ports[i];if(!p)return;const{fp,tp,fs,ts}=p;const dash=c.style==="dashed"?' stroke-dasharray="6,3"':'';const cHl=hlIds&&!isHighlightedConn(c,hlIds);const cop=cHl?dim:null;
     const ci=connections.indexOf(c);
     const pi=connPathInfo(fp,tp,fs,ts,c.route);
     s+=`<g${cop!==null?` opacity="${cop}"`:''}>`;
     s+=`<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir?` marker-start="url(#a${ci})"`:''}/>`;
-    if(c.label)s+=connLabelSvg(c,pi.mid);
+    if(c.label)labelItems.push({conn:c,mid:pi.mid,op:cop});
     s+=`</g>`;});
   // Blocks
   blocks.forEach(b=>{const sl=isSel(b.id),sw=sl?2.5:b.style==="bold"?2.5:1,dash=b.style==="dashed"?' stroke-dasharray="6,3"':'',flt=sl?"drop-shadow(0 4px 12px rgba(99,102,241,0.5))":"drop-shadow(0 1px 2px rgba(0,0,0,0.12))";const bHl=hlIds&&!hlIds.has(b.id);const bSrch=searchQuery&&!matchesSearch(b);const bop=bHl?dim:bSrch?0.2:null;
@@ -404,6 +406,10 @@ function renderSVG(){
     s+=`<rect x="${b.x*g}" y="${b.y*g}" width="${b.w*g}" height="${b.h*g}" fill="${b.color}" stroke="${sl?'#FFFFFF':(b.borderColor||b.color)}" stroke-width="${sw}"${dash} rx="${b.round}" style="filter:${flt}"/>`;
     b.label.split("\\n").forEach((line,li,arr)=>{const ty=b.y*g+b.h*g/2+(li-(arr.length-1)/2)*14;s+=`<text x="${b.x*g+b.w*g/2}" y="${ty}" font-size="11" font-weight="600" fill="${b.textColor}" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${esc(line)}</text>`;});
     s+=`</g>`;});
+
+  // Connection labels: block より上に描く(本文に lpos= が無いラベルは block・名前・note・他のラベルを避けた位置に置く)
+  window.StableBlockLabel.placeLabels(labelItems,parsed,measureLabel).forEach(L=>{const op=labelItems.find(it=>it.conn===L.conn).op;
+    s+=`<g class="conn-label" data-from="${esc(L.conn.from)}" data-to="${esc(L.conn.to)}"${op!==null?` opacity="${op}"`:''}>${connLabelBoxSvg(L.conn,L)}</g>`;});
 
   // Annotation layer (on top)
   if(showAnnotations){
@@ -784,7 +790,7 @@ function growCanvas(){const p=parseDSL(dsl);dsl=window.StableBlockLayout.growCan
 function refresh(noGrow){if(!noGrow)growCanvas();if(dsl.includes('@include')){preprocessInclude(dsl).then(t=>{parsed=parseDSL(t);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();});}else{parsed=parseDSL(dsl);syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
-function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');return window.StableBlockCheck.checkDiagram(parsed,lines,window.StableBlockLabel.connectionPaths(parsed));}
+function diagnose(){const lines=dsl.includes('@include')?null:dsl.split('\n');const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkDiagram(parsed,lines,paths,SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed));}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
 function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span><span>Selected: ${sel.length}</span>`+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
 

@@ -262,3 +262,67 @@ test('connectionPaths: @canvas の route が本文にあればそれで経路を
   const port = computePorts(p.connections, p.blockMap, 20)[0];
   assert.deepEqual(own[0].pts, pathPoints(port.fp, port.tp, port.fs, port.ts, 'ortho'));
 });
+
+// ─── 接続ラベルの置き場所(placeLabels / labelIssues)。ラベルは block より上に描き、既定では block の名前・他のラベルを避ける ───
+import { readFileSync as sbRead } from 'node:fs';
+import { fileURLToPath as sbPath } from 'node:url';
+import { hasLpos, placeLabel, placeLabels, labelIssues, estimateTextWidth } from '../label-core.mjs';
+import { parseDSL as sbParse } from '../../dsl/dsl-core.mjs';
+
+const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const blockRect = (b, g) => ({ x: b.x * g, y: b.y * g, w: b.w * g, h: b.h * g });
+
+test('hasLpos: 本文に lpos= が書かれているか', () => {
+  assert.equal(hasLpos('color=#fff lpos=top'), true);
+  assert.equal(hasLpos('lpos=right'), true);
+  assert.equal(hasLpos('color=#fff'), false);
+  assert.equal(hasLpos(undefined), false);
+});
+
+test('placeLabels: 1 グリッド間隔で 8 block・10 本のラベルが、block の名前にも他のラベルにも掛からない(owner 批評の図)', () => {
+  const text = sbRead(sbPath(new URL('../../../tests/e2e/fixtures/owner-critique2-swc.sb', import.meta.url)), 'utf8');
+  const p = sbParse(text);
+  const placed = placeLabels(connectionPaths(p, 'curved'), p);
+  assert.equal(placed.length, 10);
+  assert.deepEqual(labelIssues(placed, p), []);
+  // 以前の既定(中点の右)では req は Spi_Driver の地に 300px² 以上沈んでいた。今は掛かっても縁だけ
+  const req = placed.find(l => l.conn.label === 'req');
+  assert.notEqual(req.lpos, 'right');
+  assert.ok(overlap(req.bg, blockRect(p.blockMap.Spi_Driver, 20)) < 60);
+  for (let i = 0; i < placed.length; i++) for (let j = 0; j < i; j++) assert.ok(overlap(placed[i].bg, placed[j].bg) < 6, `${placed[i].conn.label} と ${placed[j].conn.label}`);
+});
+
+test('placeLabels: 隙間が広い既存の図は今までどおり中点の右(見た目を変えない)', () => {
+  const p = sbParse('@canvas width=400 height=200 grid=20\nblock a "A" at 1,1 size 4x2\nblock b "B" at 14,1 size 4x2\na -> b "payload"\n');
+  const [l] = placeLabels(connectionPaths(p, 'curved'), p);
+  assert.equal(l.lpos, 'right');
+});
+
+test('placeLabels: 本文に lpos= があればその位置のまま(掛かっても動かさない)', () => {
+  const p = sbParse('@canvas width=400 height=200 grid=20\nblock a "A" at 1,1 size 4x2\nblock b "B" at 6,1 size 4x2\na -> b "req" lpos=right\n');
+  const [l] = placeLabels(connectionPaths(p, 'curved'), p);
+  assert.equal(l.lpos, 'right');
+  const q = sbParse('@canvas width=400 height=200 grid=20\nblock a "A" at 1,1 size 4x2\nblock b "B" at 6,1 size 4x2\na -> b "req"\n');
+  assert.notEqual(placeLabels(connectionPaths(q, 'curved'), q)[0].lpos, 'right');
+});
+
+test('placeLabel: どの候補も掛かるなら一番掛からない位置、キャンバスの外には出さない', () => {
+  const obstacles = [{ x: 0, y: 0, w: 100, h: 30, weight: 1 }];
+  const L = placeLabel({ x: 50, y: 20 }, 'right', 20, obstacles, true, { x: 0, y: 0, w: 100, h: 100 });
+  assert.equal(L.lpos, 'bottom');   // 下だけが block の外へ半分出られる
+  const edge = placeLabel({ x: 95, y: 50 }, 'right', 20, [], true, { x: 0, y: 0, w: 100, h: 100 });
+  assert.notEqual(edge.lpos, 'right');
+  assert.ok(estimateTextWidth('ab') < estimateTextWidth('あい'));
+});
+
+test('labelIssues: 読めないラベル(note の下・block の名前・他のラベル)を挙げる', () => {
+  const p = sbParse('@canvas width=400 height=300 grid=20\nblock a "A" at 1,1 size 4x2\nblock b "B" at 1,8 size 4x2\nnote n "memo" at 0,4 size 8x3\na -> b "hidden" lpos=center\n');
+  const placed = placeLabels(connectionPaths(p, 'straight'), p);
+  const issues = labelIssues(placed, p);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].kind, 'note');
+  assert.equal(issues[0].item.id, 'n');
+  const q = sbParse('@canvas width=400 height=300 grid=20\nblock a "Alpha" at 1,1 size 6x2\nblock b "Beta" at 1,4 size 6x1\na -> b "over" lpos=bottom\n');
+  const qi = labelIssues(placeLabels(connectionPaths(q, 'straight'), q), q);
+  assert.deepEqual(qi.map(i => [i.kind, i.item.id]), [['text', 'b']]);
+});

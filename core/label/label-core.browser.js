@@ -48,6 +48,11 @@ function parseLpos(rest) {
   return LPOS_VALUES.includes(v) ? v : 'right';
 }
 
+// 本文に lpos= が書かれているか。書かれていなければラベルの置き場所は placeLabels が選ぶ(既定)
+function hasLpos(rest) {
+  return /(^|\s)lpos=/.test(rest || '');
+}
+
 // 配置定数はスペック§3/§4 の QAログ決定値。テキストは全位置 dominant-baseline=central 前提。
 function labelLayout(mid, lpos, textW) {
   const OFFSET = 10, PAD_X = 4, PAD_Y = 2, FONT_H = 10;
@@ -255,7 +260,7 @@ function nextCanvasRoute(route) {
   return order[(order.indexOf(canvasRoute({ route })) + 1) % order.length];
 }
 
-// block 同士の接続(note が端の注釈線を除く)の経路。線の形は connRoute(接続の route → `@canvas` の route)。
+// block 同士の接続(note が端の注釈線を除く)の経路と、ラベルを置く中点(描画の connPathInfo と同じ)。線の形は connRoute(接続の route → `@canvas` の route)。
 // mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)
 function connectionPaths(parsed, mode) {
   const g = parsed.canvas.grid;
@@ -265,9 +270,112 @@ function connectionPaths(parsed, mode) {
   const out = [];
   conns.forEach((c, i) => {
     const p = ports[i];
-    if (p) out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, connRoute(c, canvas)) });
+    if (!p) return;
+    const m = connRoute(c, canvas);
+    out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, m), mid: connPathInfo(p.fp, p.tp, p.fs, p.ts, m).mid });
   });
   return out;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths };
+// ─── 接続ラベルの置き場所。描画(HTML版 / VSCode拡張)と検査(core/check)が同じ計算を使う ───
+// ラベルは block より上の層に白地で描く。本文に lpos= が無いラベルは、block・block の名前・group の見出し・note・
+// 先に置いたラベル・キャンバスの外に掛からない位置を候補から選ぶ(本文・座標は変えない)。
+
+// 文字幅の見積もり(px)。ASCII は 0.6 字幅、それ以外(全角)は 1 字幅。描画側は実測値を measure で渡せる
+function estimateTextWidth(text, fontPx = 10) {
+  let w = 0;
+  for (const ch of String(text)) w += ch.charCodeAt(0) < 0x80 ? fontPx * 0.6 : fontPx;
+  return w;
+}
+
+function sbRectOverlap(a, b) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+// block の名前(ラベル)が描かれる矩形(px)。1 行 14px、文字は 11px 太字で中央揃え
+function blockTextBoxes(b, g) {
+  const lines = String(b.label || '').split('\\n');   // 本文の改行は文字どおりの \n
+  return lines.map((line, li) => {
+    const w = estimateTextWidth(line, 11) * 1.05, h = 12;
+    const cy = b.y * g + b.h * g / 2 + (li - (lines.length - 1) / 2) * 14;
+    return { x: b.x * g + b.w * g / 2 - w / 2, y: cy - h / 2, w, h };
+  }).filter(r => r.w > 0);
+}
+
+// ラベルが避けるもの。weight は掛かったときの重さ(block の地は軽く、名前・見出し・note は重い)
+function labelObstacles(parsed) {
+  const g = parsed.canvas.grid;
+  const out = [];
+  for (const b of parsed.blocks || []) {
+    out.push({ x: b.x * g, y: b.y * g, w: b.w * g, h: b.h * g, weight: 1, kind: 'block', item: b });
+    for (const r of blockTextBoxes(b, g)) out.push({ ...r, weight: 30, kind: 'text', item: b });
+  }
+  for (const gr of parsed.groups || []) {
+    const w = estimateTextWidth(String(gr.label || ''), 11) * 1.05;
+    if (w > 0) out.push({ x: gr.x * g + 8, y: gr.y * g + 4, w, h: 13, weight: 30, kind: 'title', item: gr });
+  }
+  for (const n of parsed.notes || []) out.push({ x: n.x * g, y: n.y * g, w: n.w * g, h: n.h * g, weight: 30, kind: 'note', item: n });
+  return out;
+}
+
+const LABEL_AUTO_ORDER = ['right', 'top', 'left', 'bottom', 'center'];
+
+// 1 本のラベルの置き場所。auto なら候補のうち obstacles に最も掛からない位置(同じなら候補順の先)、auto でなければ lpos のまま
+function placeLabel(mid, lpos, textW, obstacles, auto, bounds) {
+  const cands = auto ? [lpos || 'right', ...LABEL_AUTO_ORDER.filter(p => p !== (lpos || 'right'))] : [lpos || 'right'];
+  let best = null;
+  for (const p of cands) {
+    const L = labelLayout(mid, p, textW);
+    let cost = 0;
+    for (const o of obstacles || []) cost += sbRectOverlap(L.bg, o) * (o.weight || 1);
+    if (bounds) cost += (L.bg.w * L.bg.h - sbRectOverlap(L.bg, bounds)) * 30;
+    if (!best || cost < best.cost) best = { ...L, lpos: p, cost };
+    if (cost === 0) break;
+  }
+  return best;
+}
+
+// 本文に lpos= が無い接続か(parser が lposAuto を持たせる。持たない古い形は lpos が無いときだけ)
+function isAutoLpos(c) {
+  return c.lposAuto === true || (c.lposAuto === undefined && !c.lpos);
+}
+
+// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px) }](描画と同じ中点)。measure(text) は文字幅(px)
+// 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
+function placeLabels(items, parsed, measure) {
+  const obstacles = labelObstacles(parsed);
+  const bounds = { x: 0, y: 0, w: parsed.canvas.width, h: parsed.canvas.height };
+  const width = measure || (t => estimateTextWidth(t, 10));
+  const out = [];
+  for (const { conn, mid } of items) {
+    if (!conn.label || !mid) continue;
+    const L = placeLabel(mid, conn.lpos, width(conn.label), obstacles, isAutoLpos(conn), bounds);
+    out.push({ conn, mid, tx: L.tx, ty: L.ty, anchor: L.anchor, bg: L.bg, lpos: L.lpos });
+    obstacles.push({ ...L.bg, weight: 10, kind: 'label', item: conn });
+  }
+  return out;
+}
+
+// 置いたラベルが読めない・読ませなくする所: block の名前に重なる / group の見出しに重なる / note の下に隠れる / 他のラベルに重なる
+// 戻り値: [{ conn, kind: 'text' | 'title' | 'note' | 'label', item }](item は相手の block / group / note / 接続)
+function labelIssues(placed, parsed) {
+  const MIN = 6;   // px²。これ未満の掛かりは数えない
+  const obstacles = labelObstacles(parsed).filter(o => o.kind !== 'block');
+  const out = [];
+  placed.forEach((p, i) => {
+    const seen = new Set();
+    for (const o of obstacles) {
+      if (seen.has(o.item) || sbRectOverlap(p.bg, o) < MIN) continue;
+      seen.add(o.item);
+      out.push({ conn: p.conn, kind: o.kind, item: o.item });
+    }
+    for (let j = 0; j < i; j++) {
+      if (sbRectOverlap(p.bg, placed[j].bg) >= MIN) out.push({ conn: p.conn, kind: 'label', item: placed[j].conn });
+    }
+  });
+  return out;
+}
+
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, setConnLabelInDsl, polylineMidpoint, isValidId, labelToId, uniqueId, renameIdInDsl, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues };

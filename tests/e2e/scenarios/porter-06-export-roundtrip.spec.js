@@ -65,6 +65,11 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
     'block:spiseq -> block:spihw', 'block:spiapi -> block:spidet', 'block:spicfg -> block:spihw', 'note:memo -> block:spidma',
   ]));
 
+  // 接続のラベルは block より後(上)に置かれ、Excel で開いても block に隠れない
+  const order = [...xml.matchAll(/name="(block|connlabel):[^"]*"/g)].map(m => m[1]);
+  expect(order).toContain('connlabel');
+  expect(order.lastIndexOf('block')).toBeLessThan(order.indexOf('connlabel'));
+
   const report = page.locator('#export-report');
   await expect(report).toBeVisible();
   await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
