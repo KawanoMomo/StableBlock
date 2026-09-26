@@ -22,8 +22,12 @@ test('junior-02: 2 つ選んで「a → b」で結び、結んだ後に線の色
   await svg.locator('g[data-type="block"][data-id="dma"]').click({ modifiers: ['Shift'] });
   await expect(props).toContainText('2個のアイテムを選択中');
 
-  // 結ぶ前: 入口は「a → b」「b → a」の 2 ボタンだけで、色点で結ぶ入口は無い
+  // 結ぶ前: 入口はクリックした順の「a → b」1 ボタンだけ(3 つ以上の「a → b → c」と同じ場所・同じ形。向き違いの「b → a」は無く、
+  // 向きは結んだ後に「⇄ 反転」で変える)。色点で結ぶ入口も無い(BLK-owner-20260926-1009-prune)
   await expect(props.getByText('色を指定して接続')).toHaveCount(0);
+  await expect(props.getByRole('button', { name: 'dma → app' })).toHaveCount(0);
+  await expect(props.locator('#chain-btn')).toHaveText('app → dma');
+  await expect(props).toContainText('⇄ 反転');
   const before = await getEditorText(page);
   await props.getByRole('button', { name: 'app → dma' }).click();
 
