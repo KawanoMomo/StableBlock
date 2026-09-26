@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260926-1227-prune: ツールバーの PNG の入口を「PNG」1 つ(押せば今までどおり保存)と横の ▾(「背景を透過して保存」「クリップボードにコピー」)に畳んだ。検索の件数は検索欄の内側に出し、1366 幅でもボタン名が 2 行に折れない(VSCode 拡張の PNG も同じ形)
 - BLK-owner-20260926-1009-prune: 2 つ選んだときの結ぶボタンを、3 つ以上のときと同じ場所・同じ形の「a → b」1 つ(クリックした順)にした。向き違いの「b → a」は出さず、向きは結んだ後に「⇄ 反転」で変える(VSCode 拡張も同じ)
 - BLK-junior-20260926-0950-wish: 英数字の無いラベル(日本語の部品名)を打って Enter すると、その場で ID 欄へ移り ID を打って Enter で付けられる(Esc で後回し)。仮の ID(__new_)が残る要素はエラー欄に行番号付きで出る(`npm run check` も同じ)
 

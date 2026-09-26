@@ -29,6 +29,12 @@ test('primary-09: 12 枚 + 共通部を読み込むと、SVG と Excel を「一
   await importSb(page, FILES);
   await expect(page).toHaveTitle(/spi_swc\.sb/);
   await expect(page.locator('.tb-more:visible')).toHaveCount(1);
+  // 「一括 ▾」が出ても、1366x768 の画面で検索中でも、ツールバーのボタン名は 2 行に折れない(BLK-owner-20260926-1227-prune)
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.locator('#search-input').fill('Spi');
+  const tall = await page.locator('#header .toolbar > button:visible').evaluateAll(bs => bs.filter(b => b.getBoundingClientRect().height > 32).map(b => b.textContent));
+  expect(tall).toEqual([]);
+  await page.locator('#search-input').fill('');
   await page.locator('[data-term="export-all"]').click();                    // 形式は SVG / PNG / 透過PNG / Excel / Mermaid(PNGをコピーは対象外)
   await expect(page.locator('#export-menu [role="menuitem"]')).toHaveText(['SVG', 'PNG', '透過PNG', 'Excel', 'Mermaid']);
   await page.locator('[data-term="export-all"]').click();                    // もう一度押すと閉じる

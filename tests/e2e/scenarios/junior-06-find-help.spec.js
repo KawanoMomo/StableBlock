@@ -74,9 +74,25 @@ test('junior-06: ツールバーとプロパティ欄の入口は、名前とツ
   // 略語・絵文字だけの名前は無く、ツールチップが動詞で言う
   await expect(page.locator('#hl-btn')).toHaveText('◎ 未接続を薄く');
   await expect(page.locator('#hl-btn')).toHaveAttribute('title', /薄く表示する/);
-  await expect(page.getByRole('button', { name: 'PNGをコピー' })).toHaveAttribute('title', /クリップボードにコピーする/);
-  await expect(page.getByRole('button', { name: '透過PNG' })).toBeVisible();
+  // PNG は 1 つの入口: 「PNG」1 クリックで保存し、横の ▾ から背景の透過・クリップボードへのコピーを選ぶ(BLK-owner-20260926-1227-prune)
+  await expect(page.getByRole('button', { name: '透過PNG' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'PNGをコピー' })).toHaveCount(0);
+  await expect(page.locator('#png-more')).toHaveAttribute('title', /背景を透過して保存・クリップボードにコピー/);
+  await page.locator('#png-more').click();
+  await expect(page.locator('#png-menu [role="menuitem"]')).toHaveText(['背景を透過して保存', 'クリップボードにコピー']);
+  await expect(page.getByRole('menuitem', { name: 'クリップボードにコピー' })).toHaveAttribute('title', /クリップボードにコピーする/);
+  await expect(page.getByRole('menuitem', { name: '背景を透過して保存' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#png-menu')).toBeHidden();
   await expect(page.locator('#search-input')).toHaveAttribute('placeholder', '🔍 ID・ラベルで検索');
+
+  // 1366x768 の画面でも、検索中(件数は検索欄の内側に出る)でも、ツールバーのボタン名は 2 行に折れない
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.locator('#search-input').fill('a');
+  await expect(page.locator('#search-count')).toBeVisible();
+  const tall = await page.locator('#header .toolbar > button:visible').evaluateAll(bs => bs.filter(b => b.getBoundingClientRect().height > 32).map(b => b.textContent));
+  expect(tall).toEqual([]);
+  await page.locator('#search-input').fill('');
 
   // 線の形: 押すと何を切り替えたかと今の値が出て、図全体の既定として本文の @canvas 行に書かれる
   // (表示だけの状態を持たない。曲線に戻すと route= が消えて元の本文に戻る)
