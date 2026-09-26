@@ -19,6 +19,8 @@ const SB_TERMS_TABLE = {
   'line-mode': { ja: ['⌇ 曲線', '線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)'] },
   'highlight': { ja: ['◎ 未接続', '接続の無いブロックを薄く表示する/戻す(H キー)'], en: ['◎ Dim unlinked', 'Dim blocks without connections / restore (H key)'] },
   'anno': { ja: ['◇ 注釈', '注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる'], en: ['◇ Show notes', 'Show / hide notes (N key). Click a shown note to select it'] },
+  // 仮の ID(__new_)のまま残った要素に、ラベルから ID を一括で付ける(プロパティ欄の ID 欄は 1 つずつの改名)
+  'fix-id': { ja: ['ID補正', '仮の ID(__new_)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま、接続も追従)。英数字の無いラベルはプロパティ欄の ID で付ける'], en: ['Fix IDs', 'Give elements still on a placeholder ID (__new_) an ID from their label, as written (connections follow). Labels without letters or digits need the ID field'] },
   'export-svg': { ja: ['SVG', 'SVG で書き出す'], en: ['SVG', 'Save as SVG'] },
   'export-png': { ja: ['PNG', 'PNG で書き出す'], en: ['PNG', 'Save as PNG'] },
   // PNG は 1 つの入口: 「PNG」で保存し、横の ▾ から背景の透過・クリップボードへのコピーを選ぶ

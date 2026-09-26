@@ -531,3 +531,39 @@ test('isPlaceholderId: __new_ で始まる ID だけが仮の ID。ID 欄はそ�
   assert.equal(idFieldOpen('__new_3', false, false), true);
   assert.equal(idFieldOpen('app', false, false), false);
 });
+
+// ─── ツールバーの「ID補正」(BLK-human-20260926-2045-4) ───
+import { fixPlaceholderIdsInDsl } from '../label-core.mjs';
+
+test('fixPlaceholderIdsInDsl: 仮の ID だけをラベルの表記で付け直し、接続も追従する。英数字の無いラベルは left に残す', () => {
+  const dsl = [
+    '@canvas width=400 height=300 grid=20',
+    'block Spi_Api "Spi_Api" at 1,1 size 4x2',
+    'block __new_1 "Spi_Api" at 6,1 size 4x2',
+    'block __new_2 "Can Drv" at 1,4 size 4x2',
+    'block __new_3 "通信管理" at 6,4 size 4x2',
+    'block keep "Other Name" at 1,7 size 4x2',
+    '__new_1 -> __new_2',
+    'Spi_Api -> __new_1',
+  ].join('\n');
+  const p = parseDSL(dsl);
+  const items = p.blocks.map(b => ({ id: b.id, label: b.label, line: b.line }));
+  const r = fixPlaceholderIdsInDsl(dsl, items, p.blocks.map(b => b.id));
+  assert.deepEqual(r.renamed.map(x => [x.from, x.to]), [['__new_1', 'Spi_Api_2'], ['__new_2', 'Can_Drv']]);
+  assert.deepEqual(r.left.map(x => x.id), ['__new_3']);
+  const lines = r.dsl.split('\n');
+  assert.equal(lines[2], 'block Spi_Api_2 "Spi_Api" at 6,1 size 4x2');
+  assert.equal(lines[3], 'block Can_Drv "Can Drv" at 1,4 size 4x2');
+  assert.equal(lines[4], 'block __new_3 "通信管理" at 6,4 size 4x2');
+  assert.equal(lines[5], 'block keep "Other Name" at 1,7 size 4x2');   // 仮でない ID は触らない
+  assert.equal(lines[6], 'Spi_Api_2 -> Can_Drv');
+  assert.equal(lines[7], 'Spi_Api -> Spi_Api_2');
+});
+
+test('fixPlaceholderIdsInDsl: 仮の ID が無ければ本文は 1 バイトも変わらない', () => {
+  const dsl = '@canvas width=400 height=300 grid=20\nblock a "Alpha" at 1,1 size 4x2\n';
+  const r = fixPlaceholderIdsInDsl(dsl, [{ id: 'a', label: 'Alpha', line: 2 }], ['a']);
+  assert.equal(r.dsl, dsl);
+  assert.deepEqual(r.renamed, []);
+  assert.deepEqual(r.left, []);
+});

@@ -356,7 +356,8 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await importSb(page, SENPAI);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  await expect(page.getByRole('button', { name: 'ID補正' })).toHaveCount(0);
+  // ツールバーの「ID補正」は仮の ID のままの要素にラベルから ID を一括で付ける(BLK-human-20260926-2045-4 で戻した。1 つずつの改名は ID 欄)
+  await expect(page.getByRole('button', { name: 'ID補正' })).toHaveAttribute('title', /仮の ID\(__new_\)のままの要素に、ラベルから ID を一括で付ける/);
 
   // 新しい block はラベルを打つと ID がその表記のまま付く(大文字と _ を落とさない)
   await props.getByRole('button', { name: '+ ブロック追加' }).click();
@@ -448,6 +449,24 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await label.press('Enter');
   await expect(props.locator('#prop-id-now')).toHaveText('SPI');
   await expect(props.locator('#prop-id')).not.toBeFocused();
+
+  // 貼り付けた要素は仮の ID のまま。「ID補正」1 回でラベルの表記の ID が付き(重なれば _2)、英数字の無いラベルの要素は仮のまま残ると知らせる
+  await svg.locator('g[data-type="block"][data-id="SPI"]').click();
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect.poll(() => getEditorText(page)).toMatch(/^block __new_\d+ "SPI ドライバ" at /m);
+  const beforeFix = (await getEditorText(page)).split('\n');
+  await page.getByRole('button', { name: 'ID補正' }).click();
+  await expect.poll(() => getEditorText(page)).toMatch(/^block SPI_2 "SPI ドライバ" at /m);
+  const afterFix = (await getEditorText(page)).split('\n');
+  expect(afterFix.filter((l, i) => l !== beforeFix[i])).toEqual([afterFix.find(l => l.startsWith('block SPI_2 '))]);   // 変わるのは定義行だけ
+  const report = page.locator('#export-report');
+  await expect(report).toContainText('ID補正: 1 件');
+  await expect(report).toContainText('→ SPI_2');
+  await expect(report).toContainText('付けられなかった 1 件(「監視」)');
+  expect(afterFix.some(l => l.startsWith(`block ${n2} "監視"`))).toBe(true);
+  await report.click();
+  await expect(report).toBeHidden();
 });
 
 // ─── 置く: group の中に block 8 個を同じ大きさ・同じ色で並べる(BLK-junior-20260925-1921-friction) ───
@@ -787,7 +806,7 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await bootPlain(page);
   await importSb(page, SMALL);
   const canvasLine = async () => (await getEditorText(page)).split('\n').find(l => l.startsWith('@canvas'));
-  const grew = page.locator('#status #canvas-grew');
+  const grew = page.locator('#canvas-bar #canvas-grew');   // プレビューの上端に出る(下端では見落とす。BLK-human-20260926-2045-4)
   const bar = page.locator('#error-bar');
 
   // 既定は自動で広げる(下端の Canvas にも「自動拡張」)。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
@@ -831,6 +850,13 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await page.keyboard.press('Escape');
   await page.locator('#canvas-grow').check();
   await expect.poll(canvasLine).toBe('@canvas width=400 height=300 grid=20');
+  // 広げたままでよければ「このまま」で知らせを閉じる(寸法は広げたまま)
+  await page.locator('#svg-wrap svg g[data-type="block"]').click();
+  await x.fill('30');
+  await expect(grew).toContainText('400×300 →');
+  await grew.getByRole('button', { name: 'このまま' }).click();
+  await expect(page.locator('#canvas-bar')).toBeHidden();
+  await expect.poll(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');
 });
 
 // ─── __new_ のまま残った ID を検索で順に直す(BLK-junior-20260926-0609-wish) ───

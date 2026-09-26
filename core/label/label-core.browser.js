@@ -203,6 +203,27 @@ function renameIdInDsl(dsl, oldId, newId, line) {
   return lines.join('\n');
 }
 
+// ツールバーの「ID補正」: 仮の ID(`__new_N`)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま。重なれば `_2`)。
+// items は [{ id, label, line }](line は本文の定義行、1 始まり)、used は図で使っている ID 全部(include 先を含む)。
+// 仮の ID でない要素には触れない。ラベルに英数字が無く ID を作れない要素は left に返す(ID 欄で付ける)
+function fixPlaceholderIdsInDsl(dsl, items, used) {
+  const taken = new Set(used instanceof Set ? used : Array.from(used || []));
+  const renamed = [], left = [];
+  let out = dsl;
+  for (const it of items || []) {
+    if (!isPlaceholderId(it.id)) continue;
+    const base = labelToId(it.label);
+    if (!base) { left.push(it); continue; }
+    const to = uniqueId(base, taken);
+    const next = renameIdInDsl(out, it.id, to, it.line);
+    if (next === out) { left.push(it); continue; }
+    out = next;
+    taken.add(to);
+    renamed.push({ from: it.id, to, line: it.line });
+  }
+  return { dsl: out, renamed, left };
+}
+
 // ─── 図をまたぐ ID の参照探しと改名(CLI `npm run check -- --refs / --rename` と VSCode 拡張の F2 が共用) ───
 // 書き換えるのは定義行の ID(ラベル全体が旧 ID と同じ文字列ならそのラベルも新 ID に揃える)と接続行の from / to だけ。
 // ラベルの一部に旧 ID を含むだけのとき・属性・コメント・座標の行は 1 バイトも変えない。
@@ -583,4 +604,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

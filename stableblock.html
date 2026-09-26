@@ -84,6 +84,10 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 
 /* Preview Panel */
 #preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+#canvas-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:11px; line-height:1.6; border-bottom:1px solid #F59E0B; }
+#canvas-bar[hidden] { display:none; }
+#canvas-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
+#canvas-bar button.plain { border-color:transparent; color:#D6B98C; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
 #svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
@@ -151,7 +155,6 @@ textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #prop-content .help-keys { margin-top:16px; font-size:10px; color:var(--dim); line-height:1.5; }
 #prop-content .help-keys summary { cursor:pointer; color:var(--muted); font-size:11px; }
 #prop-content .help-keys[open] summary { margin-bottom:6px; }
-#status .status-btn { font:inherit; font-size:10px; padding:0 6px; margin-left:4px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
 .canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:11px; color:#CBD5E1; }
 #status .status-canvas { font:inherit; font-size:10px; padding:0; border:0; border-bottom:1px dotted var(--dim); background:none; color:inherit; cursor:pointer; }
 #status .status-canvas:hover { color:#E2E8F0; border-bottom-color:#E2E8F0; }
@@ -198,6 +201,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続</button>
     <div class="sep"></div>
     <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
+    <button class="tb" data-term="fix-id" id="fix-id-btn" onclick="fixIds()" title="仮の ID(__new_)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま、接続も追従)。英数字の無いラベルはプロパティ欄の ID で付ける">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" data-term="export-svg" onclick="exportSVG()" title="SVG で書き出す">SVG</button>
     <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)">▾</button>
@@ -231,6 +235,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="panel-label" title="ドラッグで移動(親グループは子も連動)">
       <span class="dot" style="color:var(--green)">●</span> PREVIEW
     </div>
+    <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
   </div>
   <div id="prop-panel">
@@ -920,6 +925,19 @@ function askIdIfUnnamed(){const s=sel.length===1?sel[0]:null;if(!s||!window.Stab
 // ID 欄のキー: Enter で確定(使えない ID なら理由を出して欄に残る)、Esc は打ちかけを捨てる(その後は全体の Esc で選択が外れる)
 function idKey(e,inp){if(e.key==='Enter'){e.preventDefault();setId(inp.value);const msg=document.getElementById('prop-id-msg');if(document.body.contains(inp)&&msg&&msg.textContent){inp.select();return;}inp.blur();}
   else if(e.key==='Escape'&&sel[0])inp.value=sel[0].id;}
+// ツールバーの「ID補正」: 仮の ID(__new_)のままの要素(貼り付け・本文でラベルを直した・ラベルを後で打った要素)に、ラベルから ID を一括で付ける
+// (core/label の fixPlaceholderIdsInDsl。表記はラベルのまま、接続の from / to も追従。本文の差分は改名した定義行と接続行だけ)。
+// 付けた ID と、英数字の無いラベルで付けられなかった要素を右下に出す(押すと閉じる)。include 先の要素は触らない
+function fixIds(){if(!parsed)return;const SL=window.StableBlockLabel,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
+  const own=it=>{const o=expanded&&expanded.origin[it.line-1];return o?(o.file===expanded.file?o.line:null):it.line;};
+  const items=all.filter(it=>SL.isPlaceholderId(it.id)&&own(it)!=null).map(it=>({id:it.id,label:it.label,line:own(it)}));
+  const el=document.getElementById('export-report');
+  if(!items.length){el.innerHTML='<b>ID補正</b><div class="hint">仮の ID(__new_)のままの要素は無い</div>';el.hidden=false;return;}
+  const r=SL.fixPlaceholderIdsInDsl(dsl,items,all.map(x=>x.id));
+  if(r.renamed.length){pushHistory();dsl=r.dsl;const m=new Map(r.renamed.map(x=>[x.from,x.to]));sel=sel.map(x=>m.has(x.id)?{...x,id:m.get(x.id)}:x);r.renamed.forEach(x=>{autoIds.delete(x.from);});refresh();}
+  el.innerHTML=`<b>ID補正: ${r.renamed.length} 件</b>${r.renamed.length?`<ul>${r.renamed.map(x=>`<li>${esc(x.from)} → ${esc(x.to)}</li>`).join('')}</ul>`:''}`+
+    (r.left.length?`<div class="hint">ラベルに英数字が無く付けられなかった ${r.left.length} 件(${r.left.map(x=>`「${esc(x.label)}」`).join('')})は仮の ID のまま。選んでプロパティ欄の ID で付ける</div>`:'');
+  el.hidden=false;}
 function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')||autoIds.has(s.id)))return;const SL=window.StableBlockLabel;const base=SL.labelToId(label);if(!base)return;
   const nid=SL.uniqueId(base,usedIdsExcept(s.id));if(nid===s.id)return;if(!applyRename(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);
   const inp=document.getElementById('prop-id');if(inp)inp.value=nid;const now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
@@ -974,7 +992,14 @@ function statusFileHtml(){const keys=Object.keys(includeFiles),i=dslFile?keys.in
 // ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」。押すと選択を外し、右のツール欄の「キャンバス (px)」(寸法と「はみ出したら自動で広げる」)を光らせて示す
 function statusCanvasHtml(){const c=parsed.canvas,g=window.StableBlockLayout.canvasGrows(c);return `<button type="button" id="status-canvas" class="status-canvas" onclick="showCanvasSettings()" title="キャンバスの寸法と、はみ出したら自動で広げるかの設定。押すと右のツール欄のその場所を示す">Canvas: ${c.width}×${c.height} ${g?'自動拡張':'固定'}</button>`;}
 function showCanvasSettings(){if(!parsed)return;if(sel.length){sel=[];renderSVG();}renderProps();const s=document.getElementById('canvas-section');if(!s)return;s.scrollIntoView({block:'nearest'});s.classList.remove('flash');void s.offsetWidth;s.classList.add('flash');clearTimeout(showCanvasSettings.t);showCanvasSettings.t=setTimeout(()=>s.classList.remove('flash'),1600);document.getElementById('canvas-grow').focus();}
-function renderStatus(){document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
+// 自動で広げた直後はプレビューの上端に「キャンバスを広げた 960×520 → 1100×520 [元の寸法に戻して固定] [このまま]」を出す(操作は止めない)。
+// 下端のステータスバーでは見落とすため、図を見ている場所に出す。元に戻す・読込・新規・寸法の手入力・「このまま」で消える
+function renderCanvasBar(){const el=document.getElementById('canvas-bar');if(!el)return;const c=parsed&&parsed.canvas,on=grewFrom&&c&&(grewFrom.width!==c.width||grewFrom.height!==c.height);
+  if(!on){if(!el.hidden){el.hidden=true;el.innerHTML='';}return;}
+  el.hidden=false;el.title='はみ出した要素に合わせて @canvas 行を広げた。以後も広げるかは下端の Canvas(ツール欄の「はみ出したら自動で広げる」)で切り替える';
+  el.innerHTML=`<span id="canvas-grew">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${c.width}×${c.height}<button type="button" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button><button type="button" class="plain" onclick="keepGrownCanvas()" title="広げた寸法のままにしてこの知らせを閉じる">このまま</button></span>`;}
+function keepGrownCanvas(){grewFrom=null;renderStatus();}
+function renderStatus(){renderCanvasBar();document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
