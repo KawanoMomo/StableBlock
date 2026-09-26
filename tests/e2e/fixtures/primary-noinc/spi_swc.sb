@@ -1,0 +1,6 @@
+# SPI 構成図
+@canvas width=960 height=520 grid=20
+block SpiDrv "SpiDrv" at 4,2 size 8x3 color=#6366F1 text=#FFFFFF round=4
+block SpiIf "Spi I/F" at 4,8 size 8x3 color=#6366F1 text=#FFFFFF round=4
+SpiDrv -> rte "req"
+SpiIf --> SpiDrv

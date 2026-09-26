@@ -20,6 +20,12 @@ const DEST_CORE = path.join(EXT_ROOT, "core");
 // (search for "REPO_ROOT" there).
 const ASSETS = [
   path.join("core", "label", "label-core.mjs"),
+  path.join("core", "check", "check-core.mjs"),
+  path.join("core", "select", "select-core.mjs"),
+  path.join("core", "layout", "layout-core.mjs"),
+  path.join("core", "mermaid", "mermaid-core.mjs"),
+  path.join("core", "terms", "terms-core.mjs"),
+  path.join("core", "render", "render-core.mjs"),
   path.join("core", "excel", "emitter.js"),
   path.join("core", "excel", "jszip.min.js"),
   path.join("core", "excel", "template-skeleton"),

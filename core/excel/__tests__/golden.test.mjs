@@ -88,7 +88,7 @@ function withNoteAst() {
     ],
     groups: [],
     notes: [
-      { id: 'memo', label: '重要', x: 1, y: 1, w: 8, h: 1, color: '#FEF3C7', textColor: '#92400E', borderColor: null, round: 4, style: 'solid' }
+      { id: 'memo', label: '重要', x: 1, y: 1, w: 8, h: 1, color: '#FEF3C7', textColor: '#92400E', borderColor: null, round: 4, style: null }
     ],
     connections: [
       { from: 'ui', to: 'core', label: '', color: '#64748B', style: 'solid', width: 1.5, bidir: false }

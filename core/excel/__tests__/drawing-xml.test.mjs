@@ -40,9 +40,9 @@ test('buildDrawingXml: minimal AST emits all shape types in z-order', () => {
   const blockAIdx = xml.indexOf('block:a');
   const noteIdx = xml.indexOf('note:n');
   assert.ok(groupIdx < connIdx, 'group before connection');
-  assert.ok(connIdx < labelIdx, 'connection before label');
-  assert.ok(labelIdx < blockAIdx, 'label before block');
-  assert.ok(blockAIdx < noteIdx, 'block before note');
+  assert.ok(connIdx < blockAIdx, 'connection before block');
+  assert.ok(blockAIdx < labelIdx, 'block before label(ラベルは block に隠れない)');
+  assert.ok(labelIdx < noteIdx, 'label before note');
 });
 
 test('buildDrawingXml: skips connection with missing endpoint and warns', () => {

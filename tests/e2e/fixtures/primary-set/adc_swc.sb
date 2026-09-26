@@ -1,0 +1,5 @@
+# ADC 構成図
+@canvas width=960 height=520 grid=20
+@include "shared/common.sb"
+block AdcDrv "AdcDrv" at 4,2 size 8x3 color=#6366F1 text=#FFFFFF round=4
+AdcDrv -> rte

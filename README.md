@@ -41,7 +41,7 @@ build-vscode.bat
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-0.6.0.vsix
+code --install-extension stableblock-1.0.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
@@ -54,15 +54,27 @@ run-tests.bat
 
 JS エミッタの単体・golden ファイルテストを実行（Node.js組み込みテストランナー）。
 
-### MCPサーバー
+E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.js`): 初回だけ `npm install` と `npx playwright install chromium`、以後 `npm run test:e2e`。
+静的サーバは worker ごとに `python -m http.server` を `SB_PORT`(既定 8901)+ worker 番号から起こす。`SB_PORT` に既にこのリポジトリの server があれば再利用する。
+結果・保存物は `test-results/` 配下のみ(コーパス往復テストの結果は `test-results/corpus-roundtrip.json`)。
+コーパス往復(`tests/corpus-roundtrip.test.js`)が assert するのは同梱の .sb(`core/excel/fixtures`・`tests/e2e/fixtures`)だけ。persona-data の .sb は JSON に `{total, passed, failed[]}` を書き、崩れた一覧を console に出すだけで赤にしない。
+自分の変更で往復を壊していないかは、main(`git checkout --detach main`)と自分の branch で `node --test tests/corpus-roundtrip.test.js` を回し、JSON の `passed` が main の値より減っていないことで見る。
 
-LLMから図を操作するためのMCPサーバー（18ツール）。
+### 図の検査(開かずに)
 
-```bash
-cd mcp-server
-uv sync
-uv run stableblock-mcp
-```
+`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・group の枠をまたぐ block や group・線が別の block の上を横切る)を
+`ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
+
+### ID の参照元探しと全図の改名(開かずに)
+
+- `npm run check -- --refs SpiDrv <file.sb | フォルダ> ...` — ID を定義・参照している図と行を一覧する(`@include` 先を含む)
+- `npm run check -- --rename SpiDrv Spi_Driver <file.sb | フォルダ> ... [--dry-run]` — 全図で ID を改名する。書き換えるのは定義行と接続の from / to だけで、
+  定義行のラベルが旧 ID と同じ文字列(`block SpiDrv "SpiDrv"`)ならそのラベルも新 ID に揃える(ラベルの一部に含むだけなら触らない)。
+  座標・サイズ・コメントの行は 1 バイトも変えない。改名先が既にどこかの図で定義されていれば、どの図も書き換えない
+- VSCode 拡張では ID の上で F2(シンボルの名前変更)と Shift+F12(すべての参照を検索)が同じ処理でワークスペースの全 .sb をまたぐ
+- ブラウザ版では「.sb 読込」で図をまとめて選ぶと、プロパティ欄の ID 欄 + Enter が読み込んだ全部の図を同じ規則で改名する。
+  ラベル欄 + Enter(キャンバス上のラベル編集の確定も)は、同じ ID を定義しているほかの図のうち編集前と同じ表示名のものも揃える
+  (違う表示名を付けた図は触らない)。ID を小文字・表示名をタイトルケースにする規約なら、ラベル欄 → ID 欄の 2 回で全図が揃う。「.sb 保存」で変わった図を全部書き出す
 
 ## DSL構文
 
@@ -84,6 +96,7 @@ core0 --> core1            # 双方向
 data -> log "payload"      # ラベル付き
 err -> handler style=dashed # 破線
 api -> gw width=3           # 太線
+api -> db route=ortho       # 直角(curved / straight / ortho。@canvas 行の route= が図全体の既定)
 memo -> ui color=#F59E0B    # 注釈からブロックへ
 
 # インクルード
@@ -101,25 +114,27 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **Shift+クリック複数選択** — 一括移動・サイズ変更・色変更・削除
 - **複数選択→グループ化** — 選択ブロックを囲むグループを自動作成
 - **プロパティパネル** — ラベル、座標、サイズ、色、角丸、スタイルをGUIで編集
-- **接続管理** — 2ブロック選択時に接続・削除・方向変更・双方向切替・色・太さ・スタイル
+- **接続管理** — 2ブロック選択時に接続・削除・方向変更・双方向切替・色・太さ・スタイル。3 個以上をクリックした順に選ぶと「a → b → c」(または Enter)で鎖状に結ぶ(既にある組は足さない)。右ボタンで block から block へドラッグしても 1 本結べる(HTML 版)。結んだ直後はラベル欄にフォーカスがあり、打って Enter で次の接続へ
 - **矢印キー移動** — 選択アイテムを矢印キーで1グリッド単位ずつ移動
 - **スナップガイド** — ドラッグ中に他ブロックとの整列ガイドラインを表示
-- **検索/フィルタ** — ツールバーの検索欄でID・ラベル検索、非マッチ要素を薄暗く
-- **ハイライトモード** — 接続のないブロックをトーンダウン表示（H キー）
-- **ID補正** — `__new_` プレースホルダーIDをラベルから自動命名
+- **検索/フィルタ** — ツールバーの「🔍 ID・ラベルで検索」欄で絞り込み、外れた要素を薄く表示
+- **未接続を薄く** — 接続の無いブロックを薄く表示(ツールバー「◎ 未接続を薄く」/ H キー)
+- **線の形** — route を書いていない接続の形(図全体の既定)を 曲線 → 直線 → 直角 と切り替える(ツールバー「⌇ 線の形」/ L キー)。本文の `@canvas` 行の `route=` に書かれ(曲線に戻すと消える)、画面・SVG・PNG・検査・VSCode 拡張が同じ形になる。接続ごとの形はプロパティ欄の「線の形」(接続行の `route=`。こちらが優先)
+- **全体表示** — 図の全体を画面に収める(ツールバー「全体表示」/ F キー)
+- **ID** — プロパティ欄の「ID」で決める・変える(英数字と `_`、表記はそのまま)。接続の参照も一緒に変わる。新しい要素の ID はラベルの入力に追従する
 
 ### 注釈レイヤー
 - **`note` DSL構文** — ブロックの上位レイヤーに注釈を配置
-- **表示/非表示トグル** — ◇ 注釈ボタン / N キー
-- **編集モード** — ✎ 編集ボタンで注釈のみ操作可能、ブロックはロック
+- **注釈を表示** — 表示・非表示を切り替える(ツールバー「◇ 注釈を表示」/ N キー)
+- **選択・追加** — 表示中の注釈はブロックと同じにクリックで選び、ドラッグ・ハンドルで動かす。何も選んでいないツール欄の「+ 注釈追加」で置く
 - **注釈→ブロック接続** — 常に破線で描画
 
 ### エクスポート/変換
 - **SVG / PNG / 透過PNG** — ツールバーから直接出力
-- **クリップボードコピー** — PNG画像をクリップボードに
+- **PNGをコピー** — PNG画像をクリップボードに(ツールバー「PNGをコピー」)
 - **Mermaid変換** — flowchart TD 形式でエクスポート
 - **.sb 保存/読込** — DSLファイルの入出力
-- **@include** — 共通パーツのインクルード
+- **@include** — 共通パーツのインクルード。include 先は include 元のファイルからの相対パス。HTML 版は「.sb 読込」で本体と include 先を一緒に選ぶ(複数選択。ほかの選んだファイルから include されていないものが本体になる)。VSCode 拡張と `npm run check` はファイルから読む。読めない include はその行にエラーを出し、書き出しでも「入っていない」と知らせる。保存は @include 行をそのまま残す
 - **Excel エクスポート** — `.xlsx` 出力。各図形は Excel ネイティブシェイプとして個別に編集可能
 
 ### VSCode拡張
@@ -127,13 +142,6 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **双方向同期** — プレビューのGUI操作がエディタに書き戻される
 - **Git Visual Diff** — HEADとのサイドバイサイドSVG差分表示
 - **Ctrl+Z/Y/C/X/V/A** — ショートカットキー対応
-
-### MCPサーバー（18ツール）
-- `sb_new` / `sb_open` / `sb_save` / `sb_show` / `sb_undo`
-- `sb_add_block` / `sb_add_group` / `sb_connect` / `sb_remove` / `sb_modify`
-- `sb_modify_connection` / `sb_move_to_group` / `sb_fix_ids`
-- `sb_from_template` / `sb_auto_layout` / `sb_validate_layout`
-- `sb_resize_canvas` / `sb_export_svg`
 
 ## ファイル構成
 
@@ -145,16 +153,19 @@ stableblock/
 ├── VERSION              # バージョン一元管理
 ├── bump-version.sh      # バージョン更新スクリプト
 ├── stableblock.html     # スタンドアロン版（これ1つで完結）
-├── examples/            # サンプル .sb ファイル
-├── vscode-stableblock/  # VSCode拡張
-│   ├── package.json
-│   ├── README.md
-│   ├── src/extension.js
-│   ├── syntaxes/stableblock.tmLanguage.json
-│   └── language-configuration.json
-└── mcp-server/          # MCPサーバー
-    ├── pyproject.toml
-    └── src/stableblock_mcp/
+├── run-tests.bat        # 単体テストの実行
+├── build-vscode.bat     # VSCode拡張のビルドとインストール
+├── package.json         # テスト(npm test / npm run test:e2e)の依存
+├── playwright.config.js # E2E の設定
+├── core/                # HTML版と VSCode拡張の共通コア(DSL・ラベル・選択・配置・検査・画面の語彙・Excel/Mermaid 書き出し)
+├── tests/               # コーパス往復テストと E2E(tests/e2e/scenarios)
+├── docs/                # ECN と ADR
+└── vscode-stableblock/  # VSCode拡張
+    ├── package.json
+    ├── README.md
+    ├── src/extension.js
+    ├── syntaxes/stableblock.tmLanguage.json
+    └── language-configuration.json
 ```
 
 ## ライセンス

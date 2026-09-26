@@ -43,6 +43,17 @@ function normalizeColor(value, fallback = '000000') {
   return cleaned;
 }
 
+// The frame of a block / note as the screen draws it (core/render の block / note の stroke と同じ):
+// block: color = border= or its fill color, style=bold is 2.5px, style=dashed is dashed.
+// note: color = border= or #D97706. Without style= it is the dashed annotation frame at 1px; with style= the block rules apply.
+function boxLine(item, kind) {
+  if (kind === 'note') {
+    if (item.style == null) return { color: item.borderColor || '#D97706', widthPx: 1, dashed: true };
+    return { color: item.borderColor || '#D97706', widthPx: item.style === 'bold' ? 2.5 : 1, dashed: item.style === 'dashed' };
+  }
+  return { color: item.borderColor || item.color || null, widthPx: item.style === 'bold' ? 2.5 : 1, dashed: item.style === 'dashed' };
+}
+
 function buildBlockShape(block, shapeId, gridPx, opts = {}) {
   const x = gridToEmu(block.x, gridPx);
   const y = gridToEmu(block.y, gridPx);
@@ -57,15 +68,16 @@ function buildBlockShape(block, shapeId, gridPx, opts = {}) {
     ? `<a:solidFill><a:srgbClr val="${fillColor}"><a:alpha val="${fillAlpha}"/></a:srgbClr></a:solidFill>`
     : `<a:solidFill><a:srgbClr val="${fillColor}"/></a:solidFill>`;
 
-  // Border: explicit borderColor, or opts.defaultBorderColor as fallback, or noFill
-  const dashedXml = opts.dashedBorder ? '<a:prstDash val="dash"/>' : '';
+  // Border: the same stroke as the screen (boxLine). A plain block's stroke is its own fill color, so it is left out (noFill).
+  const kind = opts.namePrefix === 'note' ? 'note' : 'block';
+  const line = boxLine(block, kind);
   let borderXml;
-  if (block.borderColor) {
-    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(block.borderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
-  } else if (opts.defaultBorderColor) {
-    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(opts.defaultBorderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
-  } else {
+  if (kind === 'block' && !block.borderColor && line.widthPx === 1 && !line.dashed) {
     borderXml = `<a:ln><a:noFill/></a:ln>`;
+  } else {
+    const wAttr = line.widthPx !== 1 ? ` w="${pxToEmu(line.widthPx)}"` : '';
+    const dashedXml = line.dashed ? '<a:prstDash val="dash"/>' : '';
+    borderXml = `<a:ln${wAttr}><a:solidFill><a:srgbClr val="${normalizeColor(line.color)}"/></a:solidFill>${dashedXml}</a:ln>`;
   }
 
   const round = Number(block.round) || 0;
@@ -151,9 +163,7 @@ function buildGroupShape(group, shapeId, gridPx) {
 function buildNoteShape(note, shapeId, gridPx) {
   return buildBlockShape(note, shapeId, gridPx, {
     namePrefix: 'note',
-    fillAlpha: 70000,        // ~70% (matches SVG opacity 0.7)
-    dashedBorder: true,
-    defaultBorderColor: 'D97706'  // SVG render default note border
+    fillAlpha: 70000         // ~70% (matches SVG opacity 0.7). Frame: boxLine(note, 'note')
   });
 }
 
@@ -251,30 +261,61 @@ function computeConnectionEndpoints(conn, blockMap, gridPx) {
   };
 }
 
-function buildConnectionShape(conn, connIndex, endpoints, shapeId) {
+// Connection site index of the rect / roundRect presets (DrawingML cxnLst order: t, l, b, r)
+const CXN_SITE = { top: 0, left: 1, bottom: 2, right: 3 };
+function connectionSiteIndex(side) {
+  return CXN_SITE[side] ?? 0;
+}
+
+// 接続の線の形(画面と同じ決め方: 接続の route= → `@canvas` の route= → 曲線)。知らない値は曲線
+function xlsxRoute(conn, canvas) {
+  const r = conn.route || (canvas && canvas.route);
+  return r === 'straight' || r === 'ortho' ? r : 'curved';
+}
+
+// 接続線の図形(DrawingML の既定形)と置き方。端点は EMU。
+// 曲線 = curvedConnector3、直角 = bentConnector3(どちらも画面と同じく辺に直角に出入りし、折れ・変曲は端点の中間)、直線 = straightConnector1。
+// 既定形は左上から右向きに出て右下へ右向きに入る。上下の辺で結ぶ線は 90° 回して縦に出入りさせる(回転は図形の中心まわりで、
+// flip は回す前にかかる)。anchor は画面上の外接矩形(端点の箱)、xfrm は回す前の箱(Excel は 90° 回した図形の anchor を回した後の箱として読む)。
+function connectorGeometry(endpoints, route, fs) {
   const { x1, y1, x2, y2 } = endpoints;
-  const minX = Math.min(x1, x2);
-  const minY = Math.min(y1, y2);
-  const absDx = Math.abs(x2 - x1);
-  const absDy = Math.abs(y2 - y1);
-  const flipH = x1 > x2 ? 'true' : 'false';
-  const flipV = y1 > y2 ? 'true' : 'false';
+  const dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+  const anchor = { x: Math.min(x1, x2), y: Math.min(y1, y2), cx: dx, cy: dy };
+  const prst = route === 'ortho' ? 'bentConnector3' : route === 'curved' ? 'curvedConnector3' : 'straightConnector1';
+  const vertical = prst !== 'straightConnector1' && (fs === 'top' || fs === 'bottom');
+  if (!vertical) return { prst, rot: 0, anchor, xfrm: anchor, flipH: x1 > x2, flipV: y1 > y2 };
+  // 回す前の箱: 幅 = 縦の距離、高さ = 横の距離、中心は端点の中点
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const xfrm = { x: Math.round(mx - dy / 2), y: Math.round(my - dx / 2), cx: dy, cy: dx };
+  return { prst, rot: 5400000, anchor, xfrm, flipH: y1 > y2, flipV: x1 < x2 };
+}
+
+// glue: { st: { id, idx }, end: { id, idx } } — shape ids the connector is glued to, so that
+// moving a shape in Excel drags the line with it. Omitted → a free line (legacy behavior).
+// shape: { route, fs } — the line shape as the screen draws it (connectorGeometry). Omitted → a straight line.
+function buildConnectionShape(conn, connIndex, endpoints, shapeId, glue, shape) {
+  const glueXml = glue
+    ? (glue.st ? `<a:stCxn id="${glue.st.id}" idx="${glue.st.idx}"/>` : '') +
+      (glue.end ? `<a:endCxn id="${glue.end.id}" idx="${glue.end.idx}"/>` : '')
+    : '';
+  const geo = connectorGeometry(endpoints, shape ? shape.route : 'straight', shape && shape.fs);
+  const rotAttr = geo.rot ? ` rot="${geo.rot}"` : '';
   const lineColor = normalizeColor(conn.color, '64748B');
   const lineWidth = pxToEmu(Number(conn.width) || 1.5);
   const dashXml = conn.style === 'dashed' ? '<a:prstDash val="dash"/>' : '';
   const headEnd = conn.bidir ? '<a:headEnd type="triangle"/>' : '';
 
   return `<xdr:absoluteAnchor>` +
-    `<xdr:pos x="${minX}" y="${minY}"/>` +
-    `<xdr:ext cx="${absDx}" cy="${absDy}"/>` +
+    `<xdr:pos x="${geo.anchor.x}" y="${geo.anchor.y}"/>` +
+    `<xdr:ext cx="${geo.anchor.cx}" cy="${geo.anchor.cy}"/>` +
     `<xdr:cxnSp macro="">` +
       `<xdr:nvCxnSpPr>` +
         `<xdr:cNvPr id="${shapeId}" name="conn:${connIndex}"/>` +
-        `<xdr:cNvCxnSpPr/>` +
+        (glueXml ? `<xdr:cNvCxnSpPr>${glueXml}</xdr:cNvCxnSpPr>` : `<xdr:cNvCxnSpPr/>`) +
       `</xdr:nvCxnSpPr>` +
       `<xdr:spPr>` +
-        `<a:xfrm flipH="${flipH}" flipV="${flipV}"><a:off x="0" y="0"/><a:ext cx="${absDx}" cy="${absDy}"/></a:xfrm>` +
-        `<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>` +
+        `<a:xfrm${rotAttr} flipH="${geo.flipH}" flipV="${geo.flipV}"><a:off x="${geo.xfrm.x}" y="${geo.xfrm.y}"/><a:ext cx="${geo.xfrm.cx}" cy="${geo.xfrm.cy}"/></a:xfrm>` +
+        `<a:prstGeom prst="${geo.prst}"><a:avLst/></a:prstGeom>` +
         `<a:ln w="${lineWidth}"><a:solidFill><a:srgbClr val="${lineColor}"/></a:solidFill>${dashXml}${headEnd}<a:tailEnd type="triangle"/></a:ln>` +
       `</xdr:spPr>` +
     `</xdr:cxnSp>` +
@@ -320,7 +361,8 @@ function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
   `</xdr:absoluteAnchor>`;
 }
 
-const Z_ORDER = { group: 0, connection: 1, connlabel: 2, block: 3, note: 4 };
+// 接続ラベルは block より上(block に隠れないように)。note は注釈の層として最前面
+const Z_ORDER = { group: 0, connection: 1, block: 2, connlabel: 3, note: 4 };
 
 function sortByZOrder(items) {
   return [...items].sort((a, b) => {
@@ -337,21 +379,27 @@ function buildDrawingXml(ast) {
 
   (ast.groups || []).forEach((g, i) => items.push({ kind: 'group', data: g, srcIndex: i }));
 
-  // Pre-compute all connection ports together (multi-conn distribution requires it)
-  const allPorts = computeAllPorts(ast.connections || [], ast.blockMap || {}, gridPx);
-  (ast.connections || []).forEach((c, i) => {
+  // Pre-compute all connection ports together (multi-conn distribution requires it).
+  // Block-to-block connections and connections touching a note (annotation, drawn dashed) are
+  // distributed separately, as the SVG renderer does.
+  const conns = ast.connections || [];
+  const noteMap = ast.noteMap || {};
+  const isAnno = c => !!(noteMap[c.from] || noteMap[c.to]);
+  const allPorts = computeAllPorts(conns.map(c => (isAnno(c) ? { ...c, from: '\0', to: '\0' } : c)), ast.blockMap || {}, gridPx);
+  const annoIdx = conns.map((c, i) => i).filter(i => isAnno(conns[i]));
+  const annoPorts = computeAllPorts(annoIdx.map(i => conns[i]), { ...(ast.blockMap || {}), ...noteMap }, gridPx);
+  annoIdx.forEach((ci, k) => { allPorts[ci] = annoPorts[k]; });
+  conns.forEach((c, i) => {
     const port = allPorts[i];
-    if (!port) {
-      console.warn(`[excel-emitter] skipping connection: ${c.from} -> ${c.to} (endpoint missing)`);
-      return;
-    }
+    if (!port) return;   // endpoint missing — listed by listXlsxDrops()
     const ep = {
       x1: pxToEmu(port.fp.x),
       y1: pxToEmu(port.fp.y),
       x2: pxToEmu(port.tp.x),
       y2: pxToEmu(port.tp.y)
     };
-    items.push({ kind: 'connection', data: c, srcIndex: i, endpoints: ep, connIndex: i });
+    const data = isAnno(c) ? { ...c, style: 'dashed' } : c;
+    items.push({ kind: 'connection', data, srcIndex: i, endpoints: ep, connIndex: i, sides: { fs: port.fs, ts: port.ts } });
     if (c.label) {
       items.push({ kind: 'connlabel', data: c, srcIndex: i, endpoints: ep, connIndex: i });
     }
@@ -362,11 +410,24 @@ function buildDrawingXml(ast) {
 
   const sorted = sortByZOrder(items);
 
-  let shapeId = 1;
+  // Shape ids follow the z-order; connectors are written before the shapes they glue to,
+  // so the ids of blocks / notes are assigned up front. Ids start at 2 as Excel's own drawings do: Excel renumbers a drawing
+  // whose ids start at 1 without following stCxn / endCxn, and the lines end up glued to the wrong shapes.
+  const FIRST_ID = 2;
+  const idOf = {};
+  sorted.forEach((item, k) => { if (item.kind === 'block' || item.kind === 'note') idOf[item.data.id] = k + FIRST_ID; });
+  const glueOf = item => {
+    const c = item.data;
+    const st = idOf[c.from] != null ? { id: idOf[c.from], idx: connectionSiteIndex(item.sides.fs) } : null;
+    const end = idOf[c.to] != null ? { id: idOf[c.to], idx: connectionSiteIndex(item.sides.ts) } : null;
+    return st || end ? { st, end } : undefined;
+  };
+
+  let shapeId = FIRST_ID;
   const anchorXmls = sorted.map(item => {
     switch (item.kind) {
       case 'group': return buildGroupShape(item.data, shapeId++, gridPx);
-      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++);
+      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++, glueOf(item), { route: xlsxRoute(item.data, ast.canvas), fs: item.sides.fs });
       case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++);
       case 'block': return buildBlockShape(item.data, shapeId++, gridPx);
       case 'note': return buildNoteShape(item.data, shapeId++, gridPx);
@@ -380,6 +441,24 @@ function buildDrawingXml(ast) {
     ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     anchorXmls.join('') +
     `</xdr:wsDr>`;
+}
+
+// What the Excel output cannot carry, one line each (the UI shows it to the user after the export).
+// 当て方は属性ごとに決める: 載せる(色・枠・太線/破線・角丸・線の色/太さ/破線・双方向・線の形)か、ここで知らせるか。
+// どちらでもない属性は core/dsl/__tests__/export-fidelity.test.mjs が赤にする(parser の属性を足したら当て方も決める)。
+// - 端が図に無い接続は描かない
+// - 接続ラベルの位置 lpos=: Excel では線の中点に置く(lpos=center と同じ)。接続ごとに要素 ID と書いた値で知らせる
+function listXlsxDrops(ast) {
+  const known = { ...(ast.blockMap || {}), ...(ast.noteMap || {}) };
+  const dropped = [];
+  const placed = [];
+  for (const c of ast.connections || []) {
+    const name = `接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
+    const miss = [c.from, c.to].filter(x => !known[x]);
+    if (miss.length) { dropped.push(`${name}(${miss.join(', ')} が図に無い)`); continue; }
+    if (c.label && c.lposAuto === false && c.lpos !== 'center') placed.push(`${name} の lpos=${c.lpos}(Excel ではラベルを線の中点に置く)`);
+  }
+  return dropped.concat(placed);
 }
 
 function resolveJSZip(opts) {
@@ -413,4 +492,4 @@ async function loadTemplateFilesAsync() {
   return mod.loadTemplateFiles();
 }
 
-;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, packageXlsx, renderXlsx };
+;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, boxLine, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, connectionSiteIndex, xlsxRoute, connectorGeometry, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, listXlsxDrops, packageXlsx, renderXlsx };

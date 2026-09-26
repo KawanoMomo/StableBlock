@@ -1,0 +1,10 @@
+# junior 手順 2 の出発点: __new_ のまま残った ID を検索で順に直す
+@canvas width=960 height=520 grid=20
+
+group __new_1 "SPI" at 1,1 size 30x8 color=#EEF2FF border=#818CF8
+block __new_2 "Spi_Handler" at 14,3 size 9x3 color=#6366F1 text=#FFFFFF
+block app "App" at 2,3 size 9x3 color=#6366F1 text=#FFFFFF
+note __new_3 "排他は Job 単位" at 2,12 size 9x2
+note keep "memo keep" at 14,12 size 9x2
+
+app -> __new_2

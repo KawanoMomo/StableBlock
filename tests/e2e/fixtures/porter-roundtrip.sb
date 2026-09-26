@@ -1,0 +1,15 @@
+# 既存の設計書から起こした図(CRLF・整列・コメント・日本語)
+@canvas width=640 height=320 grid=20
+
+# ECU
+group ecu "ECU" at 1,1 size 30x12 color=#DCFCE7 border=#22C55E
+
+block can   "CAN"      at 2,3  size 8x3 color=#16A34A text=#FFFFFF round=4
+block com   "Com"      at 12,3 size 8x3 color=#16A34A text=#FFFFFF round=4 style=dashed
+block pdu   "PduR"     at 22,3 size 8x3 color=#16A34A text=#FFFFFF round=4
+  block nm  "NM\n管理"  at 2,8  size 8x3 color=#64748B
+note n1 "受信は 10ms 周期" at 12,8 size 10x2 color=#FEF3C7 text=#92400E
+
+can -> pdu "Rx"
+pdu -> com "I-PDU" color=#EF4444 style=dashed width=2 lpos=top
+can --> nm

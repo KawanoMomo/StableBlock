@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
-import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser } from '../build-browser.mjs';
+import { buildTemplateInline, buildEmitterBrowser, buildLabelCoreBrowser, buildSelectCoreBrowser, buildLayoutCoreBrowser, buildMermaidCoreBrowser, buildCheckCoreBrowser } from '../build-browser.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -29,9 +29,17 @@ function walkDir(rootDir) {
 test('template-inline.js is up to date with template-skeleton/', () => {
   const skeleton = walkDir(join(ROOT, 'template-skeleton'));
   const expected = buildTemplateInline(skeleton);
-  const actual = readFileSync(join(ROOT, 'template-inline.js'), 'utf8');
+  // 作業ツリーが CRLF でも LF でも同じ結果にする(ほかの drift 検出と同じ norm)
+  const actual = readFileSync(join(ROOT, 'template-inline.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.equal(actual, expected,
     'template-inline.js is stale; run `npm run build:browser` and commit the result.');
+});
+
+test('template-inline.js の生成は template-skeleton/ の改行コード(CRLF / LF)に依らない', () => {
+  const lf = walkDir(join(ROOT, 'template-skeleton')).map(f => ({ ...f, content: f.content.replace(/\r\n/g, '\n') }));
+  const crlf = lf.map(f => ({ ...f, content: f.content.replace(/\n/g, '\r\n') }));
+  assert.equal(buildTemplateInline(crlf), buildTemplateInline(lf));
+  assert.doesNotMatch(buildTemplateInline(crlf), /\\r/);
 });
 
 test('emitter.browser.js is up to date with emitter.js', () => {
@@ -55,7 +63,7 @@ test('emitter.browser.js sets window.StableBlockExcel with all expected function
     'buildBlockShape', 'buildGroupShape', 'buildNoteShape',
     'centerOfShape', 'computeConnectionEndpoints',
     'buildConnectionShape', 'buildConnectionLabel',
-    'sortByZOrder', 'buildDrawingXml',
+    'sortByZOrder', 'buildDrawingXml', 'connectionSiteIndex', 'listXlsxDrops',
     'packageXlsx', 'renderXlsx'
   ];
   const m = src.match(/window\.StableBlockExcel\s*=\s*\{([^}]+)\}/);
@@ -72,4 +80,36 @@ test('label-core.browser.js is up to date (drift detection)', () => {
   const norm = (s) => s.replace(/\r\n/g, '\n');
   assert.equal(norm(built), norm(buildLabelCoreBrowser(norm(src))),
     'Run `npm run build:browser` to regenerate label-core.browser.js');
+});
+
+test('select-core.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../select/select-core.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../select/select-core.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildSelectCoreBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate select-core.browser.js');
+});
+
+test('layout-core.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../layout/layout-core.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../layout/layout-core.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildLayoutCoreBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate layout-core.browser.js');
+});
+
+test('mermaid-core.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../mermaid/mermaid-core.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../mermaid/mermaid-core.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildMermaidCoreBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate mermaid-core.browser.js');
+});
+
+test('check-core.browser.js is up to date (drift detection)', () => {
+  const src = readFileSync(new URL('../../check/check-core.mjs', import.meta.url), 'utf8');
+  const built = readFileSync(new URL('../../check/check-core.browser.js', import.meta.url), 'utf8');
+  const norm = (s) => s.replace(/\r\n/g, '\n');
+  assert.equal(norm(built), norm(buildCheckCoreBrowser(norm(src))),
+    'Run `npm run build:browser` to regenerate check-core.browser.js');
 });

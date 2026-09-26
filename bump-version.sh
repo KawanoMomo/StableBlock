@@ -1,30 +1,8 @@
 #!/usr/bin/env bash
 # Usage: ./bump-version.sh [version]
 # If no version given, reads from VERSION file.
+# 本体は scripts/bump-version.mjs(VERSION・ルートと拡張の package.json・package-lock.json・stableblock.html・README の版番号を揃える。
+# 置き換える箇所が見つからないファイルがあれば何も書かずに失敗する)
 set -euo pipefail
 cd "$(dirname "$0")"
-
-VER="${1:-$(cat VERSION | tr -d '[:space:]')}"
-MAJOR_MINOR=$(echo "$VER" | sed 's/^\([0-9]*\.[0-9]*\).*/\1/')
-
-echo "Bumping to v${VER} (v${MAJOR_MINOR})"
-
-# 1. VERSION file
-echo "$VER" > VERSION
-
-# 2. vscode-stableblock/package.json
-sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VER}\"/" vscode-stableblock/package.json
-
-# 3. stableblock.html — default DSL comment
-sed -i "s/# StableBlock v[0-9.]\+/# StableBlock v${MAJOR_MINOR}/" stableblock.html
-
-# 4. stableblock.html — badge
-sed -i "s/v[0-9.]\+<\/span>/v${MAJOR_MINOR}<\/span>/" stableblock.html
-
-# 5. README.md — vsix filename
-sed -i "s/stableblock-[0-9.]\+\.vsix/stableblock-${VER}.vsix/g" README.md
-sed -i "s/stableblock-[0-9.]\+\.vsix/stableblock-${VER}.vsix/g" vscode-stableblock/README.md
-
-echo "Done. Updated files:"
-grep -n "v${MAJOR_MINOR}\|\"${VER}\"\|stableblock-${VER}" \
-  VERSION vscode-stableblock/package.json stableblock.html README.md vscode-stableblock/README.md 2>/dev/null || true
+exec node scripts/bump-version.mjs "$@"
