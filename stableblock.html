@@ -83,6 +83,9 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .prop-section { margin-bottom:12px; }
 .prop-label { font-size:10px; color:var(--muted); font-weight:600; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em; }
 .prop-row { display:flex; gap:6px; margin-bottom:6px; }
+.inc-row { align-items:center; }
+.inc-path { flex:1; min-width:0; font-size:11px; font-family:"IBM Plex Mono",monospace; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inc-row .inc-remove { flex:none; height:22px; padding:0 8px; font-size:10px; border-radius:4px; }
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
 .prop-sub { font-size:9px; color:var(--dim); }
@@ -572,6 +575,35 @@ function finishInlineEdit(commit){const ed=inlineEd;if(!ed)return;inlineEd=null;
 // Single select: full property editor (block/group/note specific)
 // ═══════════════════════════════════════════════
 // Every selection change goes through renderProps: drop items the DSL no longer has, then keep the status bar's Selected: N in step
+// ── ツール欄の「共通部(@include)」: 今の @include 行(外す)と、一緒に読み込んだ図から選んで取り込む(本文に 1 行) ──
+var includeNote=null;   // var: 初期化前の renderProps からも読む
+function includeFilesNow(){syncLoaded();const f={...includeFiles};if(!dslFile||!hasLoaded(dslFile))f[dslFile||'diagram.sb']=dsl;return f;}
+function includeSelf(){return dslFile&&hasLoaded(dslFile)?dslFile:'diagram.sb';}
+function includeSectionHtml(){const C=window.StableBlockCheck,files=includeFilesNow(),self=includeSelf(),cur=C.includeLines(dsl),cand=C.includeCandidates(files,self);
+  const miss=new Set(((expanded&&expanded.missing)||[]).map(m=>m.at));
+  let h=`<div class="prop-section" id="include-section"><div class="prop-label">共通部(@include)</div>`;
+  h+=cur.length?cur.map(x=>`<div class="prop-row inc-row" data-line="${x.line}"><span class="inc-path" title="本文 L${x.line}">${esc(x.path)}${miss.has(x.line)?' <span style="color:var(--red)">(読めない)</span>':''}</span><button class="step-btn inc-remove" data-term="remove-include" onclick="removeInclude(${x.line})" title="この @include 行を本文から消す(取り込んでいた要素は図から消える)">外す</button></div>`).join(''):'<div class="prop-sub">取り込んでいる図は無い</div>';
+  if(cand.length){
+    h+=`<select class="prop-input" id="include-pick" style="margin-top:6px" title="取り込む図(一緒に読み込んだ図から)" onchange="document.getElementById('include-path').value=this.options[this.selectedIndex].dataset.path">${cand.map((c,i)=>`<option value="${i}" data-path="${esc(c.path)}">${esc(c.file)}</option>`).join('')}</select>`;
+    h+=`<div class="prop-sub" style="margin-top:4px">本文に書くパス(この図のフォルダから。違えば直す)</div><input class="prop-input" id="include-path" value="${esc(cand[0].path)}" spellcheck="false">`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">この図に取り込む</button></div>`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">読み込んだ図すべてに取り込む</button></div>`;
+  }else h+=`<div class="prop-sub">取り込める図が無い。共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める</div>`;
+  if(includeNote)h+=`<div class="prop-sub" id="include-note" style="color:var(--green)">${esc(includeNote)}</div>`;
+  return h+'</div>';}
+// 本文に書くパスは欄の値(直していなければ候補のパス)。「すべてに」では、表示中の図と同じフォルダの図には欄の値、ほかのフォルダの図にはその図から見たパスを書く
+function addInclude(all){const C=window.StableBlockCheck,files=includeFilesNow(),self=includeSelf(),pick=document.getElementById('include-pick'),inp=document.getElementById('include-path');
+  const cands=C.includeCandidates(files,self);let c=cands[pick?+pick.value:0];if(!c)return;
+  const path=((inp&&inp.value)||c.path).trim().replace(/"/g,'');if(!path)return;
+  // 欄のパスが一緒に読み込んだ別の図を指していれば、その図を取り込む(選択欄より欄のパスが正)
+  const typed=C.loadedKeyOf(files,self,path);if(typed===self)return;if(typed&&typed!==c.file){c=cands.find(x=>x.file===typed);if(!c)return;}
+  const dir=f=>String(f).split('/').slice(0,-1).join('/');
+  if(!all){pushHistory();dsl=C.addIncludeInDsl(dsl,path);includeNote=`${path} を取り込んだ(本文に 1 行)`;refresh();return;}
+  const done=[];pushHistoryAll();
+  for(const k of Object.keys(files)){if(k===c.file)continue;const t=C.includeCandidates(files,k).find(x=>x.file===c.file);if(!t)continue;
+    const nd=C.addIncludeInDsl(files[k],dir(k)===dir(self)?path:t.path);files[k]=nd;if(k===self)dsl=nd;else includeFiles[k]=nd;done.push(baseName(k));}
+  includeNote=done.length?`${path} を ${done.length} 枚に取り込んだ: ${done.join('、')}。「.sb 保存」で変わった図を全部書き出す`:`${path} を取り込める図は無い`;refresh();}
+function removeInclude(line){const nd=window.StableBlockCheck.removeIncludeInDsl(dsl,line);if(nd===dsl)return;pushHistory();dsl=nd;includeNote=null;refresh();}
 function renderProps(){
   if(labelEdit&&parsed)commitLabelEdit();   // ラベル欄を作り直す前に、確定していない編集をほかの図へも反映する(欄の外を押して選択が変わったとき)
   if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);
@@ -594,6 +626,7 @@ function renderPropsPanel(){
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
       </div><label class="prop-sub canvas-grow"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label>
       <div class="prop-sub">${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素より小さくはできない。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}</div></div>
+      ${includeSectionHtml()}
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
       <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ。3 つ以上はクリックした順に「a → b → c」で鎖状に結ぶ(Enter でも)。右ボタンで block から block へドラッグしても 1 本結べる</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
@@ -900,7 +933,7 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
   pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
   const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
   let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;labelNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
+  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;labelNote=null;includeNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};

@@ -303,6 +303,110 @@ function expandLoaded(files) {
   return Object.keys(files).map(path => ({ path, exp: expandIncludes(files[path], loadedReader(files, path), path) }));
 }
 
+// ─── 作図 UI から @include を足す・外す(ツール欄の「共通部(@include)」) ───
+
+const INCLUDE_RE = /^\s*@include\s+"([^"]+)"/;
+
+// 本文の @include 行: [{ line(1 始まり), path(書いてある文字列) }]
+function includeLines(dsl) {
+  const out = [];
+  String(dsl).split('\n').forEach((l, i) => { const m = l.match(INCLUDE_RE); if (m) out.push({ line: i + 1, path: m[1] }); });
+  return out;
+}
+
+// 図 from の本文に書いた rel が、一緒に読み込んだ図のどれか(files のキー)。loadedReader と同じ探し方。無ければ null
+function loadedKeyOf(files, from, rel) {
+  const p = resolveIncludePath(from, rel);
+  if (Object.prototype.hasOwnProperty.call(files, p)) return p;
+  const b = p.split('/').pop();
+  const hit = Object.keys(files).filter(k => k !== from && k.split('/').pop() === b);
+  return hit.length === 1 ? hit[0] : null;
+}
+
+// 図 k が(include 先をたどって)取り込む図のキーの集合。自分自身は入れない
+function includedKeys(files, k) {
+  const seen = new Set();
+  const walk = f => {
+    for (const { path } of includeLines(files[f])) {
+      const t = loadedKeyOf(files, f, path);
+      if (t && !seen.has(t) && t !== k) { seen.add(t); walk(t); }
+    }
+  };
+  walk(k);
+  return seen;
+}
+
+// from のフォルダから to への相対パス(/ 区切り)
+function relativeIncludePath(from, to) {
+  const a = String(from).split('/').slice(0, -1), b = String(to).split('/');
+  let i = 0;
+  while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
+  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
+}
+
+// 図 self に @include として足せる、一緒に読み込んだ図: [{ file(キー), path(本文に書く文字列) }](ほかの図が取り込んでいる図が先、あとは files の順)。
+// 自分自身・既に取り込んでいる図・自分を(include 先をたどって)取り込んでいる図は出さない(循環を作らない)。
+// path は、同じフォルダのほかの図がその図を既に include している書き方があればそれ(「.sb 読込」で選んだ図はフォルダを持たないので、
+// 本文どおりの `shared/common.sb` を使う)。無ければ self から見た相対パス
+function includeCandidates(files, self) {
+  const has = includedKeys(files, self);
+  const dir = f => String(f).split('/').slice(0, -1).join('/');
+  const out = [];
+  for (const k of Object.keys(files)) {
+    if (k === self || has.has(k) || includedKeys(files, k).has(self)) continue;
+    let path = null;
+    for (const f of Object.keys(files)) {
+      if (f === k || dir(f) !== dir(self)) continue;
+      const hit = includeLines(files[f]).find(x => loadedKeyOf(files, f, x.path) === k);
+      if (hit) { path = hit.path; break; }
+    }
+    out.push({ file: k, path: path || relativeIncludePath(self, k) });
+  }
+  // 先に出す順(選ばずに押せば共通部が入る): ほかの図が既に取り込んでいる図 → 自分の接続が指していて自分に無い ID を定義している図 → 残り
+  const shared = new Set(Object.keys(files).flatMap(f => includeLines(files[f]).map(x => loadedKeyOf(files, f, x.path))));
+  const own = definedIds(files[self]);
+  const need = new Set([...connectedIds(files[self])].filter(id => !own.has(id)));
+  const rank = c => (shared.has(c.file) ? 0 : [...definedIds(files[c.file])].some(id => need.has(id)) ? 1 : 2);
+  return [0, 1, 2].flatMap(r => out.filter(c => rank(c) === r));
+}
+
+// 本文(include は展開しない)で定義している ID と、接続の端に書いている ID
+function definedIds(text) {
+  const out = new Set();
+  for (const l of String(text || '').split('\n')) { const m = l.match(/^\s*(block|group|note)\s+(\S+)/); if (m) out.add(m[2]); }
+  return out;
+}
+function connectedIds(text) {
+  const out = new Set();
+  for (const l of String(text || '').split('\n')) { const m = l.match(/^\s*([^\s#@]\S*)\s+(-->|->)\s+(\S+)/); if (m) { out.add(m[1]); out.add(m[3]); } }
+  return out;
+}
+
+// 本文に `@include "path"` の 1 行を足す(差分 1 行)。置き場所: 最後の @include 行の後、無ければ @canvas 行の後、
+// 無ければ先頭のコメント行の後。改行コードは本文に合わせる
+function addIncludeInDsl(dsl, path) {
+  const s = String(dsl), cr = s.includes('\r\n') ? '\r' : '';
+  const lines = s.split('\n');
+  const inc = includeLines(s);
+  let at;
+  if (inc.length) at = inc[inc.length - 1].line;
+  else {
+    const c = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+    if (c >= 0) at = c + 1;
+    else { at = 0; while (at < lines.length && /^\s*#/.test(lines[at])) at++; }
+  }
+  lines.splice(at, 0, `@include "${path}"` + cr);
+  return lines.join('\n');
+}
+
+// 本文の line 行目(1 始まり)が @include 行ならその行を消す。そうでなければ同じ文字列
+function removeIncludeInDsl(dsl, line) {
+  const lines = String(dsl).split('\n');
+  if (!INCLUDE_RE.test(lines[line - 1] || '')) return String(dsl);
+  lines.splice(line - 1, 1);
+  return lines.join('\n');
+}
+
 // 一括書き出しの zip の中のファイル名: 読み込んだ図のパスから .sb / .stableblock / .txt を除いて拡張子 ext を付ける
 function bulkFileName(path, ext) {
   return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + '.' + ext;
@@ -313,4 +417,4 @@ function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
 }
 
-;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includeDrops, loadedReader, expandLoaded, bulkFileName, bulkDrops };
+;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includeDrops, loadedReader, expandLoaded, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, bulkFileName, bulkDrops };
