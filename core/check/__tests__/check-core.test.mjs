@@ -31,6 +31,15 @@ test('explainLine: 接続の書き方', () => {
   assert.match(explainLine('hello'), /書式にない行/);
 });
 
+// BLK-porter-20260926-2105: @canvas が 2 行あっても黙らない。効かない前の行に、どの行の値が効くかを出す
+test('checkDiagram: @canvas が 2 行あれば前の行に警告(最後の行の値が効く)', () => {
+  const d = check('@canvas width=480 height=240 grid=20\n@canvas width=800 height=600 grid=40\nblock a "A" at 2,1 size 6x3\n');
+  assert.deepEqual(d.map(x => [x.line, x.level, x.msg]), [[1, 'warn', '@canvas が 2 行ある。L2 の値が効く']]);
+  const three = check('@canvas width=480\n# memo\n@canvas width=600\n@canvas width=800 height=600\nblock a "A" at 2,1 size 6x3\n');
+  assert.deepEqual(three.map(x => [x.line, x.msg]), [[1, '@canvas が 3 行ある。L4 の値が効く'], [3, '@canvas が 3 行ある。L4 の値が効く']]);
+  assert.deepEqual(check('@canvas width=800 height=600\nblock a "A" at 2,1 size 6x3\n'), []);
+});
+
 test('checkDiagram: parser が読めない行に理由を付ける(ID の重複はそのまま)', () => {
   const text = '@canvas width=400 height=300 grid=20\nblock a "A" at 1,1 size 4x2\nblok b "B" at 8,1 size 4x2\nblock a "A2" at 1,5 size 4x2\n';
   const d = check(text);
