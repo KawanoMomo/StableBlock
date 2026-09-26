@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-builder-20260926-1000-1-red: Excel 書き出しの雛形(template-inline.js)の生成と検査が作業ツリーの改行コード(CRLF / LF)に依らなくなり、CRLF のチェックアウトでも unit が緑になる
 - BLK-releaser-20260926-0953: bump-version.sh がルートの package.json と package-lock.json の版番号も揃え、置き換える箇所が見つからなければ何も書かずに失敗する(本体は scripts/bump-version.mjs)
 - BLK-junior-20260926-0609-wish: 検索欄に件数を出し(0 件で残りが無いと分かる)、Enter / Shift+Enter で当たりを読み順に 1 つずつ選べる。note も検索で薄くなる(HTML 版と VSCode 拡張で共通)
 - BLK-porter-20260926-0617: ラベルの二重引用符を `\"` で書けるようになり、`"Block \"quoted\" label"` の図が「.sb 読込」で描かれ、GUI のラベル欄(接続のラベルも)に `"` を打っても本文が壊れず、無変更保存はバイト一致、SVG / Mermaid / Excel にも引用符のまま出る(HTML 版・VSCode 拡張・core/dsl が core/label の同じ規則で読む)
