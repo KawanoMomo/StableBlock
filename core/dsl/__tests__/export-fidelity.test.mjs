@@ -21,17 +21,15 @@ const REST = ['block b "B" at 12,1 size 6x3'];
 const SAMPLES = {
   block: { color: ['#FF0000'], textColor: ['#00FF00'], borderColor: ['#0000FF'], round: ['0', '20'], style: ['dashed', 'bold'] },
   group: { color: ['#FF0000'], borderColor: ['#0000FF'] },
-  note: { color: ['#FF0000'], textColor: ['#00FF00'], borderColor: ['#0000FF'], round: ['0', '20'], style: ['dashed', 'bold'] },
+  note: { color: ['#FF0000'], textColor: ['#00FF00'], borderColor: ['#0000FF'], round: ['0', '20'], style: ['solid', 'bold'] },   // style を書いていない note は破線(dashed と同じ線種)
   conn: { color: ['#FF0000'], style: ['dashed'], width: ['3'], route: ['straight', 'ortho'], lpos: ['right', 'left', 'top', 'bottom'] },
   canvas: { width: ['500'], height: ['300'], grid: ['10'], route: ['straight', 'ortho'], grow: ['off'] },
 };
 
-const NOTE_STYLE = '画面でも note の style= は描き分けない(常に破線。BLK-porter-20260926-1205-2)';
 const EXPORTERS = {
   Excel: {
     run: p => ({ out: buildDrawingXml(p), dropped: listXlsxDrops(p) }),
     same: {
-      'note.style': NOTE_STYLE,
       'canvas.width': 'Excel のシートに画布の枠は無い(図形の位置・大きさはそのまま)',
       'canvas.height': 'Excel のシートに画布の枠は無い(図形の位置・大きさはそのまま)',
       'canvas.grow': '編集中に画布を広げるかどうか。図の見た目に効かない',
@@ -40,7 +38,6 @@ const EXPORTERS = {
   Mermaid: {
     run: p => { const r = toMermaid(p); return { out: r.text, dropped: r.dropped }; },
     same: {
-      'note.style': NOTE_STYLE,
       'note.round': 'note は旗形のノードで写す(形そのものを Mermaid の注釈の形にしている)',
       'canvas.width': '「座標・大きさ」の行で知らせる(Mermaid は自動配置)',
       'canvas.height': '「座標・大きさ」の行で知らせる(Mermaid は自動配置)',

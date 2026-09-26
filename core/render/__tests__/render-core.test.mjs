@@ -112,3 +112,24 @@ test('検索: note も薄め、当たりを読み順に数え、Enter / Shift+En
   assert.deepEqual(nextMatch(m, { type: 'block', id: 'keep' }, 1), { type: 'group', id: '__new_1' });   // 直して外れた選択からは先頭へ
   assert.equal(nextMatch([], null, 1), null);
 });
+
+// note の style=: 書いていない note は注釈の破線枠(4,2)。書いた note は block と同じ規則で描く(BLK-porter-20260926-1205-2)
+test('renderSvg: note は style= を書けば solid / dashed / bold で描き分け、書かなければ破線の注釈枠', () => {
+  const src = [
+    'note n0 "既定" at 1,1 size 6x2',
+    'note n1 "実線" at 1,4 size 6x2 style=solid',
+    'note n2 "破線" at 1,7 size 6x2 style=dashed',
+    'note n3 "太線" at 1,10 size 6x2 style=bold',
+  ].join('\n');
+  const p = parseDSL(src);
+  assert.equal(p.notes[0].style, null);
+  assert.equal(p.notes[1].style, 'solid');
+  const s = exportSvg(p, L, measure);
+  const rect = id => s.match(new RegExp(`<g data-type="note" data-id="${id}"[^>]*><rect ([^>]*)/>`))[1];
+  assert.match(rect('n0'), /stroke-width="1" stroke-dasharray="4,2"/);
+  assert.doesNotMatch(rect('n1'), /stroke-dasharray/);
+  assert.match(rect('n1'), /stroke-width="1"/);
+  assert.match(rect('n2'), /stroke-dasharray="6,3"/);
+  assert.match(rect('n3'), /stroke-width="2.5"/);
+  assert.doesNotMatch(rect('n3'), /stroke-dasharray/);
+});

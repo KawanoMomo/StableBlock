@@ -160,7 +160,9 @@ function renderSvg(parsed, view, L, measure) {
       const sl = isSel(n.id);
       const op = q && !matchesSearchItem(n, q) ? RD_SEARCH_DIM : null;
       s += `<g data-type="note" data-id="${n.id}"${grab}${opAttr(op)}>`;
-      s += `<rect x="${n.x * g}" y="${n.y * g}" width="${n.w * g}" height="${n.h * g}" fill="${n.color}" stroke="${sl ? '#F59E0B' : (n.borderColor || '#D97706')}" stroke-width="${sl ? 2.5 : 1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
+      // style= を書いていない note は注釈の破線枠。書いた note は block と同じ規則(solid = 実線、dashed = 破線、bold = 太線)
+      const nd = n.style == null ? '4,2' : n.style === 'dashed' ? '6,3' : null, nw = n.style === 'bold' ? 2.5 : 1;
+      s += `<rect x="${n.x * g}" y="${n.y * g}" width="${n.w * g}" height="${n.h * g}" fill="${n.color}" stroke="${sl ? '#F59E0B' : (n.borderColor || '#D97706')}" stroke-width="${sl ? 2.5 : nw}"${nd ? ` stroke-dasharray="${nd}"` : ''} rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
       n.label.split('\\n').forEach((line, li) => {
         const ty = n.y * g + 6 + li * 14;
         s += `<text x="${n.x * g + 6}" y="${ty + 10}" font-size="11" font-weight="400" fill="${n.textColor}" text-anchor="start" style="pointer-events:none">${rdEsc(line)}</text>`;

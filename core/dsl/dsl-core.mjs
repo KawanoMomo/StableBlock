@@ -41,7 +41,7 @@ function boxItem(type, m, ln) {
     textColor: attr(rest, /text=(\S+)/) || dt,
     borderColor: attr(rest, /border=(\S+)/) || null,
     round: +(attr(rest, /round=(\d+)/) || '4'),
-    style: attr(rest, /style=(\S+)/) || 'solid',
+    style: attr(rest, /style=(\S+)/) || (type === 'note' ? null : 'solid'),   // note は書いたかどうかを区別する(書いていない note は破線の注釈枠)
     line: ln,
   };
 }

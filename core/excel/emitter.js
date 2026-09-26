@@ -43,9 +43,12 @@ export function normalizeColor(value, fallback = '000000') {
 
 // The frame of a block / note as the screen draws it (core/render の block / note の stroke と同じ):
 // block: color = border= or its fill color, style=bold is 2.5px, style=dashed is dashed.
-// note: color = border= or #D97706, always dashed at 1px (the screen does not vary a note's frame by style=).
+// note: color = border= or #D97706. Without style= it is the dashed annotation frame at 1px; with style= the block rules apply.
 export function boxLine(item, kind) {
-  if (kind === 'note') return { color: item.borderColor || '#D97706', widthPx: 1, dashed: true };
+  if (kind === 'note') {
+    if (item.style == null) return { color: item.borderColor || '#D97706', widthPx: 1, dashed: true };
+    return { color: item.borderColor || '#D97706', widthPx: item.style === 'bold' ? 2.5 : 1, dashed: item.style === 'dashed' };
+  }
   return { color: item.borderColor || item.color || null, widthPx: item.style === 'bold' ? 2.5 : 1, dashed: item.style === 'dashed' };
 }
 

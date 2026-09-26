@@ -171,7 +171,7 @@ test('buildNoteShape: note has note: prefix in name', () => {
     id: 'memo', label: 'Memo',
     x: 1, y: 1, w: 5, h: 2,
     color: '#FEF3C7', textColor: '#92400E',
-    borderColor: null, round: 4, style: 'solid'
+    borderColor: null, round: 4, style: null
   };
   const xml = buildNoteShape(note, 10, 20);
   assert.ok(xml.includes('name="note:memo"'));
@@ -259,7 +259,7 @@ test('buildNoteShape: fill has alpha 70000 for transparency', () => {
     id: 'memo', label: 'Memo',
     x: 1, y: 1, w: 5, h: 2,
     color: '#FEF3C7', textColor: '#92400E',
-    borderColor: null, round: 4, style: 'solid'
+    borderColor: null, round: 4, style: null
   };
   const xml = buildNoteShape(note, 10, 20);
   assert.ok(xml.includes('<a:alpha val="70000"/>'),
@@ -271,7 +271,7 @@ test('buildNoteShape: border is dashed', () => {
     id: 'memo', label: 'M',
     x: 0, y: 0, w: 2, h: 2,
     color: '#FFFFFF', textColor: '#000000',
-    borderColor: null, round: 0, style: 'solid'
+    borderColor: null, round: 0, style: null
   };
   const xml = buildNoteShape(note, 1, 20);
   assert.ok(xml.includes('<a:prstDash val="dash"/>'),
@@ -283,7 +283,7 @@ test('buildNoteShape: borderColor null falls back to default D97706', () => {
     id: 'memo', label: 'M',
     x: 0, y: 0, w: 2, h: 2,
     color: '#FFFFFF', textColor: '#000000',
-    borderColor: null, round: 0, style: 'solid'
+    borderColor: null, round: 0, style: null
   };
   const xml = buildNoteShape(note, 1, 20);
   assert.ok(xml.includes('val="D97706"'),
