@@ -271,6 +271,18 @@ function searchIdsInFiles(files, query) {
   return out;
 }
 
+// 一緒に読み込んだ図のパス(paths)のうち、パスに query を含む図(大文字小文字を区別しない)。名前(最後の / か \ の後)の先頭で当たる図、
+// 名前に含む図、フォルダ名だけで当たる図の順で、同じ順位の中は paths の順。HTML 版のツールバーの検索が、図名で当たった図を一覧の先頭に出すのに使う
+function searchFileNames(paths, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!q) return [];
+  const rank = p => {
+    const s = String(p).toLowerCase(), b = s.split(/[\\/]/).pop();
+    return b.startsWith(q) ? 0 : b.includes(q) ? 1 : s.includes(q) ? 2 : -1;
+  };
+  return paths.map((p, i) => ({ p, i, r: rank(p) })).filter(x => x.r >= 0).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.p);
+}
+
 // 複数の図(files: [{ path, text }])にまたがる改名の計画。書き込みは呼び出し側。
 // 戻り値: { error } か { changes: [{ path, text(改名後の全文), lines: [{ line, before, after }] }], defs: 定義している図の数 }
 // newId が使えない表記・どこかの図で既に定義されている・oldId がどの図にも無いときは error を返し、何も変えない
@@ -571,4 +583,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

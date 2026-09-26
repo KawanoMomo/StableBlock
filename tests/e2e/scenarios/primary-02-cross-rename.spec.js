@@ -139,3 +139,72 @@ test('primary-02: ラベル欄の Enter でほかの図の同じ表示名も揃�
   expect(b2[3]).toBe('block spimasterdrv "SpiMasterDrv" at 4,14 size 8x3 color=#6366F1 text=#FFFFFF round=4');
   expect(b2[5]).toBe('spimasterdrv -> spidata');
 });
+
+// reviewer の指摘は図名(spi_swc.sb など)で来る(BLK-owner-20260926-1525-1): ステータスバーの先頭に表示中の図名と何枚目かが出て、
+// 検索欄に図名を打つと当たった図が一覧の先頭に図名だけの行で並び、Enter で開く。ステータスバーの図名を押すと読み込んだ図の名前が並ぶ
+test('primary-02: ステータスバーに表示中の図名が出て、検索欄に図名を打って Enter で開ける(ID を覚えていなくても図へ移れる)', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, FILES);
+  const name = page.locator('#status-file');
+  await expect(name).toHaveText('can_swc.sb (1/4)');
+
+  // 図名の一部を打つと、図名の行が一覧の先頭に出る(ID・ラベルの当たりが無ければその見出しは出ない)
+  await page.locator('#search-input').click();
+  await page.keyboard.type('dataflow');
+  const files = page.locator('#search-hits .sh-file');
+  await expect(files).toHaveCount(1);
+  await expect(files.first()).toHaveAttribute('data-path', 'spi_dataflow.sb');
+  await expect(page.locator('#search-hits .sh-files-head')).toContainText('図名で当たった図 1 枚(押すか Enter で開く)');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveTitle(/spi_dataflow\.sb/);
+  await expect(name).toHaveText('spi_dataflow.sb (3/4)');
+  await expect(page.locator('#search-input')).toHaveValue('');            // 図名は検索語に残さない(開いた図が薄くならない)
+  await expect(page.locator('#search-hits')).toBeHidden();
+  expect(await getEditorText(page)).toBe(read(FILES[2]));
+
+  // フォルダの中の図も名前で当たり、押しても開く
+  await page.locator('#search-input').click();
+  await page.keyboard.type('common');
+  await expect(files).toHaveCount(1);
+  await expect(files.first()).toHaveAttribute('data-path', 'common.sb');   // 読込で選んだファイルの名前(フォルダを持つパスでも名前で当たる: unit の searchFileNames)
+  await files.first().click();
+  await expect(page).toHaveTitle(/common\.sb/);
+  await expect(name).toHaveText('common.sb (4/4)');
+
+  // ステータスバーの図名を押すと検索欄へ移り、ほかに読み込んだ図の名前が並ぶ。↓ で行を選んで Enter で開く
+  await name.click();
+  await expect(page.locator('#search-input')).toBeFocused();
+  await expect(page.locator('#search-hits .sh-files-head')).toContainText('読み込んだ図 4 枚・表示中は common.sb');
+  expect(await files.evaluateAll(els => els.map(e => e.dataset.path))).toEqual(['can_swc.sb', 'spi_swc.sb', 'spi_dataflow.sb']);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(files.nth(1)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
+
+  // 表示中の図に ID・ラベルの当たりがあれば、Enter は今までどおり当たりを選ぶ(図名の行は ↓ で選ぶ)
+  await page.locator('#search-input').click();
+  await page.keyboard.type('spi');
+  await expect(files).toHaveCount(1);
+  await expect(files.first()).toHaveAttribute('data-path', 'spi_dataflow.sb');
+  await expect(page.locator('#search-hits .sh-files-head')).toContainText('押すか ↓ で選んで Enter で開く');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
+  await expect(page.locator('#prop-id')).toHaveValue('SpiDrv');
+  await page.locator('#search-input').click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+
+  // 保存していない変更がある図は図名に ● が付き、名前の一覧でも分かる
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="SpiDrv"]').click();
+  await page.keyboard.press('ArrowRight');
+  await expect(name).toHaveText('spi_swc.sb ● (2/4)');
+  await name.click();
+  await page.keyboard.press('Enter');                                     // 空の欄の Enter は先頭の図を開く
+  await expect(page).toHaveTitle(/can_swc\.sb/);
+  await expect(name).toHaveText('can_swc.sb (1/4)');
+  await name.click();
+  await expect(page.locator('#search-hits .sh-file[data-path="spi_swc.sb"] .sh-unsaved')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#search-hits')).toBeHidden();
+});
