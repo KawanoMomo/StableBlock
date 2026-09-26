@@ -1,0 +1,7 @@
+# UART データフロー図
+@canvas width=960 height=520 grid=20
+@include "shared/common.sb"
+block UartDrv "UartDrv" at 4,14 size 8x3 color=#6366F1 text=#FFFFFF round=4
+block uartdata "UartData" at 4,8 size 8x3 color=#0EA5E9 text=#FFFFFF round=4
+UartDrv -> uartdata
+uartdata -> rte "tx" lpos=top
