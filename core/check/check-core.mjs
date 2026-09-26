@@ -210,12 +210,15 @@ export function resolveIncludePath(from, rel) {
 
 // 本文 text の @include を展開する。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
 // 返り値: text / lines(展開後)、origin[i] = { file, line, at }(展開後の i+1 行目がどのファイルの何行目か。at は本文の何行目から来たか)、
-// missing = [{ at, file, line, path, resolved, cycle }](読めない @include。その行は展開後に残さない)。include の無い本文はそのまま返る
+// missing = [{ at, file, line, path, resolved, cycle }](読めない @include。その行は展開後に残さない)。include の無い本文はそのまま返る。
+// 画布(@canvas)は本文のものが正: 本文に @canvas があれば include 先の @canvas 行は展開しない(共有部の画布の大きさ・線の形で本文の画布を上書きしない)
 export function expandIncludes(text, read, file = '') {
   const lines = [], origin = [], missing = [];
+  const ownCanvas = String(text).replace(/^\uFEFF/, '').split('\n').some(l => /^@canvas\b/.test(l.trim()));
   const walk = (src, f, at, chain) => {
     String(src).replace(/^\uFEFF/, '').split('\n').forEach((line, i) => {
       const top = at === undefined ? i + 1 : at;
+      if (at !== undefined && ownCanvas && /^@canvas\b/.test(line.trim())) return;
       const m = line.trim().match(/^@include\s+"([^"]+)"/);
       if (m) {
         const p = resolveIncludePath(f, m[1]);
@@ -256,6 +259,23 @@ export function checkIncluded(parsed, exp, paths, opts = {}) {
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
+}
+
+// 展開後の line 行目(parser の item.line)が include 先から来たなら { file, line, at }(本文の行なら null)
+export function includeOrigin(exp, line) {
+  const o = exp && exp.origin && exp.origin[line - 1];
+  return o && o.file !== exp.file ? { file: o.file, line: o.line, at: o.at } : null;
+}
+
+// include 先で定義された要素を選んだときの案内。この図の本文にはその行が無いので、ドラッグ・位置・大きさ・色・ラベルはここでは変わらない。
+// name(path): 文中のファイル名。include 先の要素でなければ ''
+export function includedItemNote(exp, line, name, lang) {
+  const o = includeOrigin(exp, line);
+  if (!o) return '';
+  const f = name ? name(o.file) : o.file;
+  return lang === 'en'
+    ? `Defined in the included file ${f} (line ${o.line}; @include on line ${o.at}). It cannot be moved or changed from this diagram: edit ${f}.`
+    : `include 先 ${f} の L${o.line} で定義(本文 L${o.at} の @include)。この図からは動かせない・変えられないので ${f} で直す`;
 }
 
 // 書き出しの知らせに足す行: 読めない include 先の要素は書き出しにも入っていない
