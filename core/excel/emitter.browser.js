@@ -43,6 +43,14 @@ function normalizeColor(value, fallback = '000000') {
   return cleaned;
 }
 
+// The frame of a block / note as the screen draws it (core/render の block / note の stroke と同じ):
+// block: color = border= or its fill color, style=bold is 2.5px, style=dashed is dashed.
+// note: color = border= or #D97706, always dashed at 1px (the screen does not vary a note's frame by style=).
+function boxLine(item, kind) {
+  if (kind === 'note') return { color: item.borderColor || '#D97706', widthPx: 1, dashed: true };
+  return { color: item.borderColor || item.color || null, widthPx: item.style === 'bold' ? 2.5 : 1, dashed: item.style === 'dashed' };
+}
+
 function buildBlockShape(block, shapeId, gridPx, opts = {}) {
   const x = gridToEmu(block.x, gridPx);
   const y = gridToEmu(block.y, gridPx);
@@ -57,15 +65,16 @@ function buildBlockShape(block, shapeId, gridPx, opts = {}) {
     ? `<a:solidFill><a:srgbClr val="${fillColor}"><a:alpha val="${fillAlpha}"/></a:srgbClr></a:solidFill>`
     : `<a:solidFill><a:srgbClr val="${fillColor}"/></a:solidFill>`;
 
-  // Border: explicit borderColor, or opts.defaultBorderColor as fallback, or noFill
-  const dashedXml = opts.dashedBorder ? '<a:prstDash val="dash"/>' : '';
+  // Border: the same stroke as the screen (boxLine). A plain block's stroke is its own fill color, so it is left out (noFill).
+  const kind = opts.namePrefix === 'note' ? 'note' : 'block';
+  const line = boxLine(block, kind);
   let borderXml;
-  if (block.borderColor) {
-    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(block.borderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
-  } else if (opts.defaultBorderColor) {
-    borderXml = `<a:ln><a:solidFill><a:srgbClr val="${normalizeColor(opts.defaultBorderColor)}"/></a:solidFill>${dashedXml}</a:ln>`;
-  } else {
+  if (kind === 'block' && !block.borderColor && line.widthPx === 1 && !line.dashed) {
     borderXml = `<a:ln><a:noFill/></a:ln>`;
+  } else {
+    const wAttr = line.widthPx !== 1 ? ` w="${pxToEmu(line.widthPx)}"` : '';
+    const dashedXml = line.dashed ? '<a:prstDash val="dash"/>' : '';
+    borderXml = `<a:ln${wAttr}><a:solidFill><a:srgbClr val="${normalizeColor(line.color)}"/></a:solidFill>${dashedXml}</a:ln>`;
   }
 
   const round = Number(block.round) || 0;
@@ -151,9 +160,7 @@ function buildGroupShape(group, shapeId, gridPx) {
 function buildNoteShape(note, shapeId, gridPx) {
   return buildBlockShape(note, shapeId, gridPx, {
     namePrefix: 'note',
-    fillAlpha: 70000,        // ~70% (matches SVG opacity 0.7)
-    dashedBorder: true,
-    defaultBorderColor: 'D97706'  // SVG render default note border
+    fillAlpha: 70000         // ~70% (matches SVG opacity 0.7). Frame: boxLine(note, 'note')
   });
 }
 
@@ -413,14 +420,29 @@ function buildDrawingXml(ast) {
 }
 
 // What the Excel output cannot carry, one line each (the UI shows it to the user after the export).
-// Connections whose endpoint is not in the diagram are not drawn.
+// 当て方は属性ごとに決める: 載せる(色・枠・太線/破線・角丸・線の色/太さ/破線・双方向)か、ここで知らせるか。
+// どちらでもない属性は core/dsl/__tests__/export-fidelity.test.mjs が赤にする(parser の属性を足したら当て方も決める)。
+// - 端が図に無い接続は描かない
+// - 接続の線の形: Excel の接続線は直線だけ(画面の既定は曲線。route= か @canvas の route=)
+// - 接続ラベルの位置 lpos=: Excel では線の中点に置く(lpos=center と同じ)
 function listXlsxDrops(ast) {
   const known = { ...(ast.blockMap || {}), ...(ast.noteMap || {}) };
+  const canvasRoute = ast.canvas && (ast.canvas.route === 'straight' || ast.canvas.route === 'ortho') ? ast.canvas.route : 'curved';
   const dropped = [];
+  const shaped = { curved: 0, ortho: 0 };
+  let placed = 0;
   for (const c of ast.connections || []) {
     const miss = [c.from, c.to].filter(x => !known[x]);
-    if (miss.length) dropped.push(`接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}(${miss.join(', ')} が図に無い)`);
+    if (miss.length) { dropped.push(`接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}(${miss.join(', ')} が図に無い)`); continue; }
+    const route = c.route || canvasRoute;
+    if (route !== 'straight') shaped[route === 'ortho' ? 'ortho' : 'curved']++;
+    if (c.label && c.lposAuto === false && c.lpos !== 'center') placed++;
   }
+  if (shaped.curved + shaped.ortho) {
+    const parts = [shaped.curved && `曲線 ${shaped.curved} 本`, shaped.ortho && `直角 ${shaped.ortho} 本`].filter(Boolean).join('・');
+    dropped.push(`接続の線の形(${parts}。Excel では直線になる)`);
+  }
+  if (placed) dropped.push(`接続ラベルの位置 lpos=(${placed} 本。Excel では線の中点に置く)`);
   return dropped;
 }
 
@@ -455,4 +477,4 @@ async function loadTemplateFilesAsync() {
   return mod.loadTemplateFiles();
 }
 
-;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, connectionSiteIndex, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, listXlsxDrops, packageXlsx, renderXlsx };
+;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, boxLine, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, connectionSiteIndex, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, listXlsxDrops, packageXlsx, renderXlsx };

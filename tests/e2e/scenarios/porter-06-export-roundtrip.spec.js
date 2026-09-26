@@ -110,8 +110,31 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
 
   const report = page.locator('#export-report');
   await expect(report).toBeVisible();
-  await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
+  await expect(report).toContainText('Excel に書き出せなかったもの(2 件)');
   await expect(report).toContainText('spiapi -> zz');
+  await expect(report).toContainText('接続の線の形(曲線 4 本。Excel では直線になる)');   // 画面の既定は曲線
+});
+
+// block の太枠(style=bold)・破線枠(style=dashed)は Excel でも画面と同じ。Excel で表せない線の形と lpos= は画面に出る(BLK-builder-20260926-1230-1)
+test('porter-06: block の太枠・破線枠は Excel でも画面と同じで、表せない線の形と lpos= は知らせる', async ({ page }, testInfo) => {
+  await bootPlain(page);
+  await importSb(page, path.join(FIXTURES, 'porter-styles.sb'));
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"][data-id="pay"] rect')).toHaveAttribute('stroke-width', '2.5');
+  await expect(svg.locator('g[data-type="block"][data-id="old"] rect')).toHaveAttribute('stroke-dasharray', /\d/);
+
+  const zip = await JSZip.loadAsync(fs.readFileSync(await download(page, 'Excel', saveDir(testInfo))));
+  const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
+  const shape = id => xml.match(new RegExp(`name="block:${id}"[\\s\\S]*?</xdr:sp>`))[0];
+  expect(shape('pay')).toMatch(/<a:ln w="23812"><a:solidFill><a:srgbClr val="10B981"\/><\/a:solidFill><\/a:ln>/);   // 2.5px
+  expect(shape('old')).toMatch(/<a:ln><a:solidFill><a:srgbClr val="94A3B8"\/><\/a:solidFill><a:prstDash val="dash"\/><\/a:ln>/);
+  expect(shape('api')).toContain('<a:ln><a:noFill/></a:ln>');
+
+  const report = page.locator('#export-report');
+  await expect(report).toBeVisible();
+  await expect(report).toContainText('Excel に書き出せなかったもの(2 件)');
+  await expect(report).toContainText('接続の線の形(曲線 1 本。Excel では直線になる)');
+  await expect(report).toContainText('接続ラベルの位置 lpos=(1 本。Excel では線の中点に置く)');
 });
 
 // ラベル中の二重引用符は SVG / Mermaid / Excel に引用符のまま出る(BLK-porter-20260926-0617)

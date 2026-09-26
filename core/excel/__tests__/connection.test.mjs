@@ -105,3 +105,20 @@ test('buildConnectionLabel: DSL 2-char \\n splits label', () => {
   const pCount = (xml.match(/<a:p>/g) || []).length;
   assert.equal(pCount, 2);
 });
+
+// Excel の接続線は直線だけ・ラベルは中点だけ。画面と違うものは書き出し後の一覧に出す(BLK-builder-20260926-1230-1)
+import { listXlsxDrops as xlsxDrops } from '../emitter.js';
+import { parseDSL as parseSb } from '../../dsl/dsl-core.mjs';
+
+test('listXlsxDrops: 線の形(既定の曲線・直角)と lpos= を数えて知らせ、直線と lpos=center は知らせない', () => {
+  const src = (canvas, conns) => [canvas, 'block a "A" at 1,1 size 4x2', 'block b "B" at 8,1 size 4x2', 'block c "C" at 1,6 size 4x2', ...conns].join('\n');
+  assert.deepEqual(xlsxDrops(parseSb(src('@canvas', ['a -> b "x" lpos=top', 'b -> c route=ortho', 'a -> c "y" route=straight lpos=center']))), [
+    '接続の線の形(曲線 1 本・直角 1 本。Excel では直線になる)',
+    '接続ラベルの位置 lpos=(1 本。Excel では線の中点に置く)',
+  ]);
+  assert.deepEqual(xlsxDrops(parseSb(src('@canvas route=straight', ['a -> b "x"', 'b -> c']))), []);
+  assert.deepEqual(xlsxDrops(parseSb(src('@canvas route=ortho', ['a -> b', 'b -> zz']))), [
+    '接続 b -> zz(zz が図に無い)',
+    '接続の線の形(直角 1 本。Excel では直線になる)',
+  ]);
+});
