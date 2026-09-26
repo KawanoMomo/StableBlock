@@ -156,7 +156,13 @@ function labelToId(label) {
 // (`__new_` で始まる)とき、一緒に読み込んだほかの図でも使われている(elsewhere。改名が全部の図に及ぶと見せる)とき、
 // 利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
 function idFieldOpen(id, userOpen, elsewhere) {
-  return !!userOpen || !!elsewhere || String(id).startsWith('__new_');
+  return !!userOpen || !!elsewhere || isPlaceholderId(id);
+}
+
+// 追加したばかりでまだ名前の無い要素の仮の ID(`__new_N`)か。ラベルを確定した時点でこれが残っていれば、ラベルから ID を
+// 作れていない(英数字の無いラベル)ので、GUI は ID 欄へ移って名前を聞く(HTML 版・VSCode 拡張)
+function isPlaceholderId(id) {
+  return typeof id === 'string' && id.startsWith('__new_');
 }
 
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
@@ -565,4 +571,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

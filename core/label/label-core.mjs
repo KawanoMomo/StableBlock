@@ -154,7 +154,13 @@ export function labelToId(label) {
 // (`__new_` で始まる)とき、一緒に読み込んだほかの図でも使われている(elsewhere。改名が全部の図に及ぶと見せる)とき、
 // 利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
 export function idFieldOpen(id, userOpen, elsewhere) {
-  return !!userOpen || !!elsewhere || String(id).startsWith('__new_');
+  return !!userOpen || !!elsewhere || isPlaceholderId(id);
+}
+
+// 追加したばかりでまだ名前の無い要素の仮の ID(`__new_N`)か。ラベルを確定した時点でこれが残っていれば、ラベルから ID を
+// 作れていない(英数字の無いラベル)ので、GUI は ID 欄へ移って名前を聞く(HTML 版・VSCode 拡張)
+export function isPlaceholderId(id) {
+  return typeof id === 'string' && id.startsWith('__new_');
 }
 
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける

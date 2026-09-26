@@ -399,6 +399,51 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await props.locator('#prop-id').fill('dma');
   await props.locator('#prop-id').press('Enter');
   await expect(props.locator('#prop-id-msg')).toContainText('既に使われています');
+  await expect(props.locator('#prop-id')).toBeFocused();                   // 使えない ID なら欄に残って打ち直せる
+
+  // 英数字の無いラベル(日本語の部品名)からは ID を作れない。キャンバス上でラベルを打って Enter すると、その場で ID 欄へ移り、
+  // 打って Enter で ID が付く(BLK-junior-20260926-0950-wish: 何も知らせず __new_ のまま確定していた)
+  const inline = page.locator('#inline-label');
+  const bar = page.locator('#error-bar');
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const n1 = await props.locator('#prop-id').inputValue();
+  expect(n1).toMatch(/^__new_\d+$/);
+  await svg.locator(`g[data-type="block"][data-id="${n1}"]`).dblclick();
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('通信管理');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  await expect(props.locator('#prop-id')).toBeFocused();
+  await expect(props.locator('#prop-id-help')).toContainText('ラベルから ID を作れない');
+  await expect(bar).toContainText(`block「${n1}」(「通信管理」)はまだ仮の ID`);
+  await page.keyboard.type('Com_Mgr');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => getEditorText(page)).toMatch(/^block Com_Mgr "通信管理" at /m);
+  await expect(props.locator('#prop-id-now')).toHaveText('Com_Mgr');
+  await expect(bar).not.toContainText('仮の ID');
+
+  // プロパティ欄のラベル欄の Enter でも同じ。Esc で後回しにでき(ID は仮のまま、打ちかけは捨てる)、残った仮の ID はエラー欄に行番号付きで出る
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const n2 = await props.locator('#prop-id').inputValue();
+  await label.fill('監視');
+  await label.press('Enter');
+  await expect(props.locator('#prop-id')).toBeFocused();
+  await page.keyboard.type('Wd');
+  await page.keyboard.press('Escape');
+  const lines = (await getEditorText(page)).split('\n');
+  const at = lines.findIndex(l => l.startsWith(`block ${n2} "監視" at `)) + 1;
+  expect(at).toBeGreaterThan(0);
+  expect(lines.some(l => /^block Wd /.test(l))).toBe(false);
+  await expect(bar.locator('.diag-warn', { hasText: `L${at}: block「${n2}」(「監視」)はまだ仮の ID` })).toHaveCount(1);
+  // 英数字を含むラベルは今どおり自動で ID が付き、ID 欄へは移らない
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await label.fill('SPI ドライバ');
+  await label.press('Enter');
+  await expect(props.locator('#prop-id-now')).toHaveText('SPI');
+  await expect(props.locator('#prop-id')).not.toBeFocused();
 });
 
 // ─── 置く: group の中に block 8 個を同じ大きさ・同じ色で並べる(BLK-junior-20260925-1921-friction) ───

@@ -162,6 +162,14 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
     out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる` });
   }
+  // 追加した要素の仮の ID(`__new_N`)が残っている: ラベルが日本語だけだと ID は自動で付かない。保存・レビューの前に名前を付ける
+  for (const [kind, list] of [['block', parsed.blocks], ['group', parsed.groups], ['note', parsed.notes]]) {
+    for (const it of list || []) {
+      if (!String(it.id).startsWith('__new_')) continue;
+      const label = String(it.label || '').replace(/\\n/g, ' ');
+      out.push({ line: it.line, level: 'warn', msg: `${kind}「${it.id}」(「${label.length > 20 ? label.slice(0, 20) + '…' : label}」)はまだ仮の ID。英数字と _ で名前を付ける(プロパティ欄の ID)` });
+    }
+  }
   if (parsed.canvas) {
     const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
