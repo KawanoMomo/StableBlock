@@ -121,3 +121,11 @@ test('VSCode 拡張の Webview の parseDSL もラベル中の \\" を core と�
   for (const k of ['blocks', 'groups', 'notes']) assert.deepEqual(b[k].map(x => [x.id, x.label]), a[k].map(x => [x.id, x.label]), k);
   assert.deepEqual(b.connections.map(c => [c.from, c.to, c.label]), a.connections.map(c => [c.from, c.to, c.label]));
 });
+
+test('parseDSL: 重複した@canvasは最後の値を有効にし、先行行を警告して原文のまま往復する', () => {
+  const text = '@canvas width=480 height=240 grid=20\n@canvas width=800 height=600 grid=40\nblock a "A" at 2,1 size 6x3\n';
+  const p = parseDSL(text);
+  assert.deepEqual(p.canvas, { width: 800, height: 600, grid: 40 });
+  assert.equal(serializeDSL(p), text);
+  assert.deepEqual(p.warnings, [{ line: 1, msg: '@canvas が 2 行ある。L2 の値が効く' }]);
+});
