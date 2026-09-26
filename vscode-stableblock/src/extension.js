@@ -120,20 +120,30 @@ function activate(context) {
     const doc = editor.document;
     if (!doc.fileName.match(/\.(sb|stableblock)$/)) return;
     const currentText = doc.getText();
-    // Get HEAD version via git
+    // このファイルの版(git log --follow)を新しい順に出し、選んだ版と今の本文を並べる。選ばず Enter なら最新の版(HEAD と同じ)
+    const cp = require("child_process"), path = require("path");
+    const dir = path.dirname(doc.uri.fsPath);
+    const core = await loadCore("diff");
+    let versions = [];
     try {
-      const cp = require("child_process");
-      const dir = require("path").dirname(doc.uri.fsPath);
-      const rel = require("path").relative(dir, doc.uri.fsPath).replace(/\\/g, "/");
-      const headText = cp.execSync(`git show HEAD:${rel}`, { cwd: dir, encoding: "utf-8" });
-      const panel = vscode.window.createWebviewPanel(
-        "stableblockDiff", "StableBlock Diff", vscode.ViewColumn.Active,
-        { enableScripts: true }
-      );
-      panel.webview.html = getDiffContent(headText, currentText);
-    } catch (e) {
-      vscode.window.showWarningMessage("No git history found for this file");
-    }
+      versions = core.parseGitLog(cp.execFileSync("git", [...core.GIT_LOG_ARGS, "--", path.basename(doc.uri.fsPath)], { cwd: dir, encoding: "utf-8" }));
+    } catch (e) { versions = []; }
+    if (!versions.length) { vscode.window.showWarningMessage("No git history found for this file"); return; }
+    const picked = await vscode.window.showQuickPick(
+      versions.map((v) => ({ label: `${v.hash}  ${v.subject}`, description: v.date, v })),
+      { placeHolder: "Pick a version to compare with the current text (Enter: the latest commit)", matchOnDescription: true }
+    );
+    if (!picked) return;
+    let oldText;
+    try {
+      oldText = cp.execFileSync("git", ["show", `${picked.v.full}:${picked.v.path}`], { cwd: dir, encoding: "utf-8" });
+    } catch (e) { vscode.window.showWarningMessage(`Could not read ${picked.v.path} at ${picked.v.hash}`); return; }
+    const panel = vscode.window.createWebviewPanel(
+      "stableblockDiff", `StableBlock Diff: ${picked.v.hash}`, vscode.ViewColumn.Active,
+      { enableScripts: true }
+    );
+    const draw = await diffDrawTexts(cp, path, dir, doc, currentText, picked.v, oldText);
+    panel.webview.html = getDiffContent(core.diffModel(oldText, currentText, picked.v, draw));
   });
   context.subscriptions.push(diffCmd);
 
@@ -196,9 +206,41 @@ function loadLabelCore() {
   return labelCorePromise;
 }
 
-function getDiffContent(oldDsl, newDsl) {
-  const oldJson = JSON.stringify(oldDsl);
-  const newJson = JSON.stringify(newDsl);
+// core/{dir}/{dir}-core.mjs(ESM)を拡張ホストで読む(Visual Diff が diff と check を使う)。探し方は loadLabelCore と同じ
+const corePromises = {};
+function loadCore(dir) {
+  if (!corePromises[dir]) {
+    const path = require("path"), fs = require("fs"), { pathToFileURL } = require("url");
+    const roots = [path.resolve(__dirname, "..", ".."), path.resolve(__dirname, "..")];
+    const root = roots.find((r) => fs.existsSync(path.join(r, "core", dir, `${dir}-core.mjs`))) || roots[0];
+    corePromises[dir] = import(pathToFileURL(path.join(root, "core", dir, `${dir}-core.mjs`)).href);
+  }
+  return corePromises[dir];
+}
+
+// Visual Diff の左右の絵に使う本文: @include を展開する(行差分は展開しない本文のまま)。
+// 今の本文は拡張ホストが読んだ include 先、選んだ版はその版の include 先(git show {版}:{パス})で展開する
+async function diffDrawTexts(cp, path, dir, doc, currentText, v, oldText) {
+  const check = await loadCore("check");
+  const slash = (p) => String(p).split(path.sep).join("/");
+  const inc = readIncludes(currentText, doc.uri.fsPath);
+  const newDraw = check.expandIncludes(currentText, (p) => (Object.prototype.hasOwnProperty.call(inc, p) ? inc[p] : null), slash(doc.uri.fsPath)).text;
+  let top = null;
+  try { top = cp.execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir, encoding: "utf-8" }).trim(); } catch (e) { top = null; }
+  if (!top) return { newDraw, oldDraw: oldText };
+  const readAt = (p) => {
+    const rel = path.relative(top, p.split("/").join(path.sep)).split(path.sep).join("/");
+    if (!rel || rel.startsWith("..")) return null;
+    try { return cp.execFileSync("git", ["show", `${v.full}:${rel}`], { cwd: dir, encoding: "utf-8" }).replace(/^﻿/, ""); } catch (e) { return null; }
+  };
+  const oldDraw = check.expandIncludes(oldText, readAt, slash(path.join(top, v.path))).text;
+  return { newDraw, oldDraw };
+}
+
+// model: core/diff diffModel の結果(見出し・左右の本文・行差分・変わった要素の印)
+function getDiffContent(model) {
+  const json = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
+  const escH = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<!DOCTYPE html><html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-direction:column;height:100vh}
@@ -210,12 +252,16 @@ body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-d
 .label{font-size:11px;font-weight:700;padding:4px 8px;margin-bottom:4px}
 .old .label{color:#f87171}
 .new .label{color:#34d399}
+.lines{flex:0 0 auto;max-height:40vh;overflow:auto;border-top:1px solid #444;font:12px/18px Consolas,monospace;padding:4px 0}
+.lines .l{white-space:pre;padding:0 8px}.lines .n{display:inline-block;width:4em;color:#666;text-align:right;margin-right:8px}
+.lines .del{background:#4b1d1d;color:#fca5a5}.lines .add{background:#14391f;color:#86efac}.lines .none{color:#888;padding:4px 8px}
 </style></head><body>
-<div class="header"><span>StableBlock Visual Diff</span><span>HEAD (left) vs Current (right)</span></div>
+<div class="header"><span>StableBlock Visual Diff</span><span id="diff-title">${escH(model.title)}</span><span id="diff-count">-${model.removed} +${model.added}</span></div>
 <div class="container">
-<div class="pane old"><div class="label">HEAD</div><div id="old-svg"></div></div>
+<div class="pane old"><div class="label" id="old-label">${escH(model.left)}</div><div id="old-svg"></div></div>
 <div class="pane new"><div class="label">Current</div><div id="new-svg"></div></div>
 </div>
+<div class="lines" id="diff-lines"></div>
 <script>
 var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
 function esc(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
@@ -233,16 +279,25 @@ function parseDSL(t){
   }
   return{canvas:cv,blocks:bl,groups:gr,connections:cn};
 }
-function renderMiniSVG(p){
+function renderMiniSVG(p,mk){
+  mk=mk||{items:[],conns:[]};
   var g=p.canvas.grid,s='<svg width="100%" viewBox="0 0 '+p.canvas.width+' '+p.canvas.height+'" xmlns="http://www.w3.org/2000/svg" style="background:#0f172a;border-radius:4px">';
   p.groups.forEach(function(x){s+='<rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+x.borderColor+'" stroke-width="1" rx="6" opacity="0.85"/>';s+='<text x="'+(x.x*g+6)+'" y="'+(x.y*g+12)+'" font-size="9" fill="'+x.borderColor+'">'+esc(x.label)+'</text>';});
   var bm={};p.blocks.forEach(function(b){bm[b.id]=b;});
-  p.connections.forEach(function(c){var a=bm[c.from],b=bm[c.to];if(!a||!b)return;var x1=a.x*g+a.w*g/2,y1=a.y*g+a.h*g/2,x2=b.x*g+b.w*g/2,y2=b.y*g+b.h*g/2;s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#64748B" stroke-width="1"/>';});
+  p.connections.forEach(function(c){var a=bm[c.from],b=bm[c.to];if(!a||!b)return;var x1=a.x*g+a.w*g/2,y1=a.y*g+a.h*g/2,x2=b.x*g+b.w*g/2,y2=b.y*g+b.h*g/2;var on=mk.conns.indexOf(c.from+'->'+c.to)>=0;s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+(on?'#F59E0B':'#64748B')+'" stroke-width="'+(on?2.5:1)+'"'+(on?' data-changed="1"':'')+'/>';});
   p.blocks.forEach(function(b){s+='<rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" rx="'+b.round+'" stroke="'+b.color+'" stroke-width="0.5"/>';b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*12;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="9" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central">'+esc(ln)+'</text>';});});
+  // 変わった要素(行差分で消えた・足した・変わった行の block / group)に印の枠
+  p.groups.concat(p.blocks).forEach(function(x){if(mk.items.indexOf(x.id)<0)return;s+='<rect data-changed="'+esc(x.id)+'" x="'+(x.x*g-3)+'" y="'+(x.y*g-3)+'" width="'+(x.w*g+6)+'" height="'+(x.h*g+6)+'" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 3" rx="6"/>';});
   s+='</svg>';return s;
 }
-document.getElementById('old-svg').innerHTML=renderMiniSVG(parseDSL(${oldJson}));
-document.getElementById('new-svg').innerHTML=renderMiniSVG(parseDSL(${newJson}));
+var M={old:${json(model.oldDraw)},cur:${json(model.newDraw)},ops:${json(model.ops)},marks:${json(model.marks)}};
+document.getElementById('old-svg').innerHTML=renderMiniSVG(parseDSL(M.old),M.marks.old);
+document.getElementById('new-svg').innerHTML=renderMiniSVG(parseDSL(M.cur),M.marks.new);
+// .sb の行差分をそのまま(座標の行も除かない)。変わっていない行は前後 2 行だけ残して畳む
+(function(){var h='',ops=M.ops,keep=ops.map(function(o,i){for(var k=Math.max(0,i-2);k<=Math.min(ops.length-1,i+2);k++)if(ops[k].op!==' ')return true;return false;}),gap=false;
+ops.forEach(function(o,i){if(!keep[i]){if(!gap)h+='<div class="l none">…</div>';gap=true;return;}gap=false;
+h+='<div class="l '+(o.op==='-'?'del':o.op==='+'?'add':'')+'"><span class="n">'+(o.a||'')+'</span><span class="n">'+(o.b||'')+'</span>'+esc(o.op+' '+o.text)+'</div>';});
+document.getElementById('diff-lines').innerHTML=ops.some(function(o){return o.op!==' '})?h:'<div class="l none">差分なし(選んだ版と今の本文は同じ)</div>';})();
 </script></body></html>`;
 }
 

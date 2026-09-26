@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-primary-20260926-1605-wish: VSCode 拡張の「Visual Diff」で比較相手の版をファイルの Git の履歴(新しい順、改名もたどる)から選べる。見出しに選んだ版(hash・日時・件名)が出て、左右の絵(@include 展開後)で変わった要素に印、下に .sb の行差分が並ぶ。サブフォルダの .sb で HEAD も読めなかったのも直る
 - BLK-porter-20260926-2105: @canvas が 2 行ある図を開くと、効かない前の行がエラー欄に「@canvas が 2 行ある。L{n} の値が効く」と出る(ステータスバーの Warn にも数える)。ツール欄のキャンバスの寸法・線の形・自動拡張の変更は効いている最後の行だけに書き、前の行は 1 バイトも変えない
 - BLK-human-20260926-2105-1: DSL 欄・プレビュー・ツール欄の境界をドラッグ(または ←/→ キー)で幅を変えられる。幅はブラウザに覚え、ダブルクリックで元に戻る(VSCode 拡張はプレビューとサイド欄の境界)
 
