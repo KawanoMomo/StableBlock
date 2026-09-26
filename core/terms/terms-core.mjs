@@ -20,8 +20,10 @@ const SB_TERMS_TABLE = {
   'anno': { ja: ['◇ 注釈を表示', '注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる'], en: ['◇ Show notes', 'Show / hide notes (N key). Click a shown note to select it'] },
   'export-svg': { ja: ['SVG', 'SVG で書き出す'], en: ['SVG', 'Save as SVG'] },
   'export-png': { ja: ['PNG', 'PNG で書き出す'], en: ['PNG', 'Save as PNG'] },
-  'export-png-transparent': { ja: ['透過PNG', '背景を透過した PNG で書き出す'], en: ['Transparent PNG', 'Save as PNG with a transparent background'] },
-  'copy-png': { ja: ['PNGをコピー', 'PNG 画像をクリップボードにコピーする'], en: ['Copy PNG', 'Copy the diagram to the clipboard as PNG'] },
+  // PNG は 1 つの入口: 「PNG」で保存し、横の ▾ から背景の透過・クリップボードへのコピーを選ぶ
+  'png-more': { ja: ['▾', 'PNG のほかの出し方を選ぶ(背景を透過して保存・クリップボードにコピー)'], en: ['▾', 'More PNG options (transparent background, copy to the clipboard)'] },
+  'export-png-transparent': { ja: ['背景を透過して保存', '背景を透過した PNG で書き出す'], en: ['Save with transparent background', 'Save as PNG with a transparent background'] },
+  'copy-png': { ja: ['クリップボードにコピー', 'PNG 画像をクリップボードにコピーする'], en: ['Copy to clipboard', 'Copy the diagram to the clipboard as PNG'] },
   'export-xlsx': { ja: ['Excel', 'Excel(.xlsx)で書き出す'], en: ['Excel', 'Save as Excel (.xlsx)'] },
   'export-mermaid': { ja: ['Mermaid', 'Mermaid(.mmd)で書き出す'], en: ['Mermaid', 'Save as Mermaid (.mmd)'] },
   // 一緒に読み込んだ図が 2 枚以上のときだけ書き出しの並びの後ろに出る「一括 ▾」と、その選択肢(形式ごとに 1 つの zip)

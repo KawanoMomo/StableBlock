@@ -406,6 +406,8 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .toolbar{display:flex;gap:6px;align-items:center;padding:6px 8px;font-size:12px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid var(--vscode-widget-border,#444)}
 .tb{padding:3px 10px;font-size:11px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:var(--vscode-button-secondaryForeground,#ccc);border:1px solid var(--vscode-widget-border,#444);border-radius:3px;font-family:inherit}
 .tb:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
+.tb-split-l{border-top-right-radius:0;border-bottom-right-radius:0}.tb-split-r{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-6px;border-left-width:0;padding:3px 6px}
+#png-menu{position:fixed;z-index:60;padding:4px;background:var(--vscode-editorWidget-background,#252526);border:1px solid var(--vscode-widget-border,#444);border-radius:3px;box-shadow:0 4px 12px rgba(0,0,0,.35)}#png-menu[hidden]{display:none}#png-menu .tb{display:block;width:100%;margin-top:4px;text-align:left;white-space:nowrap}
 .sep{width:1px;height:14px;background:var(--vscode-widget-border,#444)}
 .main{flex:1;display:flex;overflow:hidden}
 #preview{flex:1;overflow:auto;padding:8px}
@@ -454,7 +456,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
   <div class="sep"></div><button class="tb" data-term="undo" onclick="undo()" title="Undo (Ctrl+Z)">&#x21A9;</button><button class="tb" data-term="redo" onclick="redo()" title="Redo (Ctrl+Y)">&#x21AA;</button>
   <div class="sep"></div><button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHL()" title="Dim blocks without connections / restore (H key)">&#x25CE; Dim unlinked</button>
   <div class="sep"></div><button class="tb anno-act" data-term="anno" id="anno-btn" onclick="toggleAnno()" title="Show / hide notes (N key). Click a shown note to select it">&#x25C7; Show notes</button>
-  <div class="sep"></div><button class="tb" data-term="export-svg" onclick="exportSVG()" title="Save as SVG">SVG</button><button class="tb" data-term="export-png" onclick="exportPNG()" title="Save as PNG">PNG</button><button class="tb" data-term="export-png-transparent" onclick="exportPNGT()" title="Save as PNG with a transparent background">Transparent PNG</button><button class="tb" data-term="copy-png" onclick="copyPNG()" title="Copy the diagram to the clipboard as PNG">Copy PNG</button><button class="tb" data-term="export-xlsx" onclick="exportXlsx()" title="Save as Excel (.xlsx)">Excel</button>
+  <div class="sep"></div><button class="tb" data-term="export-svg" onclick="exportSVG()" title="Save as SVG">SVG</button><button class="tb tb-split-l" data-term="export-png" onclick="exportPNG()" title="Save as PNG">PNG</button><button class="tb tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="More PNG options" onclick="openPngMenu(this)" title="More PNG options (transparent background, copy to the clipboard)">&#x25BE;</button><div id="png-menu" role="menu" hidden><button class="tb" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGT)" title="Save as PNG with a transparent background">Save with transparent background</button><button class="tb" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="Copy the diagram to the clipboard as PNG">Copy to clipboard</button></div><button class="tb" data-term="export-xlsx" onclick="exportXlsx()" title="Save as Excel (.xlsx)">Excel</button>
   <div class="sep"></div><button class="tb" data-term="export-mermaid" onclick="exportMmd()" title="Save as Mermaid (.mmd)">Mermaid</button>
   <div class="sep"></div><input class="pi" data-term="search" id="search-input" placeholder="Search ID / label" title="Filter by ID / label and dim the rest. Enter selects the matches one by one in reading order (Shift+Enter: back)" style="width:110px;font-size:10px" oninput="doSearch(this.value)" onkeydown="if(event.key===&quot;Enter&quot;&amp;&amp;!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}"><span id="search-count" style="font-size:10px;color:#888;white-space:nowrap"></span>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
@@ -818,6 +820,11 @@ function exportSVG(){var svg=exportSvgText();if(!svg)return;vscodeApi.postMessag
 function sendIncDrops(fmt){var d=incDrops();if(d.length)vscodeApi.postMessage({type:'exportDrops',format:fmt,items:d});}
 function pngCanvas(transparent,cb){var d=exportSvgText();if(!d)return;var size=window.StableBlockRender.exportPngSize(parsed.canvas),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=size.width;c.height=size.height;var ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);cb(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function exportPNG(){pngCanvas(false,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
+// PNG's ▾: transparent background / copy to the clipboard (opens under PNG, focuses the first item, Esc or a press outside closes it)
+function closePngMenu(){var m=document.getElementById('png-menu');if(m)m.hidden=true;}
+function openPngMenu(btn){var m=document.getElementById('png-menu');if(!m.hidden){m.hidden=true;return;}var r=(btn.previousElementSibling||btn).getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function pngMenuDo(fn){closePngMenu();fn();}
+document.addEventListener('mousedown',function(e){if(!(e.target.closest&&e.target.closest('#png-menu,#png-more')))closePngMenu();});
 function exportPNGT(){pngCanvas(true,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
 function copyPNG(){pngCanvas(false,function(c){c.toBlob(function(blob){if(blob&&navigator.clipboard&&navigator.clipboard.write){navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){vscodeApi.postMessage({type:'info',text:'PNG copied to clipboard'});}).catch(function(){vscodeApi.postMessage({type:'info',text:'Clipboard copy failed'});});}else{vscodeApi.postMessage({type:'info',text:'Clipboard API not available'});}});});}
 function exportXlsx(){
@@ -839,7 +846,7 @@ function fitV(){if(!parsed)return;var a=document.getElementById('preview');setZm
 // Keyboard
 document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
-  if(e.key==='Escape'){if(inInput)document.activeElement.blur();clrSel();return;}
+  if(e.key==='Escape'){closePngMenu();if(inInput)document.activeElement.blur();clrSel();return;}
   if(inInput)return;
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}
