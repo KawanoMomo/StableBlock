@@ -46,6 +46,12 @@ code --install-extension stableblock-1.0.0.vsix
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
 
+### Windows アプリ版・配布物
+
+入手: GitHub の [Releases](https://github.com/KawanoMomo/StableBlock/releases) にタグごとに `StableBlock-{版}-setup.exe`(インストーラ)・`StableBlock-{版}-portable.zip`(展開して `StableBlock.exe`)・拡張の `.vsix`・1 ファイルで動く `stableblock.html` が付く(タグ `v*` の push で `.github/workflows/windows-app.yml` が作る)。
+作り方: `pip install pywebview pyinstaller` の後に `npm run build:app` で `dist/StableBlock/StableBlock.exe`(画面は `core/` を埋め込んだ stableblock.html を pywebview で開く薄い包み。`npm run build:html` は単体の `dist/stableblock.html` だけを作る)。
+インストーラは Inno Setup 6 で `iscc /DAppVersion=1.1 packaging\installer.iss`。版は git tag から取る(`packaging/version_info.py`)。
+
 ### テスト実行
 
 ```bat
@@ -152,7 +158,7 @@ stableblock/
 ├── CHANGELOG.md
 ├── VERSION              # バージョン一元管理
 ├── bump-version.sh      # バージョン更新スクリプト
-├── stableblock.html     # スタンドアロン版（これ1つで完結）
+├── stableblock.html     # スタンドアロン版（core/ と一緒に file:// で動く。1 ファイル版は npm run build:html）
 ├── run-tests.bat        # 単体テストの実行
 ├── build-vscode.bat     # VSCode拡張のビルドとインストール
 ├── package.json         # テスト(npm test / npm run test:e2e)の依存
@@ -160,6 +166,9 @@ stableblock/
 ├── core/                # HTML版と VSCode拡張の共通コア(DSL・ラベル・選択・配置・検査・画面の語彙・Excel/Mermaid 書き出し)
 ├── tests/               # コーパス往復テストと E2E(tests/e2e/scenarios)
 ├── docs/                # ECN と ADR
+├── scripts/             # 版の揃え直し(bump-version.mjs)と単体 HTML の生成(build-single-html.mjs)
+├── packaging/           # Windows アプリ版(app.py・StableBlock.spec・installer.iss・アイコン)
+├── .github/             # 配布物の自動ビルド(workflows/windows-app.yml)
 └── vscode-stableblock/  # VSCode拡張
     ├── package.json
     ├── README.md

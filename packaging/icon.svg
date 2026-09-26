@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- StableBlock のアイコン(画面左上のロゴと同じ: 紫のグラデーションの角丸に白い ◆)。packaging/make-icon.mjs が icon.ico に起こす -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#g)"/>
+  <path d="M128 52 L204 128 L128 204 L52 128 Z" fill="#FFFFFF"/>
+</svg>
