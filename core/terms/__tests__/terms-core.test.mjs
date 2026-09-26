@@ -146,7 +146,7 @@ test('HTML版(ja)の入口の名前は 8 文字以内で、何をするかはツ
   }
   // プロパティ欄に常に出ていた説明文は、入口のツールチップへ移した(画面の文には残さない)
   const html = read('stableblock.html');
-  for (const gone of ['本文に書くパス(この図のフォルダから。違えば直す)</div>', 'id="dup-hint" style="margin:-6px', '>英数字と _。接続の参照と', 'Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>']) {
+  for (const gone of ['>ドラッグで移動（親グループは子も連動）<', '本文に書くパス(この図のフォルダから。違えば直す)</div>', 'id="dup-hint" style="margin:-6px', '>英数字と _。接続の参照と', 'Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>']) {
     assert.ok(!html.includes(gone), '説明文が画面に残っている: ' + gone);
   }
 });
