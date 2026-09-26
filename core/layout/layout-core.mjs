@@ -257,7 +257,8 @@ export function fitParents(items, parents, moved, margin = 1, seeds = []) {
     if (depth > 50) return;
     const d = { l: from.x - to.x, t: from.y - to.y, r: (to.x + to.w) - (from.x + from.w), b: (to.y + to.h) - (from.y + from.h) };
     const anc = new Set(chain(owner));
-    for (const q of [...byId.values()]) {
+    // 外側の要素から見る: group を押すと中身も一緒に動くので、中身を先に押すと二重に動く
+    for (const q of [...byId.values()].sort((a, b) => chain(a.id).length - chain(b.id).length)) {
       if (q.id === owner || movedIds.has(q.id) || anc.has(q.id) || isDesc(q.id, owner)) continue;
       if (overlapArea(q, from) > 0) continue;
       // 広がった向きの先にあって、その向きと直交する範囲が重なる要素だけ。元の隙間(1 グリッドまで)を保つ分だけ押す
@@ -345,4 +346,20 @@ export function placeInGroup(items, gr, w, h, prev) {
   const p = placeNext(obs, w, h, { prev, x0: gr.x + pad, y0: gr.y + labelH, cols: gr.x + gr.w - pad });
   const group = { x: gr.x, y: gr.y, w: Math.max(gr.w, p.x + w + pad - gr.x), h: Math.max(gr.h, p.y + h + pad - gr.y) };
   return { x: p.x, y: p.y, group };
+}
+
+// placeInGroup で置き、gr が広がるなら fitParents で後始末する: 広がった gr が新しく掛かる要素(兄弟・親の外の group や block)を
+// 隙間を保って押し出し(group なら中身ごと)、gr や押し出した要素が親の枠をまたげば親も広げる。「+ ブロック追加」を group 内で
+// 続けても、広がった group がほかの group に重ならない。items: block / group / note(note は置き場所で避けるだけで、押さない)。
+// 返り値 { x, y, changes }。changes は広がった gr を含む、動いた・広がった要素(fitParents と同じ形。呼び出し側が本文の行に書く)
+export function placeInGroupFit(items, gr, w, h, prev, margin = 1) {
+  const list = (items || []).filter(Boolean);
+  const p = placeInGroup(list, gr, w, h, prev), ng = p.group;
+  if (ng.w === gr.w && ng.h === gr.h) return { x: p.x, y: p.y, changes: [] };
+  const boxes = list.filter(i => i.type !== 'note');
+  const parents = parentMap(boxes);
+  const cur = boxes.map(i => (i.id === gr.id ? { ...i, ...ng } : i));
+  const ch = fitParents(cur, parents, [{ id: gr.id, sides: ['r', 'b'] }], margin, [{ id: gr.id, from: { x: gr.x, y: gr.y, w: gr.w, h: gr.h } }]);
+  const changes = [{ type: 'group', id: gr.id, x: ng.x, y: ng.y, w: ng.w, h: ng.h }, ...ch.filter(c => c.id !== gr.id)];
+  return { x: p.x, y: p.y, changes };
 }

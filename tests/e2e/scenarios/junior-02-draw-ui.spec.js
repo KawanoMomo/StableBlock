@@ -587,6 +587,57 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   await expect(page.locator('#error-bar')).toContainText('枠をまたいでいる');
 });
 
+// 「+ グループ内にブロック追加」で広がった group は、下のほかの group に掛からない(BLK-human-20260926-2045-1)。
+// 掛かる group は中身ごと、元の隙間を保って押し出す(同じ親の中で子 group が広がったときと同じ)
+test('junior-02: group にブロックを足し続けて group が広がっても、ほかの group に重ならず、下の group は中身ごと押し出される', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+
+  // group を 3 つ(空き位置に左から並び、3 つ目は 1 つ目の下へ折り返す)。3 つ目には block を 1 つ入れておく
+  for (const name of ['A', 'B', 'C']) {
+    await props.getByRole('button', { name: '+ グループ追加' }).click();
+    await label().fill(name);
+    await label().press('Enter');
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    await selectGroup(name);
+    await page.keyboard.press('Escape');                                 // 選択を外してツール欄へ戻る
+    await expect(page.locator('#prop-title')).toHaveText('ツール');
+  }
+  await selectGroup('C');
+  await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await label().fill('X');
+  await expect(props.locator('#prop-id')).toHaveValue('X');
+  let all = boxes(await getEditorText(page));
+  const gap = all.C.y - (all.A.y + all.A.h);
+  expect(gap, JSON.stringify(all)).toBeGreaterThanOrEqual(1);           // C は A の真下
+  expect(hits({ ...all.A, h: all.A.h + 20 }, all.C)).toBe(true);
+  const xInC = { dx: all.X.x - all.C.x, dy: all.X.y - all.C.y };
+
+  // A に 6 個足す: A は下へ広がるが C に掛からず、C は X ごと元の隙間を保って下がる。B(A の右)は動かない
+  const b0 = { ...all.B };
+  for (let i = 0; i < 6; i++) {
+    await selectGroup('A');
+    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await label().fill(`a${i}`);
+    await expect(props.locator('#prop-id')).toHaveValue(`a${i}`);
+    all = boxes(await getEditorText(page));
+    expect(hits(all.A, all.C), `${i + 1} 個目で A が C に掛かる ${JSON.stringify([all.A, all.C])}`).toBe(false);
+    expect(hits(all.A, all.B), `${i + 1} 個目で A が B に掛かる`).toBe(false);
+    expect(parentOf(all, `a${i}`)).toBe('A');
+  }
+  expect(all.A.h).toBeGreaterThan(8);
+  expect(all.C.y - (all.A.y + all.A.h)).toBe(gap);
+  expect({ dx: all.X.x - all.C.x, dy: all.X.y - all.C.y }).toEqual(xInC);
+  expect(parentOf(all, 'X')).toBe('C');
+  expect(all.B).toEqual(b0);
+  await expect(page.locator('#error-bar')).not.toContainText('重なって');
+});
+
 test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、見本の見出し・要素が本文に混ざらない。保存名は diagram.sb', async ({ page }, testInfo) => {
   await bootPlain(page);
   await expect(page.locator('#editor')).toHaveValue(/# Application/);          // 起動時は見本
