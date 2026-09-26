@@ -395,3 +395,67 @@ test('includeCandidates: 取り込んでいる図が無くても、自分の接�
   };
   assert.deepEqual(includeCandidates(files, 'spi_swc.sb').map(c => c.file), ['common.sb', 'can_swc.sb']);
 });
+
+import { includersOf, addedDiagnostics, includeImpact } from '../check-core.mjs';
+import { placeLabels, labelIssues } from '../../label/label-core.mjs';
+
+// HTML 版のエラー欄・CLI と同じ診断(一緒に読み込んだ図から @include を解決し、経路とラベルも見る)
+const checkLoaded = (files, k) => {
+  const exp = expandIncludes(files[k], loadedReader(files, k), k);
+  const p = parseDSL(exp.text), paths = connectionPaths(p);
+  return checkIncluded(p, exp, paths, { labelIssues: labelIssues(placeLabels(paths, p), p) });
+};
+const IMP_COMMON = '@canvas width=960 height=520 grid=20\nblock rte "RTE" at 20,2 size 8x3\nblock os "OS" at 20,8 size 8x3\nblock hal "HAL" at 20,14 size 8x3\nrte -> os';
+const swc = p => `@canvas width=960 height=520 grid=20\n@include "shared/common.sb"\nblock ${p}Drv "${p}Drv" at 4,2 size 8x3\n${p}Drv -> rte`;
+const flow = p => `@canvas width=960 height=520 grid=20\n@include "shared/common.sb"\nblock ${p}Drv "${p}Drv" at 4,14 size 8x3\nblock ${p}data "D" at 4,8 size 8x3\n${p}Drv -> ${p}data\n${p}data -> rte`;
+
+test('includersOf: 表示中の図を(include 先をたどって)取り込んでいる、一緒に読み込んだ図', () => {
+  const files = { 'a.sb': '@include "mid.sb"', 'mid.sb': '@include "shared/common.sb"', 'b.sb': 'block b "B" at 1,1 size 2x2', 'common.sb': 'block c "C" at 1,1 size 2x2' };
+  assert.deepEqual(includersOf(files, 'common.sb'), ['a.sb', 'mid.sb']);
+  assert.deepEqual(includersOf(files, 'mid.sb'), ['a.sb']);
+  assert.deepEqual(includersOf(files, 'b.sb'), []);
+  assert.deepEqual(includersOf(files, 'nope.sb'), []);
+});
+
+test('addedDiagnostics: 同じ level・行・文を 1 件ずつ打ち消し、増えた分だけ残す', () => {
+  const d = (line, msg, level = 'warn') => ({ line, level, msg });
+  assert.deepEqual(addedDiagnostics([d(3, 'x'), d(5, 'y')], [d(3, 'x'), d(5, 'y'), d(6, 'z')]), [d(6, 'z')]);
+  assert.deepEqual(addedDiagnostics([d(3, 'x')], [d(3, 'x'), d(3, 'x')]), [d(3, 'x')]);
+  assert.deepEqual(addedDiagnostics([d(3, 'x')], [d(4, 'x')]), [d(4, 'x')]);
+  assert.deepEqual(addedDiagnostics([d(3, 'x')], []), []);
+});
+
+test('includeImpact: 共通部を動かすと、取り込んでいる図のうち線が横切るようになった図と行だけが出る(共通部の中の重なりは数えない)', () => {
+  const files = { 'spi_swc.sb': swc('Spi'), 'spi_dataflow.sb': flow('Spi'), 'can_swc.sb': swc('Can'), 'other.sb': 'block o "O" at 1,1 size 2x2', 'common.sb': IMP_COMMON };
+  const base = files['common.sb'];
+  // 1 列右: 影響なし
+  let r = includeImpact({ ...files, 'common.sb': base.replace('at 20,2', 'at 21,2') }, 'common.sb', base, checkLoaded);
+  assert.deepEqual(r.includers, ['spi_swc.sb', 'spi_dataflow.sb', 'can_swc.sb']);
+  assert.deepEqual(r.added, []);
+  // OS の右下へ: 構成図の Drv -> rte が OS を横切る(データフロー図は横切らない)
+  r = includeImpact({ ...files, 'common.sb': base.replace('at 20,2', 'at 30,11') }, 'common.sb', base, checkLoaded);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}:${d.level}`), ['spi_swc.sb:4:warn', 'can_swc.sb:4:warn']);
+  assert.match(r.added[0].msg, /接続「SpiDrv -> rte」の線が block「os」\(shared\/common\.sb L3\)の上を横切る/);
+  // OS に重ねる: 共通部の中の重なり(共通部自身の欄に出る)は数えず、横切りだけ
+  r = includeImpact({ ...files, 'common.sb': base.replace('at 20,2', 'at 21,8') }, 'common.sb', base, checkLoaded);
+  assert.ok(r.added.length > 0 && r.added.every(d => /横切る/.test(d.msg)));
+  // 取り込み側に元からあった診断は出ない。編集していなければ何も出ない
+  const pre = { ...files, 'spi_swc.sb': swc('Spi') + '\nblock dup "D" at 4,2 size 2x2' };
+  assert.deepEqual(includeImpact(pre, 'common.sb', base, checkLoaded).added, []);
+  assert.deepEqual(includeImpact({ ...pre, 'common.sb': base.replace('at 20,2', 'at 21,2') }, 'common.sb', base, checkLoaded).added, []);
+});
+
+test('includeImpact: 取り込み側の block に重なるようになった共通部の block は、取り込み側の行で出る。cache で編集前を測り直さない', () => {
+  const files = { 'spi_swc.sb': swc('Spi'), 'common.sb': IMP_COMMON };
+  const base = IMP_COMMON;
+  let calls = 0;
+  const counted = (f, k) => { calls++; return checkLoaded(f, k); };
+  const cache = new Map();
+  const moved = { ...files, 'common.sb': base.replace('at 20,2', 'at 6,3') };
+  const r = includeImpact(moved, 'common.sb', base, counted, cache);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}`), ['spi_swc.sb:3']);
+  assert.match(r.added[0].msg, /block「SpiDrv」が block「rte」/);
+  assert.equal(calls, 2);
+  includeImpact({ ...files, 'common.sb': base.replace('at 20,2', 'at 6,4') }, 'common.sb', base, counted, cache);
+  assert.equal(calls, 3);   // 編集前は cache から
+});

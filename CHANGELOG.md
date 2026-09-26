@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-primary-20260926-1205-wish: 共通部を開いて動かすと、エラー欄に「この図を @include している図」と、その編集で増えたほかの図のエラー・警告(図名と行)が並び、押すとその図のその行へ移れる
 - BLK-primary-20260926-1205-friction: 何も選んでいないときのツール欄「共通部(@include)」から、一緒に読み込んだ図を @include で取り込める(読み込んだ図すべてに 1 クリック)・外せる。本文欄に手打ちしなくてよい
 - BLK-primary-20260926-1205: 「.sb 読込」で一緒に読み込んだ図が 2 枚以上あると、書き出しの並びの後ろの「一括 ▾」から SVG / PNG / 透過PNG / Excel / Mermaid を選び、全部の図を include を解決して 1 つの zip に書き出せる
 - BLK-porter-20260926-1205-1: Excel 書き出しの接続線が画面と同じ曲線・直角で出て、Excel で図形を動かすと正しい図形に付いてくる(接着先のずれを直した)。lpos= は接続ごとに一覧に出る

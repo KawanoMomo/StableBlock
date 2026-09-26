@@ -1,0 +1,59 @@
+// primary 手順 4: 仕様変更で影響範囲を洗う。shared/common.sb の RTE を動かし、include している 12 枚のうちどの図で接続線が
+// ブロックを横切る・重なるようになったかを、図を 1 枚ずつ開かずに(CLI にも出ずに)把握する。
+// 作図 UI だけで: 「.sb 読込」で 12 枚 + 共通部を読み、共通部を開くとエラー欄の見出しに「この図を @include している図」が出る。
+// 共通部を動かすと、その編集で増えたほかの図のエラー・警告が「ほかの図: {図名} L{n}: ...」で並び(core/check の includeImpact。CLI と同じ診断)、
+// 押すとその図のその行へ。ステータスバーの Warn は表示中の図の数のまま、ほかの図の分は「ほかの図 Warn」(BLK-primary-20260926-1205-wish)
+const path = require('node:path');
+const { test, expect, bootPlain, importSb, FIXTURES } = require('./_scenario');
+
+const SET = path.join(FIXTURES, 'primary-set');
+const PERIPH = ['spi', 'can', 'uart', 'adc', 'timer', 'gpio'];
+const DIAGRAMS = PERIPH.flatMap(p => [`${p}_swc.sb`, `${p}_dataflow.sb`]);
+const COMMON = path.join(SET, 'shared', 'common.sb');
+
+test('primary-04: 共通部の RTE を動かすと、取り込んでいる 12 枚のうち線が横切るようになった図と行がエラー欄に並び、押すとその図のその行へ', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, [...DIAGRAMS.map(f => path.join(SET, f)), COMMON]);
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
+  await expect(page.locator('#impact-head')).toHaveCount(0);            // spi_swc を取り込んでいる図は無い
+
+  // 共通部を開く: 図の RTE(include 先の要素)を押し、プロパティ欄の「common.sb を開く」
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]').click();
+  await page.getByRole('button', { name: 'common.sb を開く' }).click();
+  await expect(page).toHaveTitle(/common\.sb/);
+  const head = page.locator('#impact-head');
+  await expect(head).toBeVisible();
+  await expect(head).toContainText('この図を @include している図: ');
+  for (const f of DIAGRAMS) await expect(head).toContainText(f);
+  await expect(page.locator('#error-bar .diag-other')).toHaveCount(0);
+
+  // RTE を 1 列右へ(矢印キー 1 回): どの図にも横切り・重なりは増えない、と分かる
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]').click();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#editor')).toHaveValue(/block rte "RTE" at 21,2 /);
+  await expect(head).toContainText('読み込んだ時から増えたエラー・警告は無い');
+  await expect(page.locator('#error-bar .diag-other')).toHaveCount(0);
+  await expect(page.locator('#status-impact-warn')).toHaveCount(0);
+
+  // さらに OS の右下(30,11)へ: 構成図 6 枚の「Drv -> rte」が OS を横切るようになる。データフロー図 6 枚は横切らない
+  for (let i = 0; i < 9; i++) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 9; i++) await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#editor')).toHaveValue(/block rte "RTE" at 30,11 /);
+  const others = page.locator('#error-bar .diag-other');
+  await expect(others).toHaveCount(6);
+  expect((await others.evaluateAll(els => els.map(e => `${e.dataset.path}:${e.dataset.line}`))).sort()).toEqual(
+    ['adc_swc.sb:5', 'can_swc.sb:5', 'gpio_swc.sb:5', 'spi_swc.sb:6', 'timer_swc.sb:5', 'uart_swc.sb:5']);
+  const spi = others.filter({ hasText: 'spi_swc.sb' });
+  await expect(spi).toHaveText('ほかの図: spi_swc.sb L6: 接続「SpiDrv -> rte」の線が block「os」(shared/common.sb L4)の上を横切る');
+  await expect(head).not.toContainText('増えたエラー・警告は無い');
+  // ステータスバー: 表示中の図(共通部)の Warn は出ず、ほかの図の分は別の表記
+  await expect(page.locator('#status span', { hasText: /^Warn:/ })).toHaveCount(0);
+  await expect(page.locator('#status-impact-warn')).toHaveText('ほかの図 Warn: 6');
+
+  // 押すとその図が開き、その行(接続の行)に印が付いて接続の両端が選ばれる
+  await spi.click();
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
+  await expect(page.locator('#line-nums .ln-hit')).toHaveText('6');
+  await expect(page.locator('#error-bar .diag-warn', { hasText: 'L6: 接続「SpiDrv -> rte」の線が block「os」' })).toHaveCount(1);
+  expect(await page.evaluate(() => sel.map(s => s.id))).toEqual(['SpiDrv', 'rte']);   // eslint-disable-line no-undef
+});
