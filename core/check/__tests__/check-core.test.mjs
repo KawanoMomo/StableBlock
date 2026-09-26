@@ -459,3 +459,16 @@ test('includeImpact: 取り込み側の block に重なるようになった共�
   includeImpact({ ...files, 'common.sb': base.replace('at 20,2', 'at 6,4') }, 'common.sb', base, counted, cache);
   assert.equal(calls, 3);   // 編集前は cache から
 });
+
+// ラベルから ID を作れず `__new_` の仮の ID が残った要素を、行番号付きで警告する(BLK-junior-20260926-0950-wish:
+// 日本語だけのラベルでは ID が自動で付かず、そのまま保存・レビューに回っていた)
+test('checkDiagram: __new_ の仮の ID が残る block / group / note を、ラベル付きで warn に出す', () => {
+  const text = '@canvas width=800 height=400 grid=20\ngroup __new_2 "制御部" at 0,0 size 12x6\nblock app "App" at 1,1 size 4x2\nblock __new_1 "通信管理" at 6,1 size 4x2\nnote __new_3 "メモ" at 14,1 size 3x2\n__new_1 -> app\n';
+  const d = check(text).filter(x => /仮の ID/.test(x.msg));
+  assert.deepEqual(d.map(x => [x.line, x.level]), [[2, 'warn'], [4, 'warn'], [5, 'warn']]);
+  assert.match(d[0].msg, /^group「__new_2」\(「制御部」\)はまだ仮の ID/);
+  assert.match(d[1].msg, /^block「__new_1」\(「通信管理」\)はまだ仮の ID/);
+  assert.match(d[2].msg, /^note「__new_3」/);
+  assert.match(d[1].msg, /英数字と _/);
+  assert.deepEqual(check('block app "App" at 1,1 size 4x2\nblock new_1 "N" at 6,1 size 4x2\n'), []);
+});

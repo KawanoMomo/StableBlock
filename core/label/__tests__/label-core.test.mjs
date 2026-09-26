@@ -505,3 +505,15 @@ test('planRelabel: 同じ旧ラベルの図だけが変わり、変わった行�
     [{ line: 2, before: 'block spimasterdrv "Spi_Driver" at 4,14 size 8x3', after: 'block spimasterdrv "SpiMasterDrv" at 4,14 size 8x3' }]]]);
   assert.deepEqual(planRelabel(files, 'spimasterdrv', 'X', 'X').changes, []);
 });
+
+// ラベルを確定した時点でこの ID ならラベルから ID を作れていない(ID 欄へ移って名前を聞く。BLK-junior-20260926-0950-wish)
+import { isPlaceholderId } from '../label-core.mjs';
+test('isPlaceholderId: __new_ で始まる ID だけが仮の ID。ID 欄はそのとき開く', () => {
+  assert.equal(isPlaceholderId('__new_3'), true);
+  assert.equal(isPlaceholderId('new_3'), false);
+  assert.equal(isPlaceholderId('Com__new_1'), false);
+  assert.equal(isPlaceholderId(''), false);
+  assert.equal(isPlaceholderId(undefined), false);
+  assert.equal(idFieldOpen('__new_3', false, false), true);
+  assert.equal(idFieldOpen('app', false, false), false);
+});
