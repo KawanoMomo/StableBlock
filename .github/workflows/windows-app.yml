@@ -1,0 +1,144 @@
+# 配布物の自動ビルド(BLK-human-20260926-2100): タグ v* を push したときだけ、VSCode 拡張(.vsix)と
+# Windows アプリ(setup.exe + portable.zip)と単体の stableblock.html を作り、GitHub Release に添付する。
+# リポジトリにバイナリは入れない。Secrets は要らない(GITHUB_TOKEN で足りる)。
+name: windows-app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 手動起動でも git describe で版が取れるようにタグまで取る
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Resolve version
+        shell: pwsh
+        run: |
+          # 版の正本は git tag(v1.1 → 1.1)。手動起動ではいちばん近いタグ
+          $tag = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { git describe --tags --abbrev=0 }
+          $version = $tag -replace '^v', ''
+          if ($version -notmatch '^\d+(\.\d+)+$') { throw "タグから版が取れない ($tag)" }
+          "APP_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "tag=$tag version=$version"
+
+      # 1. VSCode 拡張。package-lock.json は git 管理外なので npm ci ではなく npm install
+      #    (vscode:prepublish が core/ を拡張の中へ写す)
+      - name: Package the VSCode extension
+        shell: pwsh
+        working-directory: vscode-stableblock
+        run: |
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+          npx vsce package --allow-missing-repository
+          if ($LASTEXITCODE -ne 0) { throw "vsce package failed" }
+          $vsix = Get-ChildItem -Filter 'stableblock-*.vsix' | Select-Object -First 1
+          if (-not $vsix) { throw ".vsix ができていない" }
+          # 同梱漏れの確認: 拡張が実行時に読む core/ が入っていること
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [IO.Compression.ZipFile]::OpenRead($vsix.FullName).Entries.FullName
+          foreach ($rel in @('extension/src/extension.js', 'extension/core/label/label-core.mjs', 'extension/core/excel/emitter.js')) {
+            if ($names -notcontains $rel) { throw ".vsix に $rel が無い" }
+          }
+          New-Item -ItemType Directory ..\dist -Force | Out-Null
+          Copy-Item $vsix.FullName ..\dist\
+          Write-Host "vsix: $($vsix.Name)"
+
+      # 2. 単体の stableblock.html(core/*.js を埋め込み、1 ファイルで file:// で動く)
+      - name: Build the single-file HTML
+        run: node scripts/build-single-html.mjs dist/stableblock.html
+
+      # 3. Windows アプリ: stableblock.html を窓で開く薄い包み(pywebview + PyInstaller。Electron は使わない)
+      - name: Install build deps
+        run: python -m pip install --upgrade pip pywebview pyinstaller
+
+      - name: Build exe
+        run: pyinstaller packaging/StableBlock.spec --noconfirm
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:APP_VERSION" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+          $setup = "dist\StableBlock-$env:APP_VERSION-setup.exe"
+          if (-not (Test-Path $setup)) { throw "$setup ができていない" }
+          $pv = (Get-Item $setup).VersionInfo.ProductVersion
+          if ($pv -ne $env:APP_VERSION) { throw "setup.exe の版 $pv がタグ $env:APP_VERSION と食い違う" }
+
+      # zip の直下に exe を裸で並べると、展開せずに叩いたとき _internal が付いてこず落ちる。フォルダごと詰め、展開の手順を同じ階層に置く
+      - name: Zip the portable build
+        shell: pwsh
+        run: |
+          Copy-Item packaging\PORTABLE-README.txt dist\StableBlock\はじめにお読みください.txt
+          Compress-Archive -Path dist\StableBlock -DestinationPath "dist\StableBlock-$env:APP_VERSION-portable.zip" -Force
+
+      # 4. スモーク: portable を展開して exe を起動し、初期画面(見本の図とステータスバー)が出ることを pywebview で確かめる。
+      #    出なければ job を失敗にする。窓のスクリーンショットは artifact に残す
+      - name: Smoke-test the portable exe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'smoke'
+          Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive "dist\StableBlock-$env:APP_VERSION-portable.zip" -DestinationPath $work
+          $exe = Join-Path $work 'StableBlock\StableBlock.exe'
+          if (-not (Test-Path $exe)) { throw "zip に StableBlock\StableBlock.exe が無い" }
+          $out = Join-Path $env:RUNNER_TEMP 'smoke-out'
+          New-Item -ItemType Directory $out -Force | Out-Null
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke', "$out\smoke.json", '--shot', "$out\smoke.bmp" -PassThru
+          if (-not $p.WaitForExit(120000)) { Stop-Process -Id $p.Id -Force; throw "portable 版が 120 秒で初期画面を出さなかった" }
+          if (Test-Path "$out\smoke.json") { Get-Content "$out\smoke.json" -Encoding UTF8 | Write-Host }
+          $crash = Join-Path $env:LOCALAPPDATA 'StableBlock\crash.log'
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path $crash) { Get-Content $crash -Encoding UTF8 | Write-Host }
+            throw "初期画面が出なかった (exit $($p.ExitCode))"
+          }
+          $r = Get-Content "$out\smoke.json" -Encoding UTF8 -Raw | ConvertFrom-Json
+          if ($r.title -ne "StableBlock v$env:APP_VERSION") { throw "窓のタイトル $($r.title) に版 $env:APP_VERSION が出ていない" }
+          Write-Host "portable smoke ok: $($r.blocks) blocks"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: StableBlock-windows
+          path: |
+            dist/*.vsix
+            dist/*setup.exe
+            dist/*portable.zip
+            dist/stableblock.html
+            ${{ runner.temp }}/smoke-out/*
+
+      # 5. Release に 4 つを添付(Release が無ければ作る。同名のファイルは差し替える)
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:APP_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:APP_TAG --repo $env:GITHUB_REPOSITORY --verify-tag --title "StableBlock $env:APP_TAG" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+          }
+          $files = @((Get-ChildItem dist -Filter 'stableblock-*.vsix').FullName,
+                     "dist\StableBlock-$env:APP_VERSION-setup.exe",
+                     "dist\StableBlock-$env:APP_VERSION-portable.zip",
+                     'dist\stableblock.html')
+          gh release upload $env:APP_TAG @files --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
