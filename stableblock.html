@@ -870,11 +870,11 @@ function blockLine(id,p,src){const w=src?src.w:8,h=src?src.h:3;let l=`block ${id
 // Where the next block / paste goes (core/layout placeNext): right of prev, wrapping at the canvas edge — or, inside a group,
 // at the group's edge, growing the group downward. groupOf skips the copied groups themselves
 function groupOf(r,skip){return parsed.groups.filter(g=>!(skip&&skip.has(g.id))&&isInside(r,g)).sort((a,b)=>a.w*a.h-b.w*b.h)[0]||null;}
-// In a group (core/layout placeInGroup): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well
+// In a group (core/layout placeInGroupFit): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well,
+// and pushes the groups / blocks it would newly cover (with their contents), keeping the gap — it never runs into another group
 function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
   if(!gr)return L.placeNext(all,w,h,{prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});
-  const before=parentsNow(),p=L.placeInGroup(all,gr,w,h,prev),ng=p.group;
-  if(ng.w!==gr.w||ng.h!==gr.h){updateSize('group',gr.id,ng.w,ng.h);growParents(before,[{id:gr.id,sides:['r','b']}]);}
+  const p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();
   return p;}
 // The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
 function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}

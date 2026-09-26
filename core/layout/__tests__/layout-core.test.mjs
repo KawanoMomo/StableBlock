@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
-  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup,
+  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -334,4 +334,37 @@ test('growCanvasInDsl: grow=off の図は要素がはみ出しても広げない
   const src = '@canvas width=400 height=300 grid=20 grow=off\nblock a "A" at 18,1 size 4x2\n';
   assert.equal(growCanvasInDsl(src, { ...CV, grow: 'off' }, [{ x: 18, y: 1, w: 4, h: 2 }]), src);
   assert.notEqual(growCanvasInDsl(src, CV, [{ x: 18, y: 1, w: 4, h: 2 }]), src);
+});
+
+// 「+ ブロック追加」(group 内)で group が広がっても、ほかの group に掛からない(BLK-human-20260926-2045-1)
+test('placeInGroupFit: 足して広がった group は、下・右のほかの group に掛からず隙間を保って押し出す(中身ごと)', () => {
+  const g1 = G('G1', 1, 1, 20, 8), g2 = G('G2', 1, 10, 20, 8), x = B('X', 3, 13, 8), g3 = G('G3', 23, 1, 10, 6);
+  const cur = { X: { ...x }, G1: { ...g1 }, G2: { ...g2 }, G3: { ...g3 } };   // 画面と同じく block が group より先に並ぶ
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const placed = [];
+  let prev = null;
+  for (let i = 0; i < 6; i++) {
+    const r = placeInGroupFit([...Object.values(cur), ...placed], cur.G1, 8, 3, prev);
+    for (const c of r.changes) Object.assign(cur[c.id] || placed.find(p => p.id === c.id), c);
+    const nb = B(`n${i}`, r.x, r.y, 8);
+    placed.push(nb); prev = nb;
+    assert.ok(!hit(cur.G1, cur.G2), `${i + 1} 個目で G1 が G2 に掛かる ${JSON.stringify([cur.G1, cur.G2])}`);
+    assert.ok(!hit(cur.G1, cur.G3), `${i + 1} 個目で G1 が G3 に掛かる`);
+    assert.ok(nb.x >= cur.G1.x && nb.y >= cur.G1.y && nb.x + nb.w <= cur.G1.x + cur.G1.w && nb.y + nb.h <= cur.G1.y + cur.G1.h);
+  }
+  assert.equal(cur.G2.y, cur.G1.y + cur.G1.h + 1);                  // 元の隙間 1 を保つ
+  assert.equal(cur.X.y - cur.G2.y, 3);                               // G2 の中身も一緒に動く
+  assert.deepEqual([cur.G3.x, cur.G3.y], [23, 1]);                   // 右の G3 は下に広がる G1 に掛からないので動かない
+});
+
+test('placeInGroupFit: 広がらなければ何も変えない。親 group の中の group が広がれば、親も広がり兄弟は押し出す', () => {
+  const g = G('G', 1, 1, 30, 10);
+  assert.deepEqual(placeInGroupFit([g], g, 8, 3, null), { x: 2, y: 3, changes: [] });
+  const ecu = G('ECU', 0, 0, 30, 20), mcu = G('MCU', 1, 2, 20, 8), cpu = B('CPU', 2, 4, 8), ram = B('RAM', 11, 4, 8), can = G('CAN', 1, 11, 20, 8);
+  const r = placeInGroupFit([ecu, mcu, cpu, ram, can], mcu, 8, 3, ram);
+  const by = Object.fromEntries(r.changes.map(c => [c.id, c]));
+  assert.deepEqual([r.x, r.y], [2, 8]);                             // RAM の右は MCU の端なので下の行へ折り返す
+  assert.equal(by.MCU.h, 10);                                        // 置いた block が収まるよう MCU が下に広がる
+  assert.equal(by.CAN.y, 13);                                        // MCU の下端(12)から元の隙間 1 を空ける
+  assert.equal(by.ECU.h, 22);                                        // 押し出した CAN が収まるよう ECU も下に広がる
 });
