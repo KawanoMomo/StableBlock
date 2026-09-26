@@ -66,8 +66,18 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 /* Body */
 #body { flex:1; display:flex; overflow:hidden; }
 
+/* 欄の境界: ドラッグで左右の欄の幅を変える(ダブルクリックで元の幅)。つかめる幅は 6px で、欄の幅は食わない(既存の 1px の線と、
+   スクロールバーの無い側の余白に重ねる: 左の境界はプレビューの左の余白、右の境界はツール欄の左の余白) */
+.pane-split { flex:0 0 6px; position:relative; z-index:5; cursor:col-resize; touch-action:none; outline:none; }
+#split-left { margin:0 -5px 0 -1px; }
+#split-right { margin:0 -6px 0 0; }
+.pane-split::after { content:''; position:absolute; top:0; bottom:0; width:3px; background:transparent; }
+#split-left::after { left:0; } #split-right::after { left:0; }
+.pane-split:hover::after, .pane-split.dragging::after, .pane-split:focus-visible::after { background:var(--accent); }
+body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-select:none !important; }
+
 /* Editor Panel */
-#editor-panel { width:30%; min-width:240px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
+#editor-panel { width:30%; min-width:160px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
 .panel-label { padding:4px 10px; font-size:10px; font-weight:600; color:var(--muted); border-bottom:1px solid var(--bg2); display:flex; align-items:center; gap:4px; }
 .panel-label .dot { font-size:10px; }
 #error-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:10px; display:none; max-height:30%; overflow-y:auto; line-height:1.5; }
@@ -93,7 +103,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
 
 /* Property Panel */
-#prop-panel { width:220px; min-width:220px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
+#prop-panel { width:220px; min-width:200px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
 #prop-content { flex:1; overflow-y:auto; padding:12px; }
 .prop-section { margin-bottom:12px; }
 .prop-label { font-size:10px; color:var(--muted); font-weight:600; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -231,6 +241,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
       <textarea id="editor" spellcheck="false"></textarea>
     </div>
   </div>
+  <div class="pane-split" id="split-left" data-side="left" role="separator" aria-orientation="vertical" aria-controls="editor-panel" tabindex="0" title="ドラッグで DSL 欄とプレビューの幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="preview-panel">
     <div class="panel-label" title="ドラッグで移動(親グループは子も連動)">
       <span class="dot" style="color:var(--green)">●</span> PREVIEW
@@ -238,6 +249,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
   </div>
+  <div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="prop-panel" tabindex="0" title="ドラッグでプレビューとツール欄の幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="prop-panel">
     <div class="panel-label"><span class="dot" style="color:var(--amber)">●</span> <span id="prop-title">ツール</span></div>
     <div id="prop-content"></div>
@@ -1197,6 +1209,34 @@ document.addEventListener('keydown',e=>{
   if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitView();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
 });
+
+// 欄の境界(DSL | プレビュー、プレビュー | ツール欄)をドラッグして幅を変える。幅の決め方は core/layout paneWidths(プレビューに最小幅を残す)。
+// ダブルクリックで既定の幅に戻す。変えた幅はこのブラウザに覚える(次に開いても同じ幅)
+(function(){
+  const body=document.getElementById('body'),ed=document.getElementById('editor-panel'),pp=document.getElementById('prop-panel');
+  const KEY='stableblock.paneWidths',OPT={minLeft:160,minMid:240,minRight:200};
+  const cur=()=>({left:ed.getBoundingClientRect().width,right:pp.getBoundingClientRect().width});
+  function apply(w,moved){const r=window.StableBlockLayout.paneWidths(body.clientWidth,w.left,w.right,Object.assign({moved},OPT));
+    ed.style.width=r.left+'px';pp.style.width=r.right+'px';ed.style.flex=pp.style.flex='none';return r;}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(cur()));}catch(e){}}
+  function reset(){ed.style.width=pp.style.width=ed.style.flex=pp.style.flex='';try{localStorage.removeItem(KEY);}catch(e){}}
+  const moveBy=(side,w,dx)=>apply(side==='left'?{left:w.left+dx,right:w.right}:{left:w.left,right:w.right-dx},side);
+  try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&s.left>0&&s.right>0)apply(s);}catch(e){}
+  document.querySelectorAll('#body > .pane-split').forEach(sp=>{
+    const side=sp.dataset.side;
+    sp.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();sp.focus();
+      try{sp.setPointerCapture(e.pointerId);}catch(_){}
+      const x0=e.clientX,w0=cur();sp.classList.add('dragging');document.body.classList.add('pane-resizing');
+      const mv=ev=>moveBy(side,w0,ev.clientX-x0);
+      const up=()=>{sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up);sp.removeEventListener('pointercancel',up);
+        sp.classList.remove('dragging');document.body.classList.remove('pane-resizing');save();};
+      sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up);sp.addEventListener('pointercancel',up);});
+    sp.addEventListener('dblclick',e=>{e.preventDefault();reset();});
+    // ←/→ で 16px ずつ(キャンバスの矢印キー移動には渡さない)
+    sp.addEventListener('keydown',e=>{const d=e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0;if(!d)return;e.preventDefault();e.stopPropagation();moveBy(side,cur(),d);save();});
+  });
+  window.addEventListener('resize',()=>{if(ed.style.width)apply(cur());});
+})();
 
 // 右ボタンのドラッグは結ぶ操作(startLinkDrag)なので、プレビューでは右クリックのメニューを出さない
 document.getElementById('svg-wrap').addEventListener('contextmenu',e=>e.preventDefault());

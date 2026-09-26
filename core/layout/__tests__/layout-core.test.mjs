@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths,
   parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit,
 } from '../layout-core.mjs';
 
@@ -99,6 +99,23 @@ test('stepZoom: 0.25 刻み、端数からは刻みに戻る', () => {
   assert.equal(stepZoom(0.25, -1), 0.25);
   assert.equal(stepZoom(0.1, -1), 0.1);   // 全体表示で 0.25 未満になっていても − で大きくならない
   assert.equal(stepZoom(0.1, 1), 0.25);
+});
+
+test('paneWidths: 境界のドラッグで左右の欄の幅を変え、プレビューに最小幅を残す', () => {
+  const O = { minLeft: 160, minMid: 240, minRight: 200 };
+  // 収まる範囲はそのまま(整数に丸める)
+  assert.deepEqual(paneWidths(1366, 520.4, 300, O), { left: 520, right: 300 });
+  // 最小幅を割らない
+  assert.deepEqual(paneWidths(1366, 40, 50, O), { left: 160, right: 200 });
+  // 左の境界を右へ寄せすぎた: 右は動かさず、左をプレビューの最小幅の手前で止める
+  assert.deepEqual(paneWidths(1366, 1200, 220, { ...O, moved: 'left' }), { left: 906, right: 220 });
+  // 右の境界を左へ寄せすぎた: 左は動かさず、右を止める
+  assert.deepEqual(paneWidths(1366, 410, 1000, { ...O, moved: 'right' }), { left: 410, right: 716 });
+  // 窓が狭くなった(moved なし): 左から削る。左が最小まで来たら右を削る
+  assert.deepEqual(paneWidths(1000, 600, 300, O), { left: 460, right: 300 });
+  assert.deepEqual(paneWidths(600, 600, 300, O), { left: 160, right: 200 });
+  // 左の欄が無い画面(拡張のプレビュー | サイド欄)
+  assert.deepEqual(paneWidths(800, 0, 700, { minLeft: 0, minMid: 200, minRight: 160, moved: 'right' }), { left: 0, right: 600 });
 });
 
 test('placeNext: 直前に置いたものの右隣に、同じ行で並べる', () => {

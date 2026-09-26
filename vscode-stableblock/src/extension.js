@@ -363,7 +363,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -415,7 +415,11 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 #wrap{background:#fff;border-radius:6px;display:inline-block;line-height:0}
 #wrap svg{overflow:visible}
-#propPanel{width:200px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
+#propPanel{width:200px;min-width:160px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
+.pane-split{flex:0 0 6px;margin:0 -6px 0 0;position:relative;z-index:5;cursor:col-resize;touch-action:none;outline:none}
+.pane-split::after{content:'';position:absolute;top:0;bottom:0;left:0;width:3px;background:transparent}
+.pane-split:hover::after,.pane-split.dragging::after,.pane-split:focus-visible::after{background:var(--vscode-focusBorder,#6366F1)}
+body.pane-resizing,body.pane-resizing *{cursor:col-resize!important;user-select:none!important}
 .error{background:var(--vscode-inputValidation-errorBackground,#5a1d1d);color:#f88;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-size:11px}
 .error.warn-only{background:#422006;color:#FDE68A}.error .dg-warn{color:#FDE68A}
 .stats{padding:3px 8px;font-size:10px;color:var(--vscode-descriptionForeground,#888);border-top:1px solid var(--vscode-widget-border,#444);flex-shrink:0}
@@ -462,7 +466,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
 </div>
 <div id="err"></div>
-<div class="main"><div id="preview"><div id="wrap"></div></div><div id="propPanel"></div></div>
+<div class="main"><div id="preview"><div id="wrap"></div></div><div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="propPanel" tabindex="0" title="Drag to resize the preview and the side panel (double-click to reset; arrow keys also move it)"></div><div id="propPanel"></div></div>
 <div class="stats"><span id="stats"></span> <button class="sbtn" id="cvstat" onclick="cvShow()" title="Canvas size and whether it grows when items overflow. Click to show the setting in the side panel"></button> <span id="cvgrew" style="color:#FDE68A"></span></div>
 
 <script>
@@ -904,6 +908,26 @@ document.getElementById('preview').addEventListener('mousedown',function(e){
   relFocus();clrSel();
 });
 document.getElementById('preview').addEventListener('scroll',function(){if(inl)finInl(true);});
+
+// Drag the preview | side panel border to resize the side panel (core/layout paneWidths keeps a minimum preview width).
+// Double-click resets. The width survives hiding the webview (vscodeApi state)
+(function(){
+  var main=document.querySelector('.main'),pp=document.getElementById('propPanel'),sp=document.getElementById('split-right');
+  var OPT={minLeft:0,minMid:200,minRight:160,moved:'right'};
+  function apply(w){var r=window.StableBlockLayout.paneWidths(main.clientWidth,0,w,OPT);pp.style.width=r.right+'px';return r.right;}
+  function save(){try{var st=vscodeApi.getState()||{};st.propW=pp.getBoundingClientRect().width;vscodeApi.setState(st);}catch(e){}}
+  try{var st0=vscodeApi.getState();if(st0&&st0.propW>0)apply(st0.propW);}catch(e){}
+  sp.addEventListener('pointerdown',function(e){if(e.button!==0)return;e.preventDefault();sp.focus();
+    try{sp.setPointerCapture(e.pointerId);}catch(_){}
+    var x0=e.clientX,w0=pp.getBoundingClientRect().width;sp.classList.add('dragging');document.body.classList.add('pane-resizing');
+    function mv(ev){apply(w0-(ev.clientX-x0));}
+    function up(){sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up);sp.removeEventListener('pointercancel',up);
+      sp.classList.remove('dragging');document.body.classList.remove('pane-resizing');save();}
+    sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up);sp.addEventListener('pointercancel',up);});
+  sp.addEventListener('dblclick',function(e){e.preventDefault();pp.style.width='';try{var st=vscodeApi.getState()||{};delete st.propW;vscodeApi.setState(st);}catch(_){}});
+  sp.addEventListener('keydown',function(e){var d=e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0;if(!d)return;e.preventDefault();e.stopPropagation();apply(pp.getBoundingClientRect().width-d);save();});
+  window.addEventListener('resize',function(){if(pp.style.width)apply(pp.getBoundingClientRect().width);});
+})();
 
 parsed=parseDoc();go();fitV();
 <\/script></body></html>`;

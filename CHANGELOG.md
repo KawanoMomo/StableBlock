@@ -4,6 +4,8 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-human-20260926-2105-1: DSL 欄・プレビュー・ツール欄の境界をドラッグ(または ←/→ キー)で幅を変えられる。幅はブラウザに覚え、ダブルクリックで元に戻る(VSCode 拡張はプレビューとサイド欄の境界)
+
 ## v2.0 (2026-09-27)
 
 - BLK-porter-20260926-2105: 重複した `@canvas` 行を無変更で保存しても先行行の値が保たれる(最後の行が有効・先行行に警告)
