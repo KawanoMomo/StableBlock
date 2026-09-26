@@ -397,7 +397,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const renderCoreAsGlobals = renderCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockRender = { matchesSearchItem, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };';
+    + '\n;window.StableBlockRender = { matchesSearchItem, searchMatches, nextMatch, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };';
 
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
@@ -456,7 +456,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
   <div class="sep"></div><button class="tb anno-act" data-term="anno" id="anno-btn" onclick="toggleAnno()" title="Show / hide notes (N key). Click a shown note to select it">&#x25C7; Show notes</button>
   <div class="sep"></div><button class="tb" data-term="export-svg" onclick="exportSVG()" title="Save as SVG">SVG</button><button class="tb" data-term="export-png" onclick="exportPNG()" title="Save as PNG">PNG</button><button class="tb" data-term="export-png-transparent" onclick="exportPNGT()" title="Save as PNG with a transparent background">Transparent PNG</button><button class="tb" data-term="copy-png" onclick="copyPNG()" title="Copy the diagram to the clipboard as PNG">Copy PNG</button><button class="tb" data-term="export-xlsx" onclick="exportXlsx()" title="Save as Excel (.xlsx)">Excel</button>
   <div class="sep"></div><button class="tb" data-term="export-mermaid" onclick="exportMmd()" title="Save as Mermaid (.mmd)">Mermaid</button>
-  <div class="sep"></div><input class="pi" data-term="search" id="search-input" placeholder="Search ID / label" title="Filter by ID / label and dim the rest" style="width:110px;font-size:10px" oninput="doSearch(this.value)">
+  <div class="sep"></div><input class="pi" data-term="search" id="search-input" placeholder="Search ID / label" title="Filter by ID / label and dim the rest. Enter selects the matches one by one in reading order (Shift+Enter: back)" style="width:110px;font-size:10px" oninput="doSearch(this.value)" onkeydown="if(event.key===&quot;Enter&quot;&amp;&amp;!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}"><span id="search-count" style="font-size:10px;color:#888;white-space:nowrap"></span>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
 </div>
 <div id="err"></div>
@@ -552,7 +552,7 @@ function toggleAnno(){
 function render(){
   if(!parsed)return;
   // 画面と書き出しは HTML 版と同じ core/render の renderSvg で描く(画面だけの状態は view で渡す)
-  document.getElementById('wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom:zm,sel:sel,highlight:highlight,search:searchQ,showAnnotations:showAnno,snapGuides:snapGuides,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);
+  document.getElementById('wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom:zm,sel:sel,highlight:highlight,search:searchQ,showAnnotations:showAnno,snapGuides:snapGuides,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);searchCount();
   setupInt();
 }
 
@@ -787,6 +787,11 @@ function grpSel(){var its=sel.map(function(si){return getIt(si)}).filter(functio
 // Search / Filter
 function matchSearch(item){if(!searchQ)return true;var q=searchQ.toLowerCase();if(item.id&&item.id.toLowerCase().indexOf(q)>=0)return true;if(item.label&&item.label.toLowerCase().indexOf(q)>=0)return true;if(item.from&&item.from.toLowerCase().indexOf(q)>=0)return true;if(item.to&&item.to.toLowerCase().indexOf(q)>=0)return true;return false;}
 function doSearch(q){searchQ=q.trim();render();}
+// 検索の当たり(HTML 版と同じ core/render の searchMatches / nextMatch)。件数を検索欄の横に出し、Enter / Shift+Enter で読み順に 1 つずつ選ぶ
+function searchNow(){return parsed?window.StableBlockRender.searchMatches(parsed,searchQ,{showAnnotations:showAnno}):[];}
+function searchCount(){var el=document.getElementById('search-count');if(el)el.textContent=searchQ?' '+searchNow().length+(searchNow().length===1?' match':' matches'):'';}
+function searchStep(dir){var t=window.StableBlockRender.nextMatch(searchNow(),sel.length===1?sel[0]:null,dir);if(!t)return;sel=[t];render();props();
+  var g=[].slice.call(document.querySelectorAll('#wrap g[data-id]')).filter(function(x){return x.getAttribute('data-id')===t.id&&x.getAttribute('data-type')===t.type})[0];if(g&&g.scrollIntoView)g.scrollIntoView({block:'nearest',inline:'nearest'});}
 
 // Mermaid export
 function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed),dr=incDrops().concat(r.dropped);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(dr.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:dr});}

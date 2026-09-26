@@ -27,7 +27,7 @@ const SB_TERMS_TABLE = {
   'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
   'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
   'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },
-  'search': { ja: ['🔍 ID・ラベルで検索', 'ID・ラベルで絞り込み、外れた要素を薄くする'], en: ['Search ID / label', 'Filter by ID / label and dim the rest'] },
+  'search': { ja: ['🔍 ID・ラベルで検索', 'ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)'], en: ['Search ID / label', 'Filter by ID / label and dim the rest. Enter selects the matches one by one in reading order (Shift+Enter: back)'] },
   // プロパティ欄
   'add-block': { ja: ['+ ブロック追加', '直前に足したブロックの右隣に、同じ大きさ・色で追加する'], en: ['+ Block', 'Add a block right of the last one added (same size and color)'] },
   'add-group': { ja: ['+ グループ追加', 'グループを空き位置に追加する'], en: ['+ Group', 'Add a group at a free spot'] },

@@ -723,3 +723,46 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await page.locator('#canvas-grow').check();
   await expect.poll(canvasLine).toBe('@canvas width=400 height=300 grid=20');
 });
+
+// ─── __new_ のまま残った ID を検索で順に直す(BLK-junior-20260926-0609-wish) ───
+const NEW_IDS = path.join(FIXTURES, 'junior-new-ids.sb');
+
+test('junior-02: 検索欄に __new_ と打つと件数が出て、Enter で読み順に 1 つずつ選ばれ、ID 欄で直すと件数が減り 0 件で終わる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, NEW_IDS);
+  const svg = page.locator('#svg-wrap svg');
+  const search = page.locator('#search-input');
+  const count = page.locator('#search-count');
+  const id = page.locator('#prop-id');
+
+  await search.fill('__new_');
+  await expect(count).toHaveText('3 件');
+  // note も検索の対象: 当たらない note は block / group と同じく薄くなる
+  await expect(svg.locator('g[data-type="note"][data-id="keep"]')).toHaveAttribute('opacity', '0.2');
+  await expect(svg.locator('g[data-type="note"][data-id="__new_3"]')).not.toHaveAttribute('opacity', /.+/);
+  await expect(svg.locator('g[data-type="block"][data-id="app"]')).toHaveAttribute('opacity', '0.2');
+
+  // Enter で読み順(上から、左から)に選ばれ、Shift+Enter で戻る
+  await search.press('Enter');
+  await expect(id).toHaveValue('__new_1');
+  await search.press('Enter');
+  await expect(id).toHaveValue('__new_2');
+  await search.press('Shift+Enter');
+  await expect(id).toHaveValue('__new_1');
+
+  // 業務の形: Enter → ID 欄で直して Enter → 検索欄で Enter → … 0 件で終わる
+  const names = ['Spi', 'Spi_Handler', 'JobNote'];
+  for (let i = 0; i < names.length; i++) {
+    await search.click();
+    await search.press('Enter');
+    await expect(id).toHaveValue(/^__new_/);
+    await id.fill(names[i]);
+    await id.press('Enter');
+    await expect(count).toHaveText(`${2 - i} 件`);
+  }
+  const text = await getEditorText(page);
+  expect(text.split('\n').filter(l => !l.startsWith('#')).join('\n')).not.toContain('__new_');
+  expect(text).toContain('app -> ');
+  await search.press('Enter');   // 当たりが無ければ何もしない
+  await expect(count).toHaveText('0 件');
+});
