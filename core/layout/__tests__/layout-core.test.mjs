@@ -347,6 +347,20 @@ test('setCanvasGrowInDsl / canvasGrows: grow=off を @canvas 行に書く・消�
   assert.equal(canvasGrows({ width: 400, grow: 'off' }), false);
 });
 
+// @canvas が 2 行ある図(BLK-porter-20260926-2105): 効くのは最後の行なので GUI の変更も最後の行に書き、前の行は 1 バイトも変えない
+test('setCanvas*InDsl: @canvas が 2 行ある図は最後の行だけを書き換える', () => {
+  const L1 = '@canvas width=480 height=240 grid=20 route=ortho grow=off\n';
+  const src = L1 + '@canvas width=800 height=600 grid=40\nblock a "A" at 2,1 size 6x3\n';
+  assert.equal(setCanvasInDsl(src, 1000, 700), L1 + '@canvas width=1000 height=700 grid=40\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(setCanvasRouteInDsl(src, 'straight'), L1 + '@canvas width=800 height=600 grid=40 route=straight\nblock a "A" at 2,1 size 6x3\n');
+  // 曲線に戻す・自動拡張に戻す: 前の行の route= / grow= が効かないよう、最後の行に既定の値を書く
+  assert.equal(setCanvasRouteInDsl(src, 'curved'), L1 + '@canvas width=800 height=600 grid=40 route=curved\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(setCanvasGrowInDsl(src, true), L1 + '@canvas width=800 height=600 grid=40 grow=on\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(canvasGrows({ grow: 'on' }), true);
+  // 前の行に無い属性は今までどおり消すだけ
+  assert.equal(setCanvasRouteInDsl('@canvas width=480\n@canvas width=800 route=ortho\n', 'curved'), '@canvas width=480\n@canvas width=800\n');
+});
+
 test('growCanvasInDsl: grow=off の図は要素がはみ出しても広げない', () => {
   const src = '@canvas width=400 height=300 grid=20 grow=off\nblock a "A" at 18,1 size 4x2\n';
   assert.equal(growCanvasInDsl(src, { ...CV, grow: 'off' }, [{ x: 18, y: 1, w: 4, h: 2 }]), src);

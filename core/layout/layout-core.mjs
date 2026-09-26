@@ -25,12 +25,24 @@ export function grownCanvasSize(canvas, items, margin = 1) {
   return { width, height };
 }
 
+// 書き換える `@canvas` 行(0 始まり。無ければ -1)。2 行以上あれば効くのは最後の行なので最後の行(前の行は読んだまま残す)
+function canvasLineIndex(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*@canvas(\s|$)/.test(lines[i])) return i;
+  return -1;
+}
+
+// 最後の行から key= を消しても、前の `@canvas` 行に key= が残っていればそちらが効く。そのときは最後の行に既定の値を書く
+function earlierCanvasHas(lines, idx, key) {
+  const re = new RegExp('\\s' + key + '=\\S+');
+  return lines.slice(0, idx).some(l => /^\s*@canvas(\s|$)/.test(l) && re.test(l));
+}
+
 // 本文の `@canvas` 行の width / height だけを書き換える(ほかの属性・空白・改行コードは触らない)。
 // `@canvas` 行が無ければ、先頭のコメント行の直後に 1 行足す。変える必要が無ければ同じ文字列を返す。
 export function setCanvasInDsl(dsl, width, height) {
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     let at = 0;
     while (at < lines.length && /^\s*#/.test(lines[at])) at++;
@@ -58,7 +70,7 @@ export function setCanvasRouteInDsl(dsl, route) {
   const r = route === 'straight' || route === 'ortho' ? route : null;
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     if (!r) return dsl;
     let at = 0;
@@ -70,8 +82,10 @@ export function setCanvasRouteInDsl(dsl, route) {
   const cr = line.endsWith('\r') ? '\r' : '';
   if (cr) line = line.slice(0, -1);
   const re = /(\s)route=\S+/;
-  if (!r) line = line.replace(/\s+route=\S+/, '');
-  else if (re.test(line)) line = line.replace(re, `$1route=${r}`);
+  if (!r) {
+    line = line.replace(/\s+route=\S+/, '');
+    if (earlierCanvasHas(lines, idx, 'route')) line = line.replace(/\s*$/, '') + ' route=curved';
+  } else if (re.test(line)) line = line.replace(re, `$1route=${r}`);
   else line = line.replace(/\s*$/, '') + ` route=${r}`;
   lines[idx] = line + cr;
   const out = lines.join('\n');
@@ -83,7 +97,7 @@ export function setCanvasRouteInDsl(dsl, route) {
 export function setCanvasGrowInDsl(dsl, on) {
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     if (on) return dsl;
     let at = 0;
@@ -94,8 +108,10 @@ export function setCanvasGrowInDsl(dsl, on) {
   let line = lines[idx];
   const cr = line.endsWith('\r') ? '\r' : '';
   if (cr) line = line.slice(0, -1);
-  if (on) line = line.replace(/\s+grow=\S+/, '');
-  else if (/\sgrow=\S+/.test(line)) line = line.replace(/(\s)grow=\S+/, '$1grow=off');
+  if (on) {
+    line = line.replace(/\s+grow=\S+/, '');
+    if (earlierCanvasHas(lines, idx, 'grow')) line = line.replace(/\s*$/, '') + ' grow=on';
+  } else if (/\sgrow=\S+/.test(line)) line = line.replace(/(\s)grow=\S+/, '$1grow=off');
   else line = line.replace(/\s*$/, '') + ' grow=off';
   lines[idx] = line + cr;
   const out = lines.join('\n');

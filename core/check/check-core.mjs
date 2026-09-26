@@ -139,6 +139,11 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     const unread = raw !== null ? raw.substring(0, 40) === e.msg : !/^ID "|^@include /.test(e.msg);
     out.push({ line: e.line, level: 'error', msg: unread ? explainLine(raw !== null ? raw : e.msg) : e.msg });
   }
+  // @canvas が 2 行以上: 効くのは最後の行(属性ごとに後の行が上書き)。前の行は読んだまま残すが、効いていないことを前の行に知らせる
+  const canvasAt = (lines || []).map((l, i) => /^@canvas\b/.test(String(l).trim()) ? i + 1 : 0).filter(Boolean);
+  for (const n of canvasAt.slice(0, -1)) {
+    out.push({ line: n, level: 'warn', msg: `@canvas が ${canvasAt.length} 行ある。${ref(canvasAt[canvasAt.length - 1])} の値が効く` });
+  }
   const has = id => parsed.blockMap[id] || parsed.noteMap[id];
   const seen = {};
   for (const c of parsed.connections || []) {
