@@ -67,6 +67,10 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #error-bar.has-error { background:#7F1D1D; }
 #error-bar .diag-error { color:#FCA5A5; }
 #error-bar .diag-warn { color:#FDE68A; }
+#error-bar .diag-inc { color:#CBD5E1; border-bottom:1px solid rgba(255,255,255,.15); margin-bottom:2px; padding-bottom:2px; }
+#error-bar button.diag-other { display:block; width:100%; text-align:left; background:none; border:0; padding:0; margin:0; font:inherit; line-height:inherit; cursor:pointer; }
+#error-bar button.diag-other:hover { text-decoration:underline; }
+#line-nums .ln-hit { color:#FDE68A; background:rgba(253,230,138,.15); }
 #editor-wrap { flex:1; display:flex; overflow:hidden; background:var(--bg); }
 #line-nums { width:40px; padding:12px 4px 12px 0; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; color:var(--dim); user-select:none; overflow:hidden; flex-shrink:0; }
 #editor { flex:1; background:transparent; color:var(--text); border:none; outline:none; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; padding:12px 12px 12px 4px; resize:none; white-space:pre; overflow-x:auto; tab-size:2; }
@@ -890,7 +894,7 @@ function labelChanged(){if(commitLabelEdit()){renderProps();renderStatus();rende
 // Editor / Refresh
 // ═══════════════════════════════════════════════
 function syncEditor(){suppressSync=true;document.getElementById('editor').value=dsl;suppressSync=false;renderLineNums();}
-function renderLineNums(){const el=document.getElementById('line-nums');el.innerHTML=dsl.split("\n").map((_,i)=>`<div>${i+1}</div>`).join('');}
+function renderLineNums(){const el=document.getElementById('line-nums'),h=hitLine&&hitLine.file===dslFile?hitLine.line:0;el.innerHTML=dsl.split("\n").map((_,i)=>`<div${i+1===h?' class="ln-hit"':''}>${i+1}</div>`).join('');}
 // GUI の操作で要素がキャンバスからはみ出したら @canvas 行を広げる(本文の差分は @canvas の 1 行)。@canvas に grow=off があれば広げない(core/layout)
 // grewFrom: 自動で広げる前の寸法。ステータスバーの「元の寸法に戻して固定」の戻し先。元に戻す・読込・新規・寸法の手入力で消える
 let grewFrom=null;
@@ -900,8 +904,19 @@ function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseD
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
 function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
-function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();if(lastDiag.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));el.innerHTML=lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length));}
+// 共通部を動かした影響(core/check の includeImpact。CLI の npm run check と同じ診断): 表示中の図を @include している一緒に読み込んだ図にも同じ診断を当て、
+// 読み込んだ時の本文から増えたエラー・警告を、エラー欄の下に「ほかの図: {図名} L{n}: ...」で並べる(押すとその図のその行へ)。見出しに取り込んでいる図の名前
+let impactBase={},impact={includers:[],added:[]},hitLine=null;const impactCache=new Map();
+function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
+function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
+function openImpact(i){const d=impact.added[i];if(!d)return;openLoaded(d.path);const l=dsl.split('\n')[d.line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
+  const find=id=>[...parsed.blocks.map(x=>['block',x]),...parsed.groups.map(x=>['group',x]),...parsed.notes.map(x=>['note',x])].find(([,x])=>x.id===id),s=(m?[m[2]]:c?[c[1],c[3]]:[]).map(find).filter(Boolean).map(([type,x])=>({type,id:x.id}));
+  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:d.path,line:d.line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(d.line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();measureImpact();const inc=impact.includers,oth=impact.added,edited=inc.length&&impactBase[dslFile]!==undefined&&impactBase[dslFile]!==dsl;
+  if(lastDiag.length||inc.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));
+    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>esc(baseName(k))).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('')
+      +oth.map((d,i)=>`<button type="button" class="diag diag-${d.level} diag-other" data-path="${esc(d.path)}" data-line="${d.line}" title="その図を開いてその行へ" onclick="openImpact(${i})">ほかの図: ${esc(baseName(d.path))} L${d.line}: ${esc(d.msg)}</button>`).join('');}else{el.style.display='none';}}
+function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
@@ -933,7 +948,7 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
   pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
   const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
   let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;labelNote=null;includeNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
+  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};

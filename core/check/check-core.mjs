@@ -301,6 +301,57 @@ export function expandLoaded(files) {
   return Object.keys(files).map(path => ({ path, exp: expandIncludes(files[path], loadedReader(files, path), path) }));
 }
 
+// ─── 共通部を動かした影響(エラー欄の「ほかの図」) ───
+// 表示中の図を @include している、一緒に読み込んだ図にも同じ診断(checkIncluded。CLI の `npm run check` と同じ)を当て、
+// 表示中の図の編集で増えたものだけを出す。GUI を離れずに「共通部を動かすとどの図のどの行が横切り・重なりになるか」が分かる
+
+// 一緒に読み込んだ図 files のうち、図 self を(include 先をたどって)取り込んでいる図のキー(files の順)
+export function includersOf(files, self) {
+  if (!Object.prototype.hasOwnProperty.call(files, self)) return [];
+  return Object.keys(files).filter(k => k !== self && includedKeys(files, k).has(self));
+}
+
+// after のうち before に無い診断(level・行・文が同じものを 1 件ずつ打ち消す。同じ文が 2 件から 3 件になれば 1 件)
+export function addedDiagnostics(before, after) {
+  const left = new Map();
+  const key = d => `${d.level}\u0000${d.line}\u0000${d.msg}`;
+  for (const d of before || []) left.set(key(d), (left.get(key(d)) || 0) + 1);
+  return (after || []).filter(d => {
+    const n = left.get(key(d)) || 0;
+    if (n) { left.set(key(d), n - 1); return false; }
+    return true;
+  });
+}
+
+// 図 from の診断の file(expandIncludes が解決したパス)が、一緒に読み込んだ図のどれか。loadedReader と同じ探し方
+function loadedFileKey(files, from, p) {
+  if (p === from || Object.prototype.hasOwnProperty.call(files, p)) return p;
+  const b = String(p).split('/').pop();
+  const hit = Object.keys(files).filter(k => k !== from && k.split('/').pop() === b);
+  return hit.length === 1 ? hit[0] : null;
+}
+
+// 図 self の本文を base(読み込んだ時)から今の files[self] に変えた影響。check(files, key) は図 key の診断(checkIncluded の返り値。
+// parse と線の経路は呼び出し側が渡す)。self の中だけで起きた診断(共通部の block 同士の重なり等)は self 自身の欄に出るので数えない。
+// cache(Map、省略可)に編集前の診断を持つ(本文を打つたびに編集前を測り直さない)。
+// 返り値: { includers: [key], added: [{ path, line, level, msg }] }(includers の順、1 枚の中は check の順。line は path の本文の行)
+export function includeImpact(files, self, base, check, cache) {
+  const includers = includersOf(files, self);
+  const added = [];
+  if (base === undefined || base === null || base === files[self]) return { includers, added };
+  const was = { ...files, [self]: base };
+  for (const k of includers) {
+    const ck = [k, files[k], base, ...[...includedKeys(was, k)].filter(t => t !== self).map(t => `${t}\u0000${was[t]}`)].join('\u0001');
+    let before = cache && cache.get(ck);
+    if (!before) { before = check(was, k); if (cache) cache.set(ck, before); }
+    for (const d of addedDiagnostics(before, check(files, k))) {
+      if (loadedFileKey(files, k, d.file === undefined ? k : d.file) === self) continue;
+      added.push({ path: k, line: d.line, level: d.level, msg: d.msg });
+    }
+  }
+  return { includers, added };
+}
+
 // ─── 作図 UI から @include を足す・外す(ツール欄の「共通部(@include)」) ───
 
 const INCLUDE_RE = /^\s*@include\s+"([^"]+)"/;
