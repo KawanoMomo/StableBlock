@@ -26,6 +26,13 @@ const SB_TERMS_TABLE = {
   'copy-png': { ja: ['PNGをコピー', 'PNG 画像をクリップボードにコピーする'], en: ['Copy PNG', 'Copy the diagram to the clipboard as PNG'] },
   'export-xlsx': { ja: ['Excel', 'Excel(.xlsx)で書き出す'], en: ['Excel', 'Save as Excel (.xlsx)'] },
   'export-mermaid': { ja: ['Mermaid', 'Mermaid(.mmd)で書き出す'], en: ['Mermaid', 'Save as Mermaid (.mmd)'] },
+  // 一緒に読み込んだ図が 2 枚以上のときだけ書き出しの並びの後ろに出る「一括 ▾」と、その選択肢(形式ごとに 1 つの zip)
+  'export-all': { ja: ['一括 ▾', '一緒に読み込んだ全部の図を書き出す。形式を選ぶと 1 枚ずつ include を解決して 1 つの zip で保存する'] },
+  'export-svg-all': { ja: ['SVG', '読み込んだ全部の図を SVG で書き出し、1 つの zip で保存する'] },
+  'export-png-all': { ja: ['PNG', '読み込んだ全部の図を PNG で書き出し、1 つの zip で保存する'] },
+  'export-png-transparent-all': { ja: ['透過PNG', '読み込んだ全部の図を背景を透過した PNG で書き出し、1 つの zip で保存する'] },
+  'export-xlsx-all': { ja: ['Excel', '読み込んだ全部の図を Excel(.xlsx)で書き出し、1 つの zip で保存する'] },
+  'export-mermaid-all': { ja: ['Mermaid', '読み込んだ全部の図を Mermaid(.mmd)で書き出し、1 つの zip で保存する'] },
   'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
   'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
   'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },
@@ -96,10 +103,15 @@ function lineModeText(mode, lang) {
   return l === 'ja' ? `${icon} 線の形: ${lineShapeName(mode, l)}` : `${icon} Line: ${lineShapeName(mode, l)}`;
 }
 
+// 「一括 ▾」の選択肢の見出し。何枚を書き出すかを出す
+function exportAllText(n, lang) {
+  return (lang || 'ja') === 'ja' ? `読み込んだ全部の図(${n} 枚)` : `All loaded diagrams (${n})`;
+}
+
 // 選択中の要素の種類の表示名
 function typeName(type, lang) {
   const e = SB_TYPE_NAMES[type];
   return e ? e[lang || 'ja'] : String(type);
 }
 
-;window.StableBlockTerms = { termText, termTitle, termKeys, styleName, lineShapeName, lineModeText, typeName };
+;window.StableBlockTerms = { termText, termTitle, termKeys, styleName, lineShapeName, lineModeText, exportAllText, typeName };

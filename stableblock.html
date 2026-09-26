@@ -45,6 +45,11 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .tb { padding:4px 10px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; font-family:inherit; }
 .tb:hover { background:#334155; }
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
+.tb-more[hidden] { display:none; }
+#export-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+#export-menu[hidden] { display:none; }
+#export-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
+#export-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
@@ -170,6 +175,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-accent" data-term="copy-png" onclick="copyPNG()" title="PNG 画像をクリップボードにコピーする">PNGをコピー</button>
     <button class="tb tb-accent" data-term="export-xlsx" onclick="exportXlsx()" title="Excel(.xlsx)で書き出す">Excel</button>
     <button class="tb tb-accent" data-term="export-mermaid" onclick="exportMermaid()" title="Mermaid(.mmd)で書き出す">Mermaid</button>
+    <button class="tb tb-accent tb-more" data-term="export-all" onclick="openExportAll(this)" title="一緒に読み込んだ全部の図を書き出す。形式を選ぶと 1 枚ずつ include を解決して 1 つの zip で保存する" hidden>一括 ▾</button>
+    <div id="export-menu" role="menu" hidden><div id="export-menu-head" class="em-head">読み込んだ全部の図</div><button class="tb tb-accent" role="menuitem" data-term="export-svg-all" data-fmt="svg" onclick="exportAllFromMenu(this)" title="読み込んだ全部の図を SVG で書き出し、1 つの zip で保存する">SVG</button><button class="tb tb-accent" role="menuitem" data-term="export-png-all" data-fmt="png" onclick="exportAllFromMenu(this)" title="読み込んだ全部の図を PNG で書き出し、1 つの zip で保存する">PNG</button><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent-all" data-fmt="png-transparent" onclick="exportAllFromMenu(this)" title="読み込んだ全部の図を背景を透過した PNG で書き出し、1 つの zip で保存する">透過PNG</button><button class="tb tb-accent" role="menuitem" data-term="export-xlsx-all" data-fmt="xlsx" onclick="exportAllFromMenu(this)" title="読み込んだ全部の図を Excel(.xlsx)で書き出し、1 つの zip で保存する">Excel</button><button class="tb tb-accent" role="menuitem" data-term="export-mermaid-all" data-fmt="mermaid" onclick="exportAllFromMenu(this)" title="読み込んだ全部の図を Mermaid(.mmd)で書き出し、1 つの zip で保存する">Mermaid</button></div>
     <div class="sep"></div>
     <button class="tb tb-green" data-term="new-sb" onclick="newDiagram()" title="空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる">新規</button>
     <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する(読み込んだ図は同じファイル名で)">.sb 保存</button>
@@ -357,7 +364,7 @@ function searchStep(dir){const t=window.StableBlockRender.nextMatch(searchMatche
 // (選んだファイルにフォルダの情報が無ければ同じ名前のファイル)。file:// でも http でも同じ。読めない include はその行のエラーと書き出しの知らせに出す。
 // 保存は本文(dsl)をそのまま書くので @include 行は残る
 let dslFile='',expanded=null;const includeFiles={};
-function readInclude(p){if(Object.prototype.hasOwnProperty.call(includeFiles,p))return includeFiles[p];const b=p.split('/').pop(),hit=Object.keys(includeFiles).filter(k=>k!==dslFile&&k.split('/').pop()===b);return hit.length===1?includeFiles[hit[0]]:null;}
+function readInclude(p){return window.StableBlockCheck.loadedReader(includeFiles,dslFile)(p);}
 // 一緒に読み込んだ図(「.sb 読込」で複数選んだもの)。表示中の図の本文は dsl が正で、includeFiles[dslFile] に写してから使う。loadedTexts は読込・保存した時の本文(違えば未保存)。
 // ツールバーの検索は表示中でない図の当たりも図と行で並べ(クリックでその図を開く)、プロパティ欄の ID の改名はほかの図が同じ ID を使っていれば
 // 全部の図に当てる(core/label の planRename。CLI の --rename・VSCode の F2 と同じ)。「.sb 保存」は表示中の図と、変わったほかの図を全部書き出す
@@ -856,7 +863,7 @@ function renderLineNums(){const el=document.getElementById('line-nums');el.inner
 let grewFrom=null;
 function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);if(nd!==dsl&&!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
-function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();}
+function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();renderExportAll();}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
 function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
@@ -879,9 +886,9 @@ function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeU
 const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
-function exportSvgText(){return parsed?window.StableBlockRender.exportSvg(parsed,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
+function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
 function exportSVG(){const svg=exportSvgText();if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
-function pngCanvas(transparent){const data=exportSvgText();if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(parsed.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
+function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(p.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
 function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram_transparent.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
@@ -895,6 +902,36 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
   let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
   dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;labelNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
+// ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
+const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};
+function renderExportAll(){const n=Object.keys(includeFiles).length;document.querySelectorAll('.tb-more').forEach(b=>{b.hidden=n<2;});if(n<2)closeExportMenu();}
+function closeExportMenu(){const m=document.getElementById('export-menu');if(m)m.hidden=true;}
+function openExportAll(btn){const m=document.getElementById('export-menu');if(!m.hidden){m.hidden=true;return;}
+  syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);
+  const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function exportAllFromMenu(item){closeExportMenu();exportAll(item.dataset.fmt);}
+async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
+  if(!window.JSZip){alert('zip 用モジュールがまだ読み込まれていません');return;}
+  if(fmt==='xlsx'&&(!window.StableBlockExcel||!window.StableBlockExcelReady)){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}
+  syncLoaded();const C=window.StableBlockCheck,zip=new window.JSZip(),per=[];
+  try{
+    for(const d of C.expandLoaded(includeFiles)){
+      const p=parseDSL(d.exp.text),name=C.bulkFileName(d.path,f.ext),dropped=C.includeDrops(d.exp);
+      if(fmt==='svg')zip.file(name,exportSvgText(p));
+      else if(fmt==='png'||fmt==='png-transparent'){const c=await pngCanvas(fmt==='png-transparent',p);zip.file(name,await new Promise(r=>c.toBlob(r,'image/png')));}
+      else if(fmt==='xlsx'){zip.file(name,await window.StableBlockExcel.renderXlsx(p,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}));dropped.push(...window.StableBlockExcel.listXlsxDrops(p));}
+      else{const r=window.StableBlockMermaid.toMermaid(p);zip.file(name,r.text);dropped.push(...r.dropped);}
+      per.push({path:d.path,name,dropped});
+    }
+    const zipName=`diagrams-${fmt}.zip`,url=URL.createObjectURL(await zip.generateAsync({type:'blob'}));
+    download(zipName,url);setTimeout(()=>URL.revokeObjectURL(url),1000);showBulkReport(f.label,zipName,per);
+  }catch(e){alert(`${f.label} の一括書き出し失敗: `+e.message);console.error(e);}}
+function showBulkReport(label,zipName,per){const el=document.getElementById('export-report'),drops=window.StableBlockCheck.bulkDrops(per);
+  el.innerHTML=`<b>${esc(label)}: ${per.length} 枚を ${esc(zipName)} に書き出した</b><div>${per.map(x=>esc(x.name)).join('、')}</div>`
+    +(drops.length?`<b>${esc(label)} に書き出せなかったもの(${drops.length} 件)</b><ul>${drops.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`:'<div class="hint">クリックで閉じる</div>');
+  el.hidden=false;}
+document.addEventListener('mousedown',e=>{const m=document.getElementById('export-menu');if(m&&!m.hidden&&!e.target.closest('#export-menu,.tb-more'))m.hidden=true;});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
 function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
 function showExportReport(fmt,dropped){const el=document.getElementById('export-report');if(!dropped||!dropped.length){el.hidden=true;el.innerHTML='';return;}el.innerHTML=`<b>${esc(fmt)} に書き出せなかったもの(${dropped.length} 件)</b><ul>${dropped.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`;el.hidden=false;}

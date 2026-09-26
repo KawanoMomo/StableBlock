@@ -285,4 +285,32 @@ function includeDrops(exp) {
   return ((exp && exp.missing) || []).map(m => `include 先「${m.path}」(L${m.at})を読めず、その中の要素は入っていない`);
 }
 
-;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includeDrops };
+// 一緒に読み込んだ図(files: { パス: 本文 })の中から、図 self の @include 先を探す read(path)。
+// パスが一致する図、無ければ self 以外で名前(最後の / の後)が 1 つだけ一致する図。どちらも無ければ null
+function loadedReader(files, self) {
+  const keys = Object.keys(files);
+  return p => {
+    if (Object.prototype.hasOwnProperty.call(files, p)) return files[p];
+    const b = String(p).split('/').pop();
+    const hit = keys.filter(k => k !== self && k.split('/').pop() === b);
+    return hit.length === 1 ? files[hit[0]] : null;
+  };
+}
+
+// 一括書き出し: 一緒に読み込んだ図を 1 枚ずつ、表示中の図と同じ探し方で @include を解決する(files の順)。
+// include されるだけの図(共通部)も 1 枚として返す。返り値: [{ path, exp }](exp は expandIncludes の返り値)
+function expandLoaded(files) {
+  return Object.keys(files).map(path => ({ path, exp: expandIncludes(files[path], loadedReader(files, path), path) }));
+}
+
+// 一括書き出しの zip の中のファイル名: 読み込んだ図のパスから .sb / .stableblock / .txt を除いて拡張子 ext を付ける
+function bulkFileName(path, ext) {
+  return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + '.' + ext;
+}
+
+// 一括書き出しの知らせ: 図ごとの知らせ([{ path, dropped }])を、どの図の知らせかを頭に付けて 1 つに並べる
+function bulkDrops(list) {
+  return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
+}
+
+;window.StableBlockCheck = { explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includeDrops, loadedReader, expandLoaded, bulkFileName, bulkDrops };

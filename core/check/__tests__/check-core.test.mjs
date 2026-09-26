@@ -312,3 +312,37 @@ test('includedItemNote: include 先の要素には定義の場所と直す先を
   assert.match(includedItemNote(exp, p.blockMap.rte.line, base, 'en'), /^Defined in the included file common\.sb \(line 1; @include on line 2\)/);
   assert.equal(includedItemNote(exp, p.blockMap.swc.line, base), '');
 });
+
+// 一括書き出し(BLK-primary-20260926-1205): 一緒に読み込んだ図を 1 枚ずつ、表示中の図と同じ探し方で include を解決する
+import { loadedReader, expandLoaded, bulkFileName, bulkDrops } from '../check-core.mjs';
+
+test('loadedReader: パスが一致する図、無ければ自分以外で名前が 1 つだけ一致する図を include 先にする', () => {
+  const files = { 'spi_swc.sb': 'S', 'common.sb': 'C', 'a/x.sb': 'AX', 'b/x.sb': 'BX' };
+  assert.equal(loadedReader(files, 'spi_swc.sb')('shared/common.sb'), 'C');   // 読込で選んだ図は名前だけで持つ
+  assert.equal(loadedReader(files, 'spi_swc.sb')('a/x.sb'), 'AX');
+  assert.equal(loadedReader(files, 'spi_swc.sb')('x.sb'), null);              // 同じ名前が 2 枚あれば決めない
+  assert.equal(loadedReader(files, 'common.sb')('shared/common.sb'), null);  // 自分自身は名前では当てない
+});
+
+test('expandLoaded: 読み込んだ全部の図を読込の順に返し、include されるだけの共通部も 1 枚として出す', () => {
+  const files = {
+    'spi_swc.sb': '@canvas width=400 height=200\n@include "shared/common.sb"\nblock s "S" at 1,1 size 4x2\ns -> rte',
+    'can_swc.sb': '@include "shared/common.sb"\nblock c "C" at 1,1 size 4x2',
+    'common.sb': 'block rte "RTE" at 8,1 size 4x2',
+  };
+  const docs = expandLoaded(files);
+  assert.deepEqual(docs.map(d => d.path), ['spi_swc.sb', 'can_swc.sb', 'common.sb']);
+  const p = parseDSL(docs[0].exp.text);
+  assert.deepEqual(p.errors, []);
+  assert.deepEqual(p.blocks.map(b => b.id), ['rte', 's']);
+  assert.deepEqual(docs.map(d => d.exp.missing.length), [0, 0, 0]);
+  assert.deepEqual(includeDrops(expandLoaded({ 'a.sb': '@include "gone.sb"' })[0].exp), ['include 先「gone.sb」(L1)を読めず、その中の要素は入っていない']);
+});
+
+test('bulkFileName / bulkDrops: zip の中の名前は図のパスの拡張子を差し替え、知らせは図の名前を頭に付けて並べる', () => {
+  assert.equal(bulkFileName('spi_swc.sb', 'svg'), 'spi_swc.svg');
+  assert.equal(bulkFileName('shared/common.sb', 'xlsx'), 'shared/common.xlsx');
+  assert.equal(bulkFileName('notes.txt', 'mmd'), 'notes.mmd');
+  assert.deepEqual(bulkDrops([{ path: 'a.sb', dropped: ['x', 'y'] }, { path: 'b.sb', dropped: [] }, { path: 'c.sb', dropped: ['z'] }]),
+    ['a.sb: x', 'a.sb: y', 'c.sb: z']);
+});

@@ -129,3 +129,10 @@ test('README は実在するファイル・フォルダだけを案内する', (
     assert.ok(existsSync(join(ROOT, rel)), 'README のファイル構成に実在しないもの: ' + rel);
   }
 });
+
+// 書き出しの ▾ の選択肢は何枚を書き出すかを出す(BLK-primary-20260926-1205)
+import { exportAllText } from '../terms-core.mjs';
+test('exportAllText: 「読み込んだ全部の図(N 枚)」', () => {
+  assert.equal(exportAllText(13), '読み込んだ全部の図(13 枚)');
+  assert.equal(exportAllText(2, 'en'), 'All loaded diagrams (2)');
+});

@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-primary-20260926-1205: 「.sb 読込」で一緒に読み込んだ図が 2 枚以上あると、書き出しの並びの後ろの「一括 ▾」から SVG / PNG / 透過PNG / Excel / Mermaid を選び、全部の図を include を解決して 1 つの zip に書き出せる
 - BLK-porter-20260926-1205-1: Excel 書き出しの接続線が画面と同じ曲線・直角で出て、Excel で図形を動かすと正しい図形に付いてくる(接着先のずれを直した)。lpos= は接続ごとに一覧に出る
 - BLK-porter-20260926-1205-2: note の style= が効く(書いた note は block と同じく実線・破線・太線、書いていない note は今まで通り破線の注釈枠)。プロパティ欄のスタイルも note で使える。Excel / Mermaid も同じ規則
 - BLK-junior-20260926-1105: 共有部を @include した図でも画布は本文の @canvas のまま(広げた画布が共有部の大きさに戻らず、PNG / SVG が切れない)。共有部の要素を選ぶと定義の場所が出て「○○.sb を開く」で直せる
