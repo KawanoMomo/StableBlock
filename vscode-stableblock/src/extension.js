@@ -463,7 +463,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 </div>
 <div id="err"></div>
 <div class="main"><div id="preview"><div id="wrap"></div></div><div id="propPanel"></div></div>
-<div class="stats"><span id="stats"></span> <span id="cvgrew" style="color:#FDE68A"></span></div>
+<div class="stats"><span id="stats"></span> <button class="sbtn" id="cvstat" onclick="cvShow()" title="Canvas size and whether it grows when items overflow. Click to show the setting in the side panel"></button> <span id="cvgrew" style="color:#FDE68A"></span></div>
 
 <script>
 var vscodeApi = acquireVsCodeApi();
@@ -497,6 +497,9 @@ function showGrew(){var el=document.getElementById('cvgrew'),c=parsed&&parsed.ca
 function cvFix(){if(!grewFrom)return;var L=window.StableBlockLayout,f=grewFrom;pushH();grewFrom=null;dsl=L.setCanvasGrowInDsl(L.setCanvasInDsl(dsl,f.width,f.height),false);go();notify();}
 // 「はみ出したら自動で広げる」の切替。外すと @canvas 行に grow=off を書く
 function cvGrow(on){var nd=window.StableBlockLayout.setCanvasGrowInDsl(dsl,on);if(nd===dsl)return;pushH();grewFrom=null;dsl=nd;go();notify();}
+// 下端の「Canvas WxH grows / fixed」: 押すと選択を外し、右の CANVAS(Grow when items overflow)を光らせて示す(HTML 版のステータスバーの Canvas と同じ)
+function cvStat(){var el=document.getElementById('cvstat'),c=parsed&&parsed.canvas;if(!el||!c)return;el.textContent='Canvas '+c.width+'x'+c.height+(window.StableBlockLayout.canvasGrows(c)?' grows':' fixed');}
+function cvShow(){if(!parsed)return;if(sel.length){sel=[];render();}props();var s=document.getElementById('cv-sec');if(!s)return;s.scrollIntoView({block:'nearest'});s.style.outline='2px solid #F59E0B';setTimeout(function(){s.style.outline='';},1600);var g=document.getElementById('cv-grow');if(g)g.focus();}
 function isSel(id){return sel.some(function(s){return s.id===id});}
 function getIt(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]||parsed.nm[s.id];}
 function isAnnoConn(c){return !!(parsed.nm[c.from]||parsed.nm[c.to]);}
@@ -631,7 +634,7 @@ function finInl(commit){var ed=inl;if(!ed)return;inl=null;
 // Property Panel
 // Every selection change goes through props: drop items the DSL no longer has, then keep Sel: N in step
 function props(){if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);propsPanel();if(parsed)selStat();}
-function selStat(){document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
+function selStat(){cvStat();document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';}
 function propsPanel(){
   var el=document.getElementById('propPanel');
@@ -641,7 +644,7 @@ function propsPanel(){
         '<button class="pbtn" data-term="add-block" onclick="addBlock()" title="Add a block right of the last one added (same size and color)">+ Block</button>'+
         '<button class="pbtn" data-term="add-group" onclick="addGroup()" title="Add a group at a free spot">+ Group</button>'+
         '<button class="pbtn" data-term="add-note" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" title="Add a note at a free spot">+ Note</button>'+
-        '<div class="pl">CANVAS</div><label style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
+        '<div class="pl">CANVAS</div><label id="cv-sec" style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
         '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click blocks in order, then press "a &rarr; b" (3+: "a &rarr; b &rarr; c"). Flip the direction afterwards"</div>'+
         '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: dim unlinked N: show notes</div>';

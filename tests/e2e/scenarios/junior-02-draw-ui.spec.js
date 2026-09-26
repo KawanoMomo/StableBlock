@@ -790,8 +790,10 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   const grew = page.locator('#status #canvas-grew');
   const bar = page.locator('#error-bar');
 
-  // 既定は自動で広げる。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
+  // 既定は自動で広げる(下端の Canvas にも「自動拡張」)。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
+  const status = page.locator('#status #status-canvas');
   await expect(page.locator('#canvas-grow')).toBeChecked();
+  await expect(status).toHaveText('Canvas: 400×300 自動拡張');
   await page.getByRole('button', { name: '+ ブロック追加' }).click();
   const x = page.locator('#prop-content div:has(> .prop-sub:text-is("X")) input');
   await x.fill('30');
@@ -812,7 +814,14 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await x.fill('31');
   await expect.poll(async () => (await getEditorText(page)).includes(' at 31,')).toBe(true);
   expect(await canvasLine()).toBe('@canvas width=400 height=300 grid=20 grow=off');
-  await page.keyboard.press('Escape');
+  // 設定の在りか(BLK-human-20260926-2045-3): block を選んだままでも、下端の「Canvas: 400×300 固定」を押せば選択が外れ、
+  // ツール欄の「キャンバス (px)」とチェックが出てそこにフォーカスが来る
+  await expect(status).toHaveText('Canvas: 400×300 固定');
+  await expect(page.locator('#canvas-grow')).toHaveCount(0);
+  await status.click();
+  await expect(page.locator('#status')).toContainText('Selected: 0');
+  await expect(page.locator('#canvas-section')).toHaveClass(/flash/);
+  await expect(page.locator('#canvas-grow')).toBeFocused();
   await expect(page.locator('#canvas-grow')).not.toBeChecked();
 
   // はみ出しを直して(X を 2 に)チェックを戻すと grow=off が消え、元の 1 行に戻る
