@@ -632,7 +632,7 @@ function renderPropsPanel(){
       <div class="prop-sub">${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素より小さくはできない。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}</div></div>
       ${includeSectionHtml()}
       <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
-      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ。3 つ以上はクリックした順に「a → b → c」で鎖状に結ぶ(Enter でも)。右ボタンで block から block へドラッグしても 1 本結べる</div>
+      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
       <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
           クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
@@ -678,8 +678,9 @@ function renderPropsPanel(){
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       if(conns.length===0){
-        html+=`<div style="display:flex;gap:4px"><button class="prop-btn" onclick="connectTwo('${a}','${b}')" style="flex:1;background:#6366F1;color:#fff">${a} → ${b}</button><button class="prop-btn" onclick="connectTwo('${b}','${a}')" style="flex:1;background:#6366F1;color:#fff">${b} → ${a}</button></div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">色・太さ・ラベルは結んだ後にここで変える</div>`;
+        // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。向き違いのボタンは出さず、向きは結んだ後の「⇄ 反転」で変える
+        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter)">${esc(a)} → ${esc(b)}</button>`;
+        html+=`<div class="prop-sub" style="margin-top:6px">クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える</div>`;
       } else {
         const c=conns[0],fa=c.from,ta=c.to;
         html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
