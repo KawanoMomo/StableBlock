@@ -81,7 +81,8 @@ function template(raw, m, keys, restGroup, attrs) {
 
 export function parseDSL(text) {
   const lines = text.split('\n'), canvas = { width: 960, height: 640, grid: 20 };
-  const blocks = [], groups = [], notes = [], connections = [], errors = [], blockMap = {}, groupMap = {}, noteMap = {}, allIds = {};
+  const blocks = [], groups = [], notes = [], connections = [], errors = [], warnings = [], blockMap = {}, groupMap = {}, noteMap = {}, allIds = {};
+  const canvasLines = [];
   const source = [];
   for (let i = 0; i < lines.length; i++) {
     const full = lines[i], raw = full.trim(), lead = full.length - full.trimStart().length;
@@ -93,7 +94,15 @@ export function parseDSL(text) {
       if (raw.startsWith('@canvas')) {
         const w = raw.match(/width=(\d+)/), h = raw.match(/height=(\d+)/), g = raw.match(/grid=(\d+)/), r = raw.match(/route=(\S+)/), gr = raw.match(/grow=(\S+)/);
         if (w) canvas.width = +w[1]; if (h) canvas.height = +h[1]; if (g) canvas.grid = +g[1]; if (r) canvas.route = r[1]; if (gr) canvas.grow = gr[1];
-        rec.item = canvas; rec.parts = template(raw, raw.match(RE_CANVAS), [], 1, ATTRS.canvas);
+        const duplicateCanvas = canvasLines.length > 0;
+        if (duplicateCanvas) warnings.length = 0;
+        for (const previousLine of canvasLines) {
+          source[previousLine - 1].parts = null;
+          warnings.push({ line: previousLine, msg: `@canvas が 2 行ある。L${ln} の値が効く` });
+        }
+        canvasLines.push(ln);
+        rec.item = canvas;
+        rec.parts = duplicateCanvas ? null : template(raw, raw.match(RE_CANVAS), [], 1, ATTRS.canvas);
         continue;
       }
       if (raw.startsWith('@include')) {
@@ -138,6 +147,7 @@ export function parseDSL(text) {
   }
   const out = { canvas, blocks, groups, notes, connections, errors, blockMap, groupMap, noteMap };
   Object.defineProperty(out, 'source', { value: source, enumerable: false });
+  Object.defineProperty(out, 'warnings', { value: warnings, enumerable: false });
   return out;
 }
 
