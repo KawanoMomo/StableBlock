@@ -16,8 +16,9 @@ const RE_CANVAS = /^@canvas(.*)/d;
 const BOX_KEYS = ['id', 'label', 'x', 'y', 'w', 'h'];
 const CONN_KEYS = ['from', 'arrow', 'to', 'label'];
 
-// [フィールド名, 属性の正規表現]。parser と同じく rest の最初の一致だけを読む
-const ATTRS = {
+// [フィールド名, 属性の正規表現]。parser と同じく rest の最初の一致だけを読む。
+// 書き出し(Excel / Mermaid)の当て方の検査もこの一覧を正とする(__tests__/export-fidelity.test.mjs)
+export const ATTRS = {
   block: [['color', /color=(\S+)/d], ['textColor', /text=(\S+)/d], ['borderColor', /border=(\S+)/d], ['round', /round=(\d+)/d], ['style', /style=(\S+)/d]],
   group: [['color', /color=(\S+)/d], ['borderColor', /border=(\S+)/d]],
   note: [['color', /color=(\S+)/d], ['textColor', /text=(\S+)/d], ['borderColor', /border=(\S+)/d], ['round', /round=(\d+)/d], ['style', /style=(\S+)/d]],

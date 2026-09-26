@@ -103,8 +103,11 @@ Block と同じ矩形シェイプ構造だが、以下の違いを `buildBlockSh
 
 - `namePrefix: 'note'` — `name="note:..."`
 - `fillAlpha: 70000` — 塗りつぶしに `<a:alpha val="70000"/>` を入れて 70% 透過（SVG `opacity=0.7` に合わせる）
-- `dashedBorder: true` — `<a:ln>` 内に `<a:prstDash val="dash"/>` を追加
-- `defaultBorderColor: 'D97706'` — `borderColor` 未指定時のフォールバック（SVG レンダラのデフォルトと一致）
+- 枠線は `boxLine(note, 'note')`: `borderColor` か `D97706`、常に破線(`<a:prstDash val="dash"/>`)。画面と同じく note の `style=` では描き分けない
+
+Block の枠線も `boxLine(block, 'block')` で画面(core/render)と揃える: 枠色は `border=` か塗り色、`style=bold` は `w` = 2.5px、
+`style=dashed` は `<a:prstDash val="dash"/>`。`border=` も style も無い block は塗り色と同じ枠なので `<a:noFill/>` のまま。
+Excel で表せないもの(接続の線の形・lpos=・端が図に無い接続)は `listXlsxDrops` が 1 行ずつ返し、画面に出す。
 
 Z-order は最上層。
 

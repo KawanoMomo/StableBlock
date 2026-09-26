@@ -9,8 +9,10 @@
 // - group → subgraph(入れ子は包含で決める。空の group も残す)。色は `style` 行
 // - note → 旗形のノード(`id>"…"]`)。色は `style` 行。note とつなぐ接続は点線
 // - 接続 → `-->` / `<-->`(DSL の `-->` は双方向)、破線は `-.->`、ラベルは `|"…"|`、色・太さは `linkStyle` 行
-// - 表せないもの: 座標・大きさ(Mermaid の自動配置になる)、接続の経路 route= とラベル位置 lpos=、存在しない ID への接続
+// - 表せないもの: 座標・大きさ(Mermaid の自動配置になる)、接続の経路 route= とラベル位置 lpos=、角丸の大きさ round=、存在しない ID への接続
+// 属性ごとの当て方(載せるか・知らせるか)は core/dsl/__tests__/export-fidelity.test.mjs が parser の全属性について確かめる
 
+const MMD_ROUND = 4;   // Mermaid の角丸ノード `("…")` に近い round(DSL の既定)
 const MMD_RESERVED = new Set(['end', 'graph', 'subgraph', 'flowchart', 'style', 'class', 'classdef', 'click', 'linkstyle', 'direction', 'default', 'call', 'href']);
 
 function mmdInside(c, p) { return c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h; }
@@ -105,11 +107,13 @@ function toMermaid(parsed) {
     if (c.width) ls.push(`stroke-width:${c.width}px`);
     if (ls.length) links.push(`  linkStyle ${links.length} ${ls.join(',')}`);
     else links.push(null);
-    if (c.route || canvasRouted || (c.label && c.lpos && c.lpos !== 'right')) routed++;   // lpos の既定は right。`@canvas` の route は全接続に効く
+    if (c.route || canvasRouted || (c.label && (c.lposAuto === false || (c.lposAuto === undefined && c.lpos && c.lpos !== 'right')))) routed++;   // 本文に書いた lpos=(right も)。`@canvas` の route は全接続に効く
   }
   lines.push(...styles, ...links.filter(Boolean));
 
   if (blocks.length + groups.length + notes.length) dropped.push('座標・大きさ(Mermaid では自動配置になる)');
+  const rounded = blocks.filter(b => Number(b.round) > 0 && Number(b.round) !== MMD_ROUND).length;   // Mermaid の角丸は大きさを選べない
+  if (rounded) dropped.push(`角の丸み round=(${rounded} 個。Mermaid では既定の角丸になる)`);
   if (routed) dropped.push(`接続の経路 route= とラベル位置 lpos=(${routed} 本。Mermaid では自動になる)`);
   for (const [a, b] of renamed) dropped.push(`ID ${a} は Mermaid で使えないので ${b} に置換`);
   return { text: lines.join('\n') + '\n', dropped };

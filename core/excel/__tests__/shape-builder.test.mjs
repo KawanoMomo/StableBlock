@@ -289,3 +289,34 @@ test('buildNoteShape: borderColor null falls back to default D97706', () => {
   assert.ok(xml.includes('val="D97706"'),
     'note without explicit border should use SVG default D97706');
 });
+
+// block の style=bold / dashed は画面(core/render)と同じ太さ・破線・枠色で Excel に出る(BLK-builder-20260926-1230-1)
+import * as Lbl from '../../label/label-core.mjs';
+import { parseDSL as parseSb } from '../../dsl/dsl-core.mjs';
+import { exportSvg } from '../../render/render-core.mjs';
+import { pxToEmu as toEmu } from '../emitter.js';
+
+test('buildBlockShape: style=bold / dashed / solid の枠は画面の SVG と同じ太さ・破線・色', () => {
+  for (const [line, want] of [
+    ['block a "A" at 1,1 size 6x3 color=#10B981 style=bold', { w: 2.5, dash: false, color: '10B981' }],
+    ['block a "A" at 1,1 size 6x3 color=#10B981 style=dashed', { w: 1, dash: true, color: '10B981' }],
+    ['block a "A" at 1,1 size 6x3 color=#10B981 border=#111111 style=bold', { w: 2.5, dash: false, color: '111111' }],
+  ]) {
+    const p = parseSb(line);
+    const svg = exportSvg(p, Lbl, t => Lbl.estimateTextWidth(t, 10));
+    const rect = svg.match(/<g data-type="block" data-id="a"[^>]*><rect ([^>]*)\/>/)[1];
+    assert.equal(Number(rect.match(/stroke-width="([\d.]+)"/)[1]), want.w, `${line}: 画面の太さ`);
+    assert.equal(/stroke-dasharray/.test(rect), want.dash, `${line}: 画面の破線`);
+    const xml = buildBlockShape(p.blocks[0], 1, 20);
+    const ln = xml.match(/<a:ln( w="(\d+)")?>(.*?)<\/a:ln>/);
+    assert.ok(ln, `${line}: Excel に枠線が無い`);
+    assert.equal(ln[2] ? Number(ln[2]) : toEmu(1), toEmu(want.w), `${line}: Excel の太さ`);
+    assert.equal(ln[3].includes('<a:prstDash val="dash"/>'), want.dash, `${line}: Excel の破線`);
+    assert.ok(ln[3].includes(`val="${want.color}"`), `${line}: Excel の枠色`);
+  }
+});
+
+test('buildBlockShape: border= も style も無い block は塗りと同じ枠なので線を出さない(従来どおり)', () => {
+  const p = parseSb('block a "A" at 1,1 size 6x3 color=#10B981');
+  assert.ok(buildBlockShape(p.blocks[0], 1, 20).includes('<a:ln><a:noFill/></a:ln>'));
+});

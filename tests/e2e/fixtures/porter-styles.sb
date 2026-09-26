@@ -1,0 +1,7 @@
+# porter の corpus 24 / 19 / 21 の最小形: 主要経路の太枠・廃止予定の破線枠・手で置いたラベル位置・直線の接続
+@canvas width=640 height=240 grid=20
+block pay "Payment" at 1,1 size 6x3 color=#10B981 style=bold
+block old "Legacy" at 12,1 size 6x3 color=#94A3B8 style=dashed
+block api "API" at 1,7 size 6x3 color=#3B82F6
+pay -> old "retire" lpos=top
+api -> pay route=straight
