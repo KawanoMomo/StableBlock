@@ -33,6 +33,10 @@ const SB_TERMS_TABLE = {
   'export-png-transparent-all': { ja: ['透過PNG', '読み込んだ全部の図を背景を透過した PNG で書き出し、1 つの zip で保存する'] },
   'export-xlsx-all': { ja: ['Excel', '読み込んだ全部の図を Excel(.xlsx)で書き出し、1 つの zip で保存する'] },
   'export-mermaid-all': { ja: ['Mermaid', '読み込んだ全部の図を Mermaid(.mmd)で書き出し、1 つの zip で保存する'] },
+  // ツール欄(何も選んでいないとき)の「共通部(@include)」
+  'add-include': { ja: ['この図に取り込む', '選んだ図を @include で取り込む(本文に @include の 1 行を足す)'] },
+  'add-include-all': { ja: ['読み込んだ図すべてに取り込む', '一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)'] },
+  'remove-include': { ja: ['外す', 'この @include 行を本文から消す(取り込んでいた要素は図から消える)'] },
   'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
   'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
   'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },

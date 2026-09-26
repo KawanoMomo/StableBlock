@@ -346,3 +346,52 @@ test('bulkFileName / bulkDrops: zip の中の名前は図のパスの拡張子�
   assert.deepEqual(bulkDrops([{ path: 'a.sb', dropped: ['x', 'y'] }, { path: 'b.sb', dropped: [] }, { path: 'c.sb', dropped: ['z'] }]),
     ['a.sb: x', 'a.sb: y', 'c.sb: z']);
 });
+
+// 作図 UI から @include を足す・外す(BLK-primary-20260926-1205-friction)
+import { includeLines, includeCandidates, addIncludeInDsl, removeIncludeInDsl, relativeIncludePath, loadedKeyOf } from '../check-core.mjs';
+
+test('includeLines / removeIncludeInDsl: 本文の @include 行を行番号で拾い、その行だけを消す', () => {
+  const dsl = '# x\n@canvas width=400\n@include "shared/common.sb"\nblock a "A" at 1,1 size 4x2';
+  assert.deepEqual(includeLines(dsl), [{ line: 3, path: 'shared/common.sb' }]);
+  assert.equal(removeIncludeInDsl(dsl, 3), '# x\n@canvas width=400\nblock a "A" at 1,1 size 4x2');
+  assert.equal(removeIncludeInDsl(dsl, 4), dsl);   // @include 行でなければ変えない
+});
+
+test('addIncludeInDsl: 最後の @include の後、無ければ @canvas の後、無ければ先頭のコメントの後に 1 行だけ足す(改行コードは本文に合わせる)', () => {
+  assert.equal(addIncludeInDsl('# a\n@canvas width=400\nblock a "A" at 1,1 size 4x2', 'c.sb'), '# a\n@canvas width=400\n@include "c.sb"\nblock a "A" at 1,1 size 4x2');
+  assert.equal(addIncludeInDsl('@include "x.sb"\n@include "y.sb"\nblock a "A" at 1,1 size 4x2', 'c.sb'), '@include "x.sb"\n@include "y.sb"\n@include "c.sb"\nblock a "A" at 1,1 size 4x2');
+  assert.equal(addIncludeInDsl('# a\n# b\nblock a "A" at 1,1 size 4x2', 'c.sb'), '# a\n# b\n@include "c.sb"\nblock a "A" at 1,1 size 4x2');
+  assert.equal(addIncludeInDsl('# a\r\n@canvas\r\nblock a "A" at 1,1 size 4x2\r\n', 'c.sb'), '# a\r\n@canvas\r\n@include "c.sb"\r\nblock a "A" at 1,1 size 4x2\r\n');
+});
+
+test('relativeIncludePath / loadedKeyOf: 図のフォルダから見た相対パスと、本文のパスが指す読み込んだ図', () => {
+  assert.equal(relativeIncludePath('spi/spi_swc.sb', 'shared/common.sb'), '../shared/common.sb');
+  assert.equal(relativeIncludePath('spi_swc.sb', 'shared/common.sb'), 'shared/common.sb');
+  assert.equal(relativeIncludePath('a/b/x.sb', 'a/c.sb'), '../c.sb');
+  assert.equal(loadedKeyOf({ 'spi_swc.sb': '', 'common.sb': '' }, 'spi_swc.sb', 'shared/common.sb'), 'common.sb');
+});
+
+test('includeCandidates: 自分・取り込み済み・自分を取り込んでいる図は出さず、同じフォルダの図の書き方をパスに使う', () => {
+  const files = {
+    'spi_swc.sb': 'block s "S" at 1,1 size 4x2',
+    'spi_dataflow.sb': '@include "shared/common.sb"\n@include "spi_swc.sb"',
+    'can_swc.sb': '@include "shared/common.sb"',
+    'common.sb': 'block rte "RTE" at 8,1 size 4x2',
+  };
+  // spi_swc: spi_dataflow は自分を取り込んでいるので出ない。common は同じフォルダの図の書き方(shared/common.sb)で、ほかの図が取り込んでいるので先に出る
+  assert.deepEqual(includeCandidates(files, 'spi_swc.sb'), [{ file: 'common.sb', path: 'shared/common.sb' }, { file: 'can_swc.sb', path: 'can_swc.sb' }]);
+  // can_swc は common を取り込み済み。common を取り込んでいる図は common の候補に出ない(循環)
+  assert.deepEqual(includeCandidates(files, 'can_swc.sb').map(c => c.file), ['spi_swc.sb', 'spi_dataflow.sb']);
+  assert.deepEqual(includeCandidates(files, 'common.sb').map(c => c.file), ['spi_swc.sb']);
+  // 書き方の手本が無ければ相対パス
+  assert.deepEqual(includeCandidates({ 'a/x.sb': '', 'lib/c.sb': '' }, 'a/x.sb'), [{ file: 'lib/c.sb', path: '../lib/c.sb' }]);
+});
+
+test('includeCandidates: 取り込んでいる図が無くても、自分の接続が指していて自分に無い ID を定義している図を先に出す', () => {
+  const files = {
+    'spi_swc.sb': 'block SpiDrv "S" at 1,1 size 4x2\nSpiDrv -> rte',
+    'can_swc.sb': 'block CanDrv "C" at 1,1 size 4x2\nCanDrv -> rte',
+    'common.sb': 'block rte "RTE" at 8,1 size 4x2',
+  };
+  assert.deepEqual(includeCandidates(files, 'spi_swc.sb').map(c => c.file), ['common.sb', 'can_swc.sb']);
+});
