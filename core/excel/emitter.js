@@ -265,36 +265,55 @@ export function connectionSiteIndex(side) {
   return CXN_SITE[side] ?? 0;
 }
 
+// 接続の線の形(画面と同じ決め方: 接続の route= → `@canvas` の route= → 曲線)。知らない値は曲線
+export function xlsxRoute(conn, canvas) {
+  const r = conn.route || (canvas && canvas.route);
+  return r === 'straight' || r === 'ortho' ? r : 'curved';
+}
+
+// 接続線の図形(DrawingML の既定形)と置き方。端点は EMU。
+// 曲線 = curvedConnector3、直角 = bentConnector3(どちらも画面と同じく辺に直角に出入りし、折れ・変曲は端点の中間)、直線 = straightConnector1。
+// 既定形は左上から右向きに出て右下へ右向きに入る。上下の辺で結ぶ線は 90° 回して縦に出入りさせる(回転は図形の中心まわりで、
+// flip は回す前にかかる)。anchor は画面上の外接矩形(端点の箱)、xfrm は回す前の箱(Excel は 90° 回した図形の anchor を回した後の箱として読む)。
+export function connectorGeometry(endpoints, route, fs) {
+  const { x1, y1, x2, y2 } = endpoints;
+  const dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+  const anchor = { x: Math.min(x1, x2), y: Math.min(y1, y2), cx: dx, cy: dy };
+  const prst = route === 'ortho' ? 'bentConnector3' : route === 'curved' ? 'curvedConnector3' : 'straightConnector1';
+  const vertical = prst !== 'straightConnector1' && (fs === 'top' || fs === 'bottom');
+  if (!vertical) return { prst, rot: 0, anchor, xfrm: anchor, flipH: x1 > x2, flipV: y1 > y2 };
+  // 回す前の箱: 幅 = 縦の距離、高さ = 横の距離、中心は端点の中点
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const xfrm = { x: Math.round(mx - dy / 2), y: Math.round(my - dx / 2), cx: dy, cy: dx };
+  return { prst, rot: 5400000, anchor, xfrm, flipH: y1 > y2, flipV: x1 < x2 };
+}
+
 // glue: { st: { id, idx }, end: { id, idx } } — shape ids the connector is glued to, so that
 // moving a shape in Excel drags the line with it. Omitted → a free line (legacy behavior).
-export function buildConnectionShape(conn, connIndex, endpoints, shapeId, glue) {
-  const { x1, y1, x2, y2 } = endpoints;
+// shape: { route, fs } — the line shape as the screen draws it (connectorGeometry). Omitted → a straight line.
+export function buildConnectionShape(conn, connIndex, endpoints, shapeId, glue, shape) {
   const glueXml = glue
     ? (glue.st ? `<a:stCxn id="${glue.st.id}" idx="${glue.st.idx}"/>` : '') +
       (glue.end ? `<a:endCxn id="${glue.end.id}" idx="${glue.end.idx}"/>` : '')
     : '';
-  const minX = Math.min(x1, x2);
-  const minY = Math.min(y1, y2);
-  const absDx = Math.abs(x2 - x1);
-  const absDy = Math.abs(y2 - y1);
-  const flipH = x1 > x2 ? 'true' : 'false';
-  const flipV = y1 > y2 ? 'true' : 'false';
+  const geo = connectorGeometry(endpoints, shape ? shape.route : 'straight', shape && shape.fs);
+  const rotAttr = geo.rot ? ` rot="${geo.rot}"` : '';
   const lineColor = normalizeColor(conn.color, '64748B');
   const lineWidth = pxToEmu(Number(conn.width) || 1.5);
   const dashXml = conn.style === 'dashed' ? '<a:prstDash val="dash"/>' : '';
   const headEnd = conn.bidir ? '<a:headEnd type="triangle"/>' : '';
 
   return `<xdr:absoluteAnchor>` +
-    `<xdr:pos x="${minX}" y="${minY}"/>` +
-    `<xdr:ext cx="${absDx}" cy="${absDy}"/>` +
+    `<xdr:pos x="${geo.anchor.x}" y="${geo.anchor.y}"/>` +
+    `<xdr:ext cx="${geo.anchor.cx}" cy="${geo.anchor.cy}"/>` +
     `<xdr:cxnSp macro="">` +
       `<xdr:nvCxnSpPr>` +
         `<xdr:cNvPr id="${shapeId}" name="conn:${connIndex}"/>` +
         (glueXml ? `<xdr:cNvCxnSpPr>${glueXml}</xdr:cNvCxnSpPr>` : `<xdr:cNvCxnSpPr/>`) +
       `</xdr:nvCxnSpPr>` +
       `<xdr:spPr>` +
-        `<a:xfrm flipH="${flipH}" flipV="${flipV}"><a:off x="0" y="0"/><a:ext cx="${absDx}" cy="${absDy}"/></a:xfrm>` +
-        `<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>` +
+        `<a:xfrm${rotAttr} flipH="${geo.flipH}" flipV="${geo.flipV}"><a:off x="${geo.xfrm.x}" y="${geo.xfrm.y}"/><a:ext cx="${geo.xfrm.cx}" cy="${geo.xfrm.cy}"/></a:xfrm>` +
+        `<a:prstGeom prst="${geo.prst}"><a:avLst/></a:prstGeom>` +
         `<a:ln w="${lineWidth}"><a:solidFill><a:srgbClr val="${lineColor}"/></a:solidFill>${dashXml}${headEnd}<a:tailEnd type="triangle"/></a:ln>` +
       `</xdr:spPr>` +
     `</xdr:cxnSp>` +
@@ -390,9 +409,11 @@ export function buildDrawingXml(ast) {
   const sorted = sortByZOrder(items);
 
   // Shape ids follow the z-order; connectors are written before the shapes they glue to,
-  // so the ids of blocks / notes are assigned up front.
+  // so the ids of blocks / notes are assigned up front. Ids start at 2 as Excel's own drawings do: Excel renumbers a drawing
+  // whose ids start at 1 without following stCxn / endCxn, and the lines end up glued to the wrong shapes.
+  const FIRST_ID = 2;
   const idOf = {};
-  sorted.forEach((item, k) => { if (item.kind === 'block' || item.kind === 'note') idOf[item.data.id] = k + 1; });
+  sorted.forEach((item, k) => { if (item.kind === 'block' || item.kind === 'note') idOf[item.data.id] = k + FIRST_ID; });
   const glueOf = item => {
     const c = item.data;
     const st = idOf[c.from] != null ? { id: idOf[c.from], idx: connectionSiteIndex(item.sides.fs) } : null;
@@ -400,11 +421,11 @@ export function buildDrawingXml(ast) {
     return st || end ? { st, end } : undefined;
   };
 
-  let shapeId = 1;
+  let shapeId = FIRST_ID;
   const anchorXmls = sorted.map(item => {
     switch (item.kind) {
       case 'group': return buildGroupShape(item.data, shapeId++, gridPx);
-      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++, glueOf(item));
+      case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++, glueOf(item), { route: xlsxRoute(item.data, ast.canvas), fs: item.sides.fs });
       case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++);
       case 'block': return buildBlockShape(item.data, shapeId++, gridPx);
       case 'note': return buildNoteShape(item.data, shapeId++, gridPx);
@@ -421,30 +442,21 @@ export function buildDrawingXml(ast) {
 }
 
 // What the Excel output cannot carry, one line each (the UI shows it to the user after the export).
-// 当て方は属性ごとに決める: 載せる(色・枠・太線/破線・角丸・線の色/太さ/破線・双方向)か、ここで知らせるか。
+// 当て方は属性ごとに決める: 載せる(色・枠・太線/破線・角丸・線の色/太さ/破線・双方向・線の形)か、ここで知らせるか。
 // どちらでもない属性は core/dsl/__tests__/export-fidelity.test.mjs が赤にする(parser の属性を足したら当て方も決める)。
 // - 端が図に無い接続は描かない
-// - 接続の線の形: Excel の接続線は直線だけ(画面の既定は曲線。route= か @canvas の route=)
-// - 接続ラベルの位置 lpos=: Excel では線の中点に置く(lpos=center と同じ)
+// - 接続ラベルの位置 lpos=: Excel では線の中点に置く(lpos=center と同じ)。接続ごとに要素 ID と書いた値で知らせる
 export function listXlsxDrops(ast) {
   const known = { ...(ast.blockMap || {}), ...(ast.noteMap || {}) };
-  const canvasRoute = ast.canvas && (ast.canvas.route === 'straight' || ast.canvas.route === 'ortho') ? ast.canvas.route : 'curved';
   const dropped = [];
-  const shaped = { curved: 0, ortho: 0 };
-  let placed = 0;
+  const placed = [];
   for (const c of ast.connections || []) {
+    const name = `接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
     const miss = [c.from, c.to].filter(x => !known[x]);
-    if (miss.length) { dropped.push(`接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}(${miss.join(', ')} が図に無い)`); continue; }
-    const route = c.route || canvasRoute;
-    if (route !== 'straight') shaped[route === 'ortho' ? 'ortho' : 'curved']++;
-    if (c.label && c.lposAuto === false && c.lpos !== 'center') placed++;
+    if (miss.length) { dropped.push(`${name}(${miss.join(', ')} が図に無い)`); continue; }
+    if (c.label && c.lposAuto === false && c.lpos !== 'center') placed.push(`${name} の lpos=${c.lpos}(Excel ではラベルを線の中点に置く)`);
   }
-  if (shaped.curved + shaped.ortho) {
-    const parts = [shaped.curved && `曲線 ${shaped.curved} 本`, shaped.ortho && `直角 ${shaped.ortho} 本`].filter(Boolean).join('・');
-    dropped.push(`接続の線の形(${parts}。Excel では直線になる)`);
-  }
-  if (placed) dropped.push(`接続ラベルの位置 lpos=(${placed} 本。Excel では線の中点に置く)`);
-  return dropped;
+  return dropped.concat(placed);
 }
 
 function resolveJSZip(opts) {
