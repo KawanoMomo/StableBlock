@@ -148,6 +148,9 @@ textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #status .status-dirty { color:var(--amber); }
 #status .status-pos { color:var(--dim); font-weight:400; }
 #error-bar .diag-file { font:inherit; padding:0; border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; }
+#prop-content .help-keys { margin-top:16px; font-size:10px; color:var(--dim); line-height:1.5; }
+#prop-content .help-keys summary { cursor:pointer; color:var(--muted); font-size:11px; }
+#prop-content .help-keys[open] summary { margin-bottom:6px; }
 #status .status-btn { font:inherit; font-size:10px; padding:0 6px; margin-left:4px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
 .canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:10px; color:var(--muted); }
 
@@ -187,14 +190,14 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="undo" onclick="undo()" title="元に戻す(Ctrl+Z)">↩</button>
     <button class="tb" data-term="redo" onclick="redo()" title="やり直す(Ctrl+Y)">↪</button>
     <div class="sep"></div>
-    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="図全体の線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替え、本文の @canvas 行に書く(L キー)">⌇ 線の形: 曲線</button>
-    <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続を薄く</button>
+    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)">⌇ 曲線</button>
+    <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続</button>
     <div class="sep"></div>
-    <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈を表示</button>
+    <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
     <div class="sep"></div>
     <button class="tb tb-accent" data-term="export-svg" onclick="exportSVG()" title="SVG で書き出す">SVG</button>
-    <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(背景を透過して保存・クリップボードにコピー)">▾</button>
-    <div id="png-menu" role="menu" hidden><div class="em-head">PNG(表示中の図)</div><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGTransparent)" title="背景を透過した PNG で書き出す">背景を透過して保存</button><button class="tb tb-accent" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="PNG 画像をクリップボードにコピーする">クリップボードにコピー</button></div>
+    <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)">▾</button>
+    <div id="png-menu" role="menu" hidden><div class="em-head">PNG(表示中の図)</div><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGTransparent)" title="背景を透過した PNG で書き出す">透過PNG</button><button class="tb tb-accent" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="PNG 画像をクリップボードにコピーする">コピー</button></div>
     <button class="tb tb-accent" data-term="export-xlsx" onclick="exportXlsx()" title="Excel(.xlsx)で書き出す">Excel</button>
     <button class="tb tb-accent" data-term="export-mermaid" onclick="exportMermaid()" title="Mermaid(.mmd)で書き出す">Mermaid</button>
     <button class="tb tb-accent tb-more" data-term="export-all" onclick="openExportAll(this)" title="一緒に読み込んだ全部の図を書き出す。形式を選ぶと 1 枚ずつ include を解決して 1 つの zip で保存する" hidden>一括 ▾</button>
@@ -205,7 +208,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
-    <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
+    <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
 <span id="search-count" class="search-count" aria-live="polite"></span></span>
     <div id="search-hits" role="listbox" hidden onkeydown="searchHitsKey(event)"></div>
   </div>
@@ -625,10 +628,10 @@ function includeSectionHtml(){const C=window.StableBlockCheck,files=includeFiles
   h+=cur.length?cur.map(x=>`<div class="prop-row inc-row" data-line="${x.line}"><span class="inc-path" title="本文 L${x.line}">${esc(x.path)}${miss.has(x.line)?' <span style="color:var(--red)">(読めない)</span>':''}</span><button class="step-btn inc-remove" data-term="remove-include" onclick="removeInclude(${x.line})" title="この @include 行を本文から消す(取り込んでいた要素は図から消える)">外す</button></div>`).join(''):'<div class="prop-sub">取り込んでいる図は無い</div>';
   if(cand.length){
     h+=`<select class="prop-input" id="include-pick" style="margin-top:6px" title="取り込む図(一緒に読み込んだ図から)" onchange="document.getElementById('include-path').value=this.options[this.selectedIndex].dataset.path">${cand.map((c,i)=>`<option value="${i}" data-path="${esc(c.path)}">${esc(c.file)}</option>`).join('')}</select>`;
-    h+=`<div class="prop-sub" style="margin-top:4px">本文に書くパス(この図のフォルダから。違えば直す)</div><input class="prop-input" id="include-path" value="${esc(cand[0].path)}" spellcheck="false">`;
-    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">この図に取り込む</button></div>`;
-    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">読み込んだ図すべてに取り込む</button></div>`;
-  }else h+=`<div class="prop-sub">取り込める図が無い。共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める</div>`;
+    h+=`<input class="prop-input" id="include-path" style="margin-top:4px" value="${esc(cand[0].path)}" spellcheck="false" title="本文に書くパス(この図のフォルダから。違えば直す)">`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">取り込む</button></div>`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">すべてに取り込む</button></div>`;
+  }else h+=`<div class="prop-sub" title="共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める">取り込める図が無い</div>`;
   if(includeNote)h+=`<div class="prop-sub" id="include-note" style="color:var(--green)">${esc(includeNote)}</div>`;
   return h+'</div>';}
 // 本文に書くパスは欄の値(直していなければ候補のパス)。「すべてに」では、表示中の図と同じフォルダの図には欄の値、ほかのフォルダの図にはその図から見たパスを書く
@@ -664,20 +667,18 @@ function renderPropsPanel(){
       <div class="prop-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
         <div style="flex:1"><div class="prop-sub">幅</div><div class="stepper"><input class="prop-input" id="canvas-w" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.width}" onchange="setCanvasSize('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('w',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('w',-1)">▼</button></div></div></div>
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
-      </div><label class="prop-sub canvas-grow"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label>
-      <div class="prop-sub">${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素より小さくはできない。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}</div></div>
+      </div><label class="prop-sub canvas-grow" title="${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素がはみ出したらキャンバスを広げる(要素より小さくはできない)。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label></div>
       ${includeSectionHtml()}
-      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
-      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
-      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
-          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
+      <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
+        <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
+        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
           <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
-          <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示
-        </div>`;
+          <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示</div>
+      </details>`;
     }
     return;
   }
@@ -702,12 +703,11 @@ function renderPropsPanel(){
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
     if(sel.length>=3&&justLinked.length){
       html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
-      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)">`;});
-      html+=`<div class="prop-sub" style="margin-top:6px">打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る</div></div>`;
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
+      html+=`</div>`;
     } else if(sel.length>=3&&chainIds()){
       const ids=chainIds();
-      html+=`<div class="prop-section"><div class="prop-label">接続</div><button class="prop-btn" id="chain-btn" onclick="connectChain()" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に鎖状に結ぶ(Enter)">${ids.map(esc).join(' → ')}</button>`;
-      html+=`<div class="prop-sub" style="margin-top:6px">クリックした順に ${ids.length-1} 本で結ぶ(Enter でも)。結んだ後にラベルを順に入れられる</div></div>`;
+      html+=`<div class="prop-section"><div class="prop-label">接続</div><button class="prop-btn" id="chain-btn" onclick="connectChain()" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に ${ids.length-1} 本で鎖状に結ぶ(Enter でも)。結んだ後にラベルを順に入れられる">${ids.map(esc).join(' → ')}</button></div>`;
     }
     if(sel.length===2){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
@@ -715,8 +715,7 @@ function renderPropsPanel(){
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       if(conns.length===0){
         // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。向き違いのボタンは出さず、向きは結んだ後の「⇄ 反転」で変える
-        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter)">${esc(a)} → ${esc(b)}</button>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える</div>`;
+        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える">${esc(a)} → ${esc(b)}</button>`;
       } else {
         const c=conns[0],fa=c.from,ta=c.to;
         html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
@@ -751,12 +750,11 @@ function renderPropsPanel(){
   const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
-    <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
-    <div class="prop-sub" id="dup-hint" style="margin:-6px 0 10px">複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>
+    <span id="dup-hint" style="font-size:12px;font-weight:700;color:${typeColor}" title="複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄">${typeLabel}</span>
+    <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
     ${(n=>n?`<div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(n)}${loadedKey(window.StableBlockCheck.includeOrigin(expanded,item.line).file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(window.StableBlockCheck.includeOrigin(expanded,item.line).file))} を開く</button>`:''}</div>`:'')(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}
-    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
-    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help">英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる</div></details>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
+    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
@@ -772,7 +770,7 @@ function renderPropsPanel(){
   }
   if(!isBlock&&!isNote){
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
-    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ グループ内にブロック追加</button></div>`;
+    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;

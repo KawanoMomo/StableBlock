@@ -74,7 +74,7 @@ test('ツールバーのボタンは全部 data-term と動詞のツールチッ
 test('略語・絵文字だけ・全角記号の入口名を使わない', () => {
   const html = read('stableblock.html');
   const ext = read('vscode-stableblock/src/extension.js');
-  for (const bad of ['>◎ HL<', '>📋<', '>PNG透過<', '＋ ブロック追加', '>⌇ 曲線<']) {
+  for (const bad of ['>◎ HL<', '>📋<', '>PNG透過<', '＋ ブロック追加']) {
     assert.ok(!html.includes(bad), 'HTML版に古い名前が残っている: ' + bad);
   }
   for (const bad of ['&#x25CE; HL<', '&#x2398; Copy<', 'PNG&#x2205;<', '&#x25C7; Anno<']) {
@@ -99,8 +99,8 @@ test('スタイル・線の形・種類の表示名は日本語(ja)と英語(en)
   assert.equal(lineShapeName(''), '既定');
   assert.equal(lineShapeName(undefined), '既定');
   assert.equal(lineShapeName('ortho'), '直角');
-  assert.equal(lineModeText('curved'), '⌇ 線の形: 曲線');
-  assert.equal(lineModeText('straight'), '╱ 線の形: 直線');
+  assert.equal(lineModeText('curved'), '⌇ 曲線');
+  assert.equal(lineModeText('straight'), '╱ 直線');
   assert.equal(lineModeText('ortho', 'en'), '⊾ Line: Right-angle');
   assert.equal(typeName('block'), 'ブロック');
   assert.equal(typeName('note', 'en'), 'NOTE');
@@ -135,4 +135,18 @@ import { exportAllText } from '../terms-core.mjs';
 test('exportAllText: 「読み込んだ全部の図(N 枚)」', () => {
   assert.equal(exportAllText(13), '読み込んだ全部の図(13 枚)');
   assert.equal(exportAllText(2, 'en'), 'All loaded diagrams (2)');
+});
+
+// 画面に出す名前は短く、説明はツールチップで補う(BLK-human-20260926-2045-2: 入口の名前・説明がやりすぎで UI がチープに見える)
+test('HTML版(ja)の入口の名前は 8 文字以内で、何をするかはツールチップが名前より詳しく言う', () => {
+  for (const k of termKeys('ja')) {
+    const text = termText(k, 'ja'), title = termTitle(k, 'ja');
+    assert.ok([...text].length <= 8, `${k} の名前が長い: ${text}`);
+    assert.ok([...title].length > [...text].length, `${k} のツールチップが名前より短い`);
+  }
+  // プロパティ欄に常に出ていた説明文は、入口のツールチップへ移した(画面の文には残さない)
+  const html = read('stableblock.html');
+  for (const gone of ['本文に書くパス(この図のフォルダから。違えば直す)</div>', 'id="dup-hint" style="margin:-6px', '>英数字と _。接続の参照と', 'Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>']) {
+    assert.ok(!html.includes(gone), '説明文が画面に残っている: ' + gone);
+  }
 });

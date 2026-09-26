@@ -107,9 +107,9 @@ test('primary-02: ラベル欄の Enter でほかの図の同じ表示名も揃�
   await page.keyboard.type('SpiDrv');
   await page.locator('#search-hits .sh-item').first().click();
   await expect(page).toHaveTitle(/spi_swc\.sb/);
-  // ラベル欄の下に、Enter でほかの図の表示名も揃うことが出る。ID 欄の下には ID と同じラベルも一緒に変わることが出る
+  // ラベル欄の下に、Enter でほかの図の表示名も揃うことが出る。ID 欄のツールチップが ID と同じラベルも一緒に変わることを言う
   await expect(page.locator('#prop-label-elsewhere')).toContainText('spi_dataflow.sb');
-  await expect(page.locator('#prop-id-help')).toContainText('ID と同じ文字の表示名');
+  await expect(page.locator('#prop-id')).toHaveAttribute('title', /ID と同じ文字の表示名/);   // 説明はカーソルを合わせたときのツールチップ
 
   // 表示名: ラベル欄に書いて Enter(表示中の図は打つたび、ほかの図は Enter で揃う)
   await page.locator('#prop-label').click();

@@ -27,7 +27,7 @@ test('junior-02: 2 つ選んで「a → b」で結び、結んだ後に線の色
   await expect(props.getByText('色を指定して接続')).toHaveCount(0);
   await expect(props.getByRole('button', { name: 'dma → app' })).toHaveCount(0);
   await expect(props.locator('#chain-btn')).toHaveText('app → dma');
-  await expect(props).toContainText('⇄ 反転');
+  await expect(props.locator('#chain-btn')).toHaveAttribute('title', /⇄ 反転/);   // 向きの変え方はボタンのツールチップ
   const before = await getEditorText(page);
   await props.getByRole('button', { name: 'app → dma' }).click();
 
@@ -274,12 +274,12 @@ test('junior-02: group と block を作図 UI だけで置くと、キャンバ�
   const gid = await group.getAttribute('data-id');
   expect(await outsideCanvas(page)).toEqual([]);
 
-  // group の「+ グループ内にブロック追加」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
+  // group の「+ 中にブロック」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
   for (let i = 0; i < 8; i++) {
     const before = await getEditorText(page);
     await page.locator(`#svg-wrap svg g[data-type="group"][data-id="${gid}"]`).click({ position: { x: 40, y: 26 } });
     await expect(page.locator("#prop-id")).toHaveValue(gid);
-    await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await page.getByRole('button', { name: '+ 中にブロック' }).click();
     await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(i + 1);
     // 全部キャンバス内に描かれる
     expect(await outsideCanvas(page), `${i + 1} 個目の追加後`).toEqual([]);
@@ -461,8 +461,8 @@ test('junior-02: group の「ブロック追加」1 回と Ctrl+C → Ctrl+V で
   const props = page.locator('#prop-content');
 
   await props.getByRole('button', { name: /グループ追加/ }).click();
-  await props.getByRole('button', { name: /ブロック追加/ }).click();              // group 欄の追加
-  await expect(props.locator('#dup-hint')).toContainText('Ctrl+C → Ctrl+V');      // 複製の入口が見える
+  await props.getByRole('button', { name: /中にブロック/ }).click();              // group 欄の追加
+  await expect(props.locator('#dup-hint')).toHaveAttribute('title', /Ctrl\+C → Ctrl\+V/);   // 複製の入口は種類の見出しのツールチップ
   await props.locator('.color-dot').nth(3).click();                               // 1 個目だけ色を決める
   await page.keyboard.press('Control+c');
   for (let i = 0; i < 7; i++) await page.keyboard.press('Control+v');
@@ -504,7 +504,7 @@ test('junior-02: ツール欄の「+ ブロック追加」は直前の block の
   expect(bs[2].x).toBe(bs[1].x + bs[1].w + 1);
 });
 
-// ─── 入れ子の group: 親の中で「選択をグループ化」「+ グループ内にブロック追加」「移動」をしても子は親の内側に収まり、
+// ─── 入れ子の group: 親の中で「選択をグループ化」「+ 中にブロック」「移動」をしても子は親の内側に収まり、
 //     親に足した block は親の直下に入る。枠をまたぐ配置は警告に出る(BLK-owner-20260926-0451-1) ───
 const boxes = text => Object.fromEntries([...text.matchAll(/^(block|group) (\S+) "[^"]*" at (\d+),(\d+) size (\d+)x(\d+)/gm)]
   .map(m => [m[2], { type: m[1], id: m[2], x: +m[3], y: +m[4], w: +m[5], h: +m[6] }]));
@@ -523,17 +523,17 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
   const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
 
-  // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ グループ内にブロック追加」が効く
+  // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ 中にブロック」が効く
   await props.getByRole('button', { name: '+ グループ追加' }).click();
   await label().fill('ECU');
   await label().press('Enter');
   await expect(props.locator('#prop-id')).toHaveValue('ECU');
-  await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(1);
   await label().fill('CPU');
   for (const name of ['RAM', 'Flash']) {
     await selectGroup('ECU');
-    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
     await label().fill(name);
   }
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
@@ -550,10 +550,10 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   expect(parentOf(all, 'CPU')).toBe('MCU');
   expect(parentOf(all, 'Flash')).toBe('ECU');
 
-  // 子 group を持つ親に「+ グループ内にブロック追加」: 子 group の中にも枠の上にも置かれず、親の直下に入る
+  // 子 group を持つ親に「+ 中にブロック」: 子 group の中にも枠の上にも置かれず、親の直下に入る
   for (const name of ['CAN_Trcv', 'EEPROM']) {
     await selectGroup('ECU');
-    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
     await label().fill(name);
     await expect(props.locator('#prop-id')).toHaveValue(name);
     all = boxes(await getEditorText(page));
@@ -587,7 +587,7 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   await expect(page.locator('#error-bar')).toContainText('枠をまたいでいる');
 });
 
-// 「+ グループ内にブロック追加」で広がった group は、下のほかの group に掛からない(BLK-human-20260926-2045-1)。
+// 「+ 中にブロック」で広がった group は、下のほかの group に掛からない(BLK-human-20260926-2045-1)。
 // 掛かる group は中身ごと、元の隙間を保って押し出す(同じ親の中で子 group が広がったときと同じ)
 test('junior-02: group にブロックを足し続けて group が広がっても、ほかの group に重ならず、下の group は中身ごと押し出される', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
@@ -609,7 +609,7 @@ test('junior-02: group にブロックを足し続けて group が広がって�
     await expect(page.locator('#prop-title')).toHaveText('ツール');
   }
   await selectGroup('C');
-  await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
   await label().fill('X');
   await expect(props.locator('#prop-id')).toHaveValue('X');
   let all = boxes(await getEditorText(page));
@@ -622,7 +622,7 @@ test('junior-02: group にブロックを足し続けて group が広がって�
   const b0 = { ...all.B };
   for (let i = 0; i < 6; i++) {
     await selectGroup('A');
-    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
     await label().fill(`a${i}`);
     await expect(props.locator('#prop-id')).toHaveValue(`a${i}`);
     all = boxes(await getEditorText(page));
@@ -648,7 +648,7 @@ test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、
 
   // 作図 UI だけで group と block を置く。本文は @canvas と足した要素の行だけ
   await page.getByRole('button', { name: '+ グループ追加' }).click();
-  await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await page.getByRole('button', { name: '+ 中にブロック' }).click();
   await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(1);
   const text = await getEditorText(page);
   expect(text).not.toMatch(/^# /m);
