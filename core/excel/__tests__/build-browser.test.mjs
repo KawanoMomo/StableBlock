@@ -29,9 +29,17 @@ function walkDir(rootDir) {
 test('template-inline.js is up to date with template-skeleton/', () => {
   const skeleton = walkDir(join(ROOT, 'template-skeleton'));
   const expected = buildTemplateInline(skeleton);
-  const actual = readFileSync(join(ROOT, 'template-inline.js'), 'utf8');
+  // 作業ツリーが CRLF でも LF でも同じ結果にする(ほかの drift 検出と同じ norm)
+  const actual = readFileSync(join(ROOT, 'template-inline.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.equal(actual, expected,
     'template-inline.js is stale; run `npm run build:browser` and commit the result.');
+});
+
+test('template-inline.js の生成は template-skeleton/ の改行コード(CRLF / LF)に依らない', () => {
+  const lf = walkDir(join(ROOT, 'template-skeleton')).map(f => ({ ...f, content: f.content.replace(/\r\n/g, '\n') }));
+  const crlf = lf.map(f => ({ ...f, content: f.content.replace(/\n/g, '\r\n') }));
+  assert.equal(buildTemplateInline(crlf), buildTemplateInline(lf));
+  assert.doesNotMatch(buildTemplateInline(crlf), /\\r/);
 });
 
 test('emitter.browser.js is up to date with emitter.js', () => {
