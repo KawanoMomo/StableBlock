@@ -107,7 +107,7 @@ Block と同じ矩形シェイプ構造だが、以下の違いを `buildBlockSh
 
 Block の枠線も `boxLine(block, 'block')` で画面(core/render)と揃える: 枠色は `border=` か塗り色、`style=bold` は `w` = 2.5px、
 `style=dashed` は `<a:prstDash val="dash"/>`。`border=` も style も無い block は塗り色と同じ枠なので `<a:noFill/>` のまま。
-Excel で表せないもの(接続の線の形・lpos=・端が図に無い接続)は `listXlsxDrops` が 1 行ずつ返し、画面に出す。
+Excel で表せないもの(lpos=・端が図に無い接続)は `listXlsxDrops` が接続ごとに 1 行ずつ返し、画面に出す。
 
 Z-order は最上層。
 
@@ -139,6 +139,12 @@ DSL: `ui -> core "request"`
 `FLIPH = (x1 > x2) ? "true" : "false"`,
 `FLIPV = (y1 > y2) ? "true" : "false"`,
 `LW = width * 9525` (EMU)。
+
+線の形(`connectorGeometry`): 接続の route= → `@canvas` の route= → 曲線 の順で決め、曲線 = `curvedConnector3`、直角 = `bentConnector3`、
+直線 = `straightConnector1`。上の例は左右の辺で結ぶ線(回転なし、xfrm の off は anchor と同じ)。
+上下の辺で結ぶ曲線・直角は `rot="5400000"` で縦に出入りさせ、anchor は端点の外接矩形のまま、xfrm は回す前の箱
+(中心 = 端点の中点、`cx = ABS_DY`, `cy = ABS_DX`)、`FLIPH = (y1 > y2)`, `FLIPV = (x1 < x2)`。
+Excel は 90° 回した図形の anchor を回した後の外接矩形として読む。
 
 ルール:
 - `-->` (bidir) → `<a:headEnd type="triangle"/>` も追加
@@ -200,7 +206,7 @@ ECN-006 接続面選択アルゴリズムを SVG レンダラからそのまま�
 5. Notes (DSL 出現順)
 
 ## ID 採番
-`cNvPr id` は 1 から始まる連番。Z-order 順で振る。
+`cNvPr id` は 2 から始まる連番(Excel 自身の drawing と同じ。1 から振ると Excel が振り直し、`stCxn` / `endCxn` の接着先がずれる)。Z-order 順で振る。
 
 ## ブラウザ向け派生ファイル
 

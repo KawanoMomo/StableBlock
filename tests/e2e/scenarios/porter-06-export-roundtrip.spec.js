@@ -110,13 +110,18 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
 
   const report = page.locator('#export-report');
   await expect(report).toBeVisible();
-  await expect(report).toContainText('Excel に書き出せなかったもの(2 件)');
+  await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
   await expect(report).toContainText('spiapi -> zz');
-  await expect(report).toContainText('接続の線の形(曲線 4 本。Excel では直線になる)');   // 画面の既定は曲線
+  await expect(report).not.toContainText('線の形');                       // 線の形は Excel の曲線コネクタで載る
+  // 画面の既定は曲線。Excel でも曲線のコネクタで出す(BLK-porter-20260926-1205-1)
+  expect(cxns.map(c => c.match(/prst="(\w+)"/)[1])).toEqual(Array(4).fill('curvedConnector3'));
+  // 図形の id は 2 から(1 から振ると Excel が振り直し、接着先がずれる)
+  expect(Math.min(...Object.keys(names).map(Number))).toBe(2);
 });
 
-// block の太枠(style=bold)・破線枠(style=dashed)は Excel でも画面と同じ。Excel で表せない線の形と lpos= は画面に出る(BLK-builder-20260926-1230-1)
-test('porter-06: block の太枠・破線枠は Excel でも画面と同じで、表せない線の形と lpos= は知らせる', async ({ page }, testInfo) => {
+// block の太枠(style=bold)・破線枠(style=dashed)と接続の線の形は Excel でも画面と同じ。Excel で表せない lpos= は接続ごとに画面に出る
+// (BLK-builder-20260926-1230-1 / BLK-porter-20260926-1205-1)
+test('porter-06: block の太枠・破線枠と線の形は Excel でも画面と同じで、表せない lpos= は接続ごとに知らせる', async ({ page }, testInfo) => {
   await bootPlain(page);
   await importSb(page, path.join(FIXTURES, 'porter-styles.sb'));
   const svg = page.locator('#svg-wrap svg');
@@ -130,11 +135,14 @@ test('porter-06: block の太枠・破線枠は Excel でも画面と同じで�
   expect(shape('old')).toMatch(/<a:ln><a:solidFill><a:srgbClr val="94A3B8"\/><\/a:solidFill><a:prstDash val="dash"\/><\/a:ln>/);
   expect(shape('api')).toContain('<a:ln><a:noFill/></a:ln>');
 
+  const conn = n => xml.match(new RegExp(`name="conn:${n}"[\\s\\S]*?prst="(\\w+)"`))[1];
+  expect(conn(0)).toBe('curvedConnector3');                                // pay -> old: 画面の既定の曲線
+  expect(conn(1)).toBe('straightConnector1');                              // api -> pay route=straight
+
   const report = page.locator('#export-report');
   await expect(report).toBeVisible();
-  await expect(report).toContainText('Excel に書き出せなかったもの(2 件)');
-  await expect(report).toContainText('接続の線の形(曲線 1 本。Excel では直線になる)');
-  await expect(report).toContainText('接続ラベルの位置 lpos=(1 本。Excel では線の中点に置く)');
+  await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
+  await expect(report).toContainText('接続 pay -> old の lpos=top(Excel ではラベルを線の中点に置く)');
 });
 
 // ラベル中の二重引用符は SVG / Mermaid / Excel に引用符のまま出る(BLK-porter-20260926-0617)
