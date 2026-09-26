@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops } from '../check-core.mjs';
+import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -285,4 +285,30 @@ test('findOutside / checkDiagram: キャンバスの外にはみ出す要素を�
   assert.deepEqual(msgs.map(d => [d.line, d.level]), [[4, 'warn'], [5, 'warn']]);
   assert.match(msgs[0].msg, /block「b」がキャンバス\(400×200\)の外に右へ 2・下へ 2 グリッドはみ出している/);
   assert.match(msgs[1].msg, /note「n」がキャンバス\(400×200\)の外に下へ 1 グリッド/);
+});
+
+// 本文の @canvas が正。共有部の @canvas で本文の画布(大きさ・線の形)を上書きしない(BLK-junior-20260926-1105: 広げた画布が
+// 共有部の 520 に戻り、PNG / SVG の書き出しで下半分が切れた)
+test('expandIncludes: 本文に @canvas があれば include 先の @canvas は展開しない。本文に無ければ include 先のものを使う', () => {
+  const common = '@canvas width=960 height=520 grid=20 route=ortho\nblock rte "RTE" at 20,2 size 6x3\n';
+  const main = '@canvas width=960 height=780 grid=20\nblock swc "SWC" at 1,1 size 6x3\n@include "shared/common.sb"\n';
+  const exp = expandIncludes(main, p => (p === 'shared/common.sb' ? common : null), 'spi_swc.sb');
+  const p = parseDSL(exp.text);
+  assert.deepEqual([p.canvas.width, p.canvas.height, p.canvas.route], [960, 780, undefined]);
+  assert.ok(p.blockMap.rte);
+  assert.deepEqual(exp.origin[exp.lines.indexOf('block rte "RTE" at 20,2 size 6x3')], { file: 'shared/common.sb', line: 2, at: 3 });
+  const bare = expandIncludes('block swc "SWC" at 1,1 size 6x3\n@include "shared/common.sb"\n', p => (p === 'shared/common.sb' ? common : null), 'b.sb');
+  assert.equal(parseDSL(bare.text).canvas.height, 520);
+});
+
+test('includedItemNote: include 先の要素には定義の場所と直す先を示し、本文の要素には何も出さない', () => {
+  const common = 'block rte "RTE" at 20,2 size 6x3\n';
+  const exp = expandIncludes('block swc "SWC" at 1,1 size 6x3\n@include "shared/common.sb"\n', p => (p === 'shared/common.sb' ? common : null), 'spi_swc.sb');
+  const p = parseDSL(exp.text);
+  const base = f => f.split('/').pop();
+  assert.deepEqual(includeOrigin(exp, p.blockMap.rte.line), { file: 'shared/common.sb', line: 1, at: 2 });
+  assert.equal(includeOrigin(exp, p.blockMap.swc.line), null);
+  assert.equal(includedItemNote(exp, p.blockMap.rte.line, base), 'include 先 common.sb の L1 で定義(本文 L2 の @include)。この図からは動かせない・変えられないので common.sb で直す');
+  assert.match(includedItemNote(exp, p.blockMap.rte.line, base, 'en'), /^Defined in the included file common\.sb \(line 1; @include on line 2\)/);
+  assert.equal(includedItemNote(exp, p.blockMap.swc.line, base), '');
 });

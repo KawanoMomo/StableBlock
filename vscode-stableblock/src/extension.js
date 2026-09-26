@@ -341,7 +341,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const checkCoreAsGlobals = checkCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops };';
+    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -684,6 +684,8 @@ function propsPanel(){
   var colors=isN?NOTE_COLORS:isB?COLORS:BG_COLORS;
   var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
+  var incN=window.StableBlockCheck.includedItemNote(EXP,it.line,function(f){return f.split('/').pop();},'en');
+  if(incN)h+='<div class="pl" id="prop-included" style="margin-top:4px;font-size:9px;text-transform:none;color:#FCD34D">'+esc(incN)+'</div>';
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
   h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="if(event.key===\\'Enter\\')this.blur()" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
