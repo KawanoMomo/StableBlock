@@ -44,7 +44,7 @@
       { "command": "stableblock.copy", "title": "StableBlock: Copy" },
       { "command": "stableblock.cut", "title": "StableBlock: Cut" },
       { "command": "stableblock.paste", "title": "StableBlock: Paste" },
-      { "command": "stableblock.diffPreview", "title": "StableBlock: Visual Diff with Git HEAD" }
+      { "command": "stableblock.diffPreview", "title": "StableBlock: Visual Diff with a Git Version" }
     ],
     "menus": {
       "editor/title": [
