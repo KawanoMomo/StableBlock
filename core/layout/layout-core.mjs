@@ -173,6 +173,22 @@ export function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
+// ── 欄の幅(HTML 版の DSL | プレビュー | ツール欄、拡張のプレビュー | サイド欄) ──
+// 境界をドラッグした後の左・右の欄の幅(px、整数)。左右はそれぞれ最小幅を割らず、真ん中(プレビュー)に minMid を残す。
+// 入り切らないときは動かした側(moved: 'left' | 'right')を先に削る。moved 省略(窓の大きさが変わった)は左を先に削る。
+// 左の欄が無い画面は left 0・minLeft 0 で呼ぶ。
+export function paneWidths(total, left, right, opts = {}) {
+  const minL = opts.minLeft ?? 160, minM = opts.minMid ?? 240, minR = opts.minRight ?? 200;
+  let L = Math.max(minL, Math.round(Number(left) || 0));
+  let R = Math.max(minR, Math.round(Number(right) || 0));
+  const room = Math.max(0, Math.round(total) - minM);   // 左 + 右の上限
+  if (L + R > room) {
+    if (opts.moved === 'right') { R = Math.max(minR, room - L); L = Math.max(minL, room - R); }
+    else { L = Math.max(minL, room - R); R = Math.max(minR, room - L); }
+  }
+  return { left: L, right: R };
+}
+
 // ── 入れ子の group(親 group は子を内側に収める) ──
 // group の子は座標だけで決まる(子の矩形が親の矩形の内側にある)。GUI の操作(移動・大きさ変更・グループ化・group 内への追加)で
 // 子が親の枠をまたいだら、枠を越えた向きに親を広げる(親の親も同じ)。本文で変わるのは広がった group の行だけ。

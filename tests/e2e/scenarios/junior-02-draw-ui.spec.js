@@ -344,11 +344,55 @@ test('junior-02: 既定の図は 1600px 幅の画面でも右端がプロパテ�
   // −/+ の後に「全体表示」(F キーでも)で戻る
   await page.getByRole('button', { name: '+', exact: true }).click();
   await page.getByRole('button', { name: '+', exact: true }).click();
-  await page.locator('#preview-area').click({ position: { x: 2, y: 2 } });
+  await page.locator('#preview-area').click({ position: { x: 8, y: 8 } });   // 左端 5px は DSL 欄との境界(ドラッグで幅を変える)
   await page.keyboard.press('f');
   const fit = await page.locator('#svg-wrap svg').boundingBox();
   expect(fit.x + fit.width).toBeLessThanOrEqual(prop.x);
   await expect(page.locator('#zoom-label')).not.toHaveText('150%');
+});
+
+test('junior-02: DSL 欄・プレビュー・ツール欄の境界をドラッグで動かして幅を変えられ、開き直しても同じ幅、ダブルクリックで元の幅', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await bootPlain(page);
+  const width = sel => page.locator(sel).evaluate(e => Math.round(e.getBoundingClientRect().width));
+  const drag = async (sel, dx) => {
+    const b = await page.locator(sel).boundingBox();
+    const x = b.x + b.width / 2, y = b.y + 300;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x + dx, y, { steps: 6 }); await page.mouse.up();
+  };
+  const ed0 = await width('#editor-panel'), pp0 = await width('#prop-panel');
+  await expect(page.locator('#split-left')).toHaveAttribute('title', /ドラッグ/);
+
+  // DSL | プレビュー を右へ 120px: DSL 欄が広がり、ツール欄はそのまま
+  await drag('#split-left', 120);
+  expect(Math.abs(await width('#editor-panel') - (ed0 + 120))).toBeLessThanOrEqual(2);
+  expect(await width('#prop-panel')).toBe(pp0);
+  // プレビュー | ツール欄 を左へ 100px: ツール欄が広がる
+  await drag('#split-right', -100);
+  expect(Math.abs(await width('#prop-panel') - (pp0 + 100))).toBeLessThanOrEqual(2);
+  // 寄せすぎてもプレビューは潰れない(最小幅 240px が残る)
+  await drag('#split-left', 2000);
+  expect(await width('#preview-panel')).toBeGreaterThanOrEqual(238);
+  await drag('#split-left', -2000);
+  expect(await width('#editor-panel')).toBeGreaterThanOrEqual(160);
+  // ←/→ キーでも動く(キャンバスの矢印キー移動にはならない)
+  const before = await width('#editor-panel');
+  await page.locator('#split-left').focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await width('#editor-panel')).toBe(before + 16);
+
+  // 開き直しても同じ幅
+  const ed1 = await width('#editor-panel'), pp1 = await width('#prop-panel');
+  await page.reload();
+  await expect(page.locator('#svg-wrap svg')).toBeVisible();
+  expect(await width('#editor-panel')).toBe(ed1);
+  expect(await width('#prop-panel')).toBe(pp1);
+
+  // ダブルクリックで既定の幅に戻る
+  await page.locator('#split-right').dblclick();
+  expect(await width('#editor-panel')).toBe(ed0);
+  expect(await width('#prop-panel')).toBe(pp0);
 });
 
 test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパティ欄の ID で変えると接続も追従する)', async ({ page }) => {
