@@ -22,8 +22,12 @@ test('junior-02: 2 つ選んで「a → b」で結び、結んだ後に線の色
   await svg.locator('g[data-type="block"][data-id="dma"]').click({ modifiers: ['Shift'] });
   await expect(props).toContainText('2個のアイテムを選択中');
 
-  // 結ぶ前: 入口は「a → b」「b → a」の 2 ボタンだけで、色点で結ぶ入口は無い
+  // 結ぶ前: 入口はクリックした順の「a → b」1 ボタンだけ(3 つ以上の「a → b → c」と同じ場所・同じ形。向き違いの「b → a」は無く、
+  // 向きは結んだ後に「⇄ 反転」で変える)。色点で結ぶ入口も無い(BLK-owner-20260926-1009-prune)
   await expect(props.getByText('色を指定して接続')).toHaveCount(0);
+  await expect(props.getByRole('button', { name: 'dma → app' })).toHaveCount(0);
+  await expect(props.locator('#chain-btn')).toHaveText('app → dma');
+  await expect(props.locator('#chain-btn')).toHaveAttribute('title', /⇄ 反転/);   // 向きの変え方はボタンのツールチップ
   const before = await getEditorText(page);
   await props.getByRole('button', { name: 'app → dma' }).click();
 
@@ -270,12 +274,12 @@ test('junior-02: group と block を作図 UI だけで置くと、キャンバ�
   const gid = await group.getAttribute('data-id');
   expect(await outsideCanvas(page)).toEqual([]);
 
-  // group の「+ グループ内にブロック追加」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
+  // group の「+ 中にブロック」を 8 回。毎回 group を選び直す(ラベルの帯をクリック。角は選択中のリサイズハンドル)
   for (let i = 0; i < 8; i++) {
     const before = await getEditorText(page);
     await page.locator(`#svg-wrap svg g[data-type="group"][data-id="${gid}"]`).click({ position: { x: 40, y: 26 } });
     await expect(page.locator("#prop-id")).toHaveValue(gid);
-    await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await page.getByRole('button', { name: '+ 中にブロック' }).click();
     await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(i + 1);
     // 全部キャンバス内に描かれる
     expect(await outsideCanvas(page), `${i + 1} 個目の追加後`).toEqual([]);
@@ -352,7 +356,8 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await importSb(page, SENPAI);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  await expect(page.getByRole('button', { name: 'ID補正' })).toHaveCount(0);
+  // ツールバーの「ID補正」は仮の ID のままの要素にラベルから ID を一括で付ける(BLK-human-20260926-2045-4 で戻した。1 つずつの改名は ID 欄)
+  await expect(page.getByRole('button', { name: 'ID補正' })).toHaveAttribute('title', /仮の ID\(__new_\)のままの要素に、ラベルから ID を一括で付ける/);
 
   // 新しい block はラベルを打つと ID がその表記のまま付く(大文字と _ を落とさない)
   await props.getByRole('button', { name: '+ ブロック追加' }).click();
@@ -399,6 +404,69 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
   await props.locator('#prop-id').fill('dma');
   await props.locator('#prop-id').press('Enter');
   await expect(props.locator('#prop-id-msg')).toContainText('既に使われています');
+  await expect(props.locator('#prop-id')).toBeFocused();                   // 使えない ID なら欄に残って打ち直せる
+
+  // 英数字の無いラベル(日本語の部品名)からは ID を作れない。キャンバス上でラベルを打って Enter すると、その場で ID 欄へ移り、
+  // 打って Enter で ID が付く(BLK-junior-20260926-0950-wish: 何も知らせず __new_ のまま確定していた)
+  const inline = page.locator('#inline-label');
+  const bar = page.locator('#error-bar');
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const n1 = await props.locator('#prop-id').inputValue();
+  expect(n1).toMatch(/^__new_\d+$/);
+  await svg.locator(`g[data-type="block"][data-id="${n1}"]`).dblclick();
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('通信管理');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  await expect(props.locator('#prop-id')).toBeFocused();
+  await expect(props.locator('#prop-id-help')).toContainText('ラベルから ID を作れない');
+  await expect(bar).toContainText(`block「${n1}」(「通信管理」)はまだ仮の ID`);
+  await page.keyboard.type('Com_Mgr');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => getEditorText(page)).toMatch(/^block Com_Mgr "通信管理" at /m);
+  await expect(props.locator('#prop-id-now')).toHaveText('Com_Mgr');
+  await expect(bar).not.toContainText('仮の ID');
+
+  // プロパティ欄のラベル欄の Enter でも同じ。Esc で後回しにでき(ID は仮のまま、打ちかけは捨てる)、残った仮の ID はエラー欄に行番号付きで出る
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const n2 = await props.locator('#prop-id').inputValue();
+  await label.fill('監視');
+  await label.press('Enter');
+  await expect(props.locator('#prop-id')).toBeFocused();
+  await page.keyboard.type('Wd');
+  await page.keyboard.press('Escape');
+  const lines = (await getEditorText(page)).split('\n');
+  const at = lines.findIndex(l => l.startsWith(`block ${n2} "監視" at `)) + 1;
+  expect(at).toBeGreaterThan(0);
+  expect(lines.some(l => /^block Wd /.test(l))).toBe(false);
+  await expect(bar.locator('.diag-warn', { hasText: `L${at}: block「${n2}」(「監視」)はまだ仮の ID` })).toHaveCount(1);
+  // 英数字を含むラベルは今どおり自動で ID が付き、ID 欄へは移らない
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await label.fill('SPI ドライバ');
+  await label.press('Enter');
+  await expect(props.locator('#prop-id-now')).toHaveText('SPI');
+  await expect(props.locator('#prop-id')).not.toBeFocused();
+
+  // 貼り付けた要素は仮の ID のまま。「ID補正」1 回でラベルの表記の ID が付き(重なれば _2)、英数字の無いラベルの要素は仮のまま残ると知らせる
+  await svg.locator('g[data-type="block"][data-id="SPI"]').click();
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect.poll(() => getEditorText(page)).toMatch(/^block __new_\d+ "SPI ドライバ" at /m);
+  const beforeFix = (await getEditorText(page)).split('\n');
+  await page.getByRole('button', { name: 'ID補正' }).click();
+  await expect.poll(() => getEditorText(page)).toMatch(/^block SPI_2 "SPI ドライバ" at /m);
+  const afterFix = (await getEditorText(page)).split('\n');
+  expect(afterFix.filter((l, i) => l !== beforeFix[i])).toEqual([afterFix.find(l => l.startsWith('block SPI_2 '))]);   // 変わるのは定義行だけ
+  const report = page.locator('#export-report');
+  await expect(report).toContainText('ID補正: 1 件');
+  await expect(report).toContainText('→ SPI_2');
+  await expect(report).toContainText('付けられなかった 1 件(「監視」)');
+  expect(afterFix.some(l => l.startsWith(`block ${n2} "監視"`))).toBe(true);
+  await report.click();
+  await expect(report).toBeHidden();
 });
 
 // ─── 置く: group の中に block 8 個を同じ大きさ・同じ色で並べる(BLK-junior-20260925-1921-friction) ───
@@ -412,8 +480,8 @@ test('junior-02: group の「ブロック追加」1 回と Ctrl+C → Ctrl+V で
   const props = page.locator('#prop-content');
 
   await props.getByRole('button', { name: /グループ追加/ }).click();
-  await props.getByRole('button', { name: /ブロック追加/ }).click();              // group 欄の追加
-  await expect(props.locator('#dup-hint')).toContainText('Ctrl+C → Ctrl+V');      // 複製の入口が見える
+  await props.getByRole('button', { name: /中にブロック/ }).click();              // group 欄の追加
+  await expect(props.locator('#dup-hint')).toHaveAttribute('title', /Ctrl\+C → Ctrl\+V/);   // 複製の入口は種類の見出しのツールチップ
   await props.locator('.color-dot').nth(3).click();                               // 1 個目だけ色を決める
   await page.keyboard.press('Control+c');
   for (let i = 0; i < 7; i++) await page.keyboard.press('Control+v');
@@ -455,7 +523,7 @@ test('junior-02: ツール欄の「+ ブロック追加」は直前の block の
   expect(bs[2].x).toBe(bs[1].x + bs[1].w + 1);
 });
 
-// ─── 入れ子の group: 親の中で「選択をグループ化」「+ グループ内にブロック追加」「移動」をしても子は親の内側に収まり、
+// ─── 入れ子の group: 親の中で「選択をグループ化」「+ 中にブロック」「移動」をしても子は親の内側に収まり、
 //     親に足した block は親の直下に入る。枠をまたぐ配置は警告に出る(BLK-owner-20260926-0451-1) ───
 const boxes = text => Object.fromEntries([...text.matchAll(/^(block|group) (\S+) "[^"]*" at (\d+),(\d+) size (\d+)x(\d+)/gm)]
   .map(m => [m[2], { type: m[1], id: m[2], x: +m[3], y: +m[4], w: +m[5], h: +m[6] }]));
@@ -474,17 +542,17 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
   const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
 
-  // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ グループ内にブロック追加」が効く
+  // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ 中にブロック」が効く
   await props.getByRole('button', { name: '+ グループ追加' }).click();
   await label().fill('ECU');
   await label().press('Enter');
   await expect(props.locator('#prop-id')).toHaveValue('ECU');
-  await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(1);
   await label().fill('CPU');
   for (const name of ['RAM', 'Flash']) {
     await selectGroup('ECU');
-    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
     await label().fill(name);
   }
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
@@ -501,10 +569,10 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   expect(parentOf(all, 'CPU')).toBe('MCU');
   expect(parentOf(all, 'Flash')).toBe('ECU');
 
-  // 子 group を持つ親に「+ グループ内にブロック追加」: 子 group の中にも枠の上にも置かれず、親の直下に入る
+  // 子 group を持つ親に「+ 中にブロック」: 子 group の中にも枠の上にも置かれず、親の直下に入る
   for (const name of ['CAN_Trcv', 'EEPROM']) {
     await selectGroup('ECU');
-    await props.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
     await label().fill(name);
     await expect(props.locator('#prop-id')).toHaveValue(name);
     all = boxes(await getEditorText(page));
@@ -538,6 +606,57 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   await expect(page.locator('#error-bar')).toContainText('枠をまたいでいる');
 });
 
+// 「+ 中にブロック」で広がった group は、下のほかの group に掛からない(BLK-human-20260926-2045-1)。
+// 掛かる group は中身ごと、元の隙間を保って押し出す(同じ親の中で子 group が広がったときと同じ)
+test('junior-02: group にブロックを足し続けて group が広がっても、ほかの group に重ならず、下の group は中身ごと押し出される', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+
+  // group を 3 つ(空き位置に左から並び、3 つ目は 1 つ目の下へ折り返す)。3 つ目には block を 1 つ入れておく
+  for (const name of ['A', 'B', 'C']) {
+    await props.getByRole('button', { name: '+ グループ追加' }).click();
+    await label().fill(name);
+    await label().press('Enter');
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    await selectGroup(name);
+    await page.keyboard.press('Escape');                                 // 選択を外してツール欄へ戻る
+    await expect(page.locator('#prop-title')).toHaveText('ツール');
+  }
+  await selectGroup('C');
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('X');
+  await expect(props.locator('#prop-id')).toHaveValue('X');
+  let all = boxes(await getEditorText(page));
+  const gap = all.C.y - (all.A.y + all.A.h);
+  expect(gap, JSON.stringify(all)).toBeGreaterThanOrEqual(1);           // C は A の真下
+  expect(hits({ ...all.A, h: all.A.h + 20 }, all.C)).toBe(true);
+  const xInC = { dx: all.X.x - all.C.x, dy: all.X.y - all.C.y };
+
+  // A に 6 個足す: A は下へ広がるが C に掛からず、C は X ごと元の隙間を保って下がる。B(A の右)は動かない
+  const b0 = { ...all.B };
+  for (let i = 0; i < 6; i++) {
+    await selectGroup('A');
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
+    await label().fill(`a${i}`);
+    await expect(props.locator('#prop-id')).toHaveValue(`a${i}`);
+    all = boxes(await getEditorText(page));
+    expect(hits(all.A, all.C), `${i + 1} 個目で A が C に掛かる ${JSON.stringify([all.A, all.C])}`).toBe(false);
+    expect(hits(all.A, all.B), `${i + 1} 個目で A が B に掛かる`).toBe(false);
+    expect(parentOf(all, `a${i}`)).toBe('A');
+  }
+  expect(all.A.h).toBeGreaterThan(8);
+  expect(all.C.y - (all.A.y + all.A.h)).toBe(gap);
+  expect({ dx: all.X.x - all.C.x, dy: all.X.y - all.C.y }).toEqual(xInC);
+  expect(parentOf(all, 'X')).toBe('C');
+  expect(all.B).toEqual(b0);
+  await expect(page.locator('#error-bar')).not.toContainText('重なって');
+});
+
 test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、見本の見出し・要素が本文に混ざらない。保存名は diagram.sb', async ({ page }, testInfo) => {
   await bootPlain(page);
   await expect(page.locator('#editor')).toHaveValue(/# Application/);          // 起動時は見本
@@ -548,7 +667,7 @@ test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、
 
   // 作図 UI だけで group と block を置く。本文は @canvas と足した要素の行だけ
   await page.getByRole('button', { name: '+ グループ追加' }).click();
-  await page.getByRole('button', { name: '+ グループ内にブロック追加' }).click();
+  await page.getByRole('button', { name: '+ 中にブロック' }).click();
   await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(1);
   const text = await getEditorText(page);
   expect(text).not.toMatch(/^# /m);
@@ -687,11 +806,13 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await bootPlain(page);
   await importSb(page, SMALL);
   const canvasLine = async () => (await getEditorText(page)).split('\n').find(l => l.startsWith('@canvas'));
-  const grew = page.locator('#status #canvas-grew');
+  const grew = page.locator('#canvas-bar #canvas-grew');   // プレビューの上端に出る(下端では見落とす。BLK-human-20260926-2045-4)
   const bar = page.locator('#error-bar');
 
-  // 既定は自動で広げる。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
+  // 既定は自動で広げる(下端の Canvas にも「自動拡張」)。block を 1 つ置いて X に 30 を打つと広がり、下端に広げた寸法と戻す入口が出る
+  const status = page.locator('#status #status-canvas');
   await expect(page.locator('#canvas-grow')).toBeChecked();
+  await expect(status).toHaveText('Canvas: 400×300 自動拡張');
   await page.getByRole('button', { name: '+ ブロック追加' }).click();
   const x = page.locator('#prop-content div:has(> .prop-sub:text-is("X")) input');
   await x.fill('30');
@@ -712,7 +833,14 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await x.fill('31');
   await expect.poll(async () => (await getEditorText(page)).includes(' at 31,')).toBe(true);
   expect(await canvasLine()).toBe('@canvas width=400 height=300 grid=20 grow=off');
-  await page.keyboard.press('Escape');
+  // 設定の在りか(BLK-human-20260926-2045-3): block を選んだままでも、下端の「Canvas: 400×300 固定」を押せば選択が外れ、
+  // ツール欄の「キャンバス (px)」とチェックが出てそこにフォーカスが来る
+  await expect(status).toHaveText('Canvas: 400×300 固定');
+  await expect(page.locator('#canvas-grow')).toHaveCount(0);
+  await status.click();
+  await expect(page.locator('#status')).toContainText('Selected: 0');
+  await expect(page.locator('#canvas-section')).toHaveClass(/flash/);
+  await expect(page.locator('#canvas-grow')).toBeFocused();
   await expect(page.locator('#canvas-grow')).not.toBeChecked();
 
   // はみ出しを直して(X を 2 に)チェックを戻すと grow=off が消え、元の 1 行に戻る
@@ -722,6 +850,13 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await page.keyboard.press('Escape');
   await page.locator('#canvas-grow').check();
   await expect.poll(canvasLine).toBe('@canvas width=400 height=300 grid=20');
+  // 広げたままでよければ「このまま」で知らせを閉じる(寸法は広げたまま)
+  await page.locator('#svg-wrap svg g[data-type="block"]').click();
+  await x.fill('30');
+  await expect(grew).toContainText('400×300 →');
+  await grew.getByRole('button', { name: 'このまま' }).click();
+  await expect(page.locator('#canvas-bar')).toBeHidden();
+  await expect.poll(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');
 });
 
 // ─── __new_ のまま残った ID を検索で順に直す(BLK-junior-20260926-0609-wish) ───

@@ -154,7 +154,13 @@ export function labelToId(label) {
 // (`__new_` で始まる)とき、一緒に読み込んだほかの図でも使われている(elsewhere。改名が全部の図に及ぶと見せる)とき、
 // 利用者が開いたままにしたとき(userOpen)だけ開く。改名はこの欄から(参照も一緒に変わる)
 export function idFieldOpen(id, userOpen, elsewhere) {
-  return !!userOpen || !!elsewhere || String(id).startsWith('__new_');
+  return !!userOpen || !!elsewhere || isPlaceholderId(id);
+}
+
+// 追加したばかりでまだ名前の無い要素の仮の ID(`__new_N`)か。ラベルを確定した時点でこれが残っていれば、ラベルから ID を
+// 作れていない(英数字の無いラベル)ので、GUI は ID 欄へ移って名前を聞く(HTML 版・VSCode 拡張)
+export function isPlaceholderId(id) {
+  return typeof id === 'string' && id.startsWith('__new_');
 }
 
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
@@ -193,6 +199,27 @@ export function renameIdInDsl(dsl, oldId, newId, line) {
     }
   }
   return lines.join('\n');
+}
+
+// ツールバーの「ID補正」: 仮の ID(`__new_N`)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま。重なれば `_2`)。
+// items は [{ id, label, line }](line は本文の定義行、1 始まり)、used は図で使っている ID 全部(include 先を含む)。
+// 仮の ID でない要素には触れない。ラベルに英数字が無く ID を作れない要素は left に返す(ID 欄で付ける)
+export function fixPlaceholderIdsInDsl(dsl, items, used) {
+  const taken = new Set(used instanceof Set ? used : Array.from(used || []));
+  const renamed = [], left = [];
+  let out = dsl;
+  for (const it of items || []) {
+    if (!isPlaceholderId(it.id)) continue;
+    const base = labelToId(it.label);
+    if (!base) { left.push(it); continue; }
+    const to = uniqueId(base, taken);
+    const next = renameIdInDsl(out, it.id, to, it.line);
+    if (next === out) { left.push(it); continue; }
+    out = next;
+    taken.add(to);
+    renamed.push({ from: it.id, to, line: it.line });
+  }
+  return { dsl: out, renamed, left };
 }
 
 // ─── 図をまたぐ ID の参照探しと改名(CLI `npm run check -- --refs / --rename` と VSCode 拡張の F2 が共用) ───
@@ -261,6 +288,18 @@ export function searchIdsInFiles(files, query) {
     });
   }
   return out;
+}
+
+// 一緒に読み込んだ図のパス(paths)のうち、パスに query を含む図(大文字小文字を区別しない)。名前(最後の / か \ の後)の先頭で当たる図、
+// 名前に含む図、フォルダ名だけで当たる図の順で、同じ順位の中は paths の順。HTML 版のツールバーの検索が、図名で当たった図を一覧の先頭に出すのに使う
+export function searchFileNames(paths, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!q) return [];
+  const rank = p => {
+    const s = String(p).toLowerCase(), b = s.split(/[\\/]/).pop();
+    return b.startsWith(q) ? 0 : b.includes(q) ? 1 : s.includes(q) ? 2 : -1;
+  };
+  return paths.map((p, i) => ({ p, i, r: rank(p) })).filter(x => x.r >= 0).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.p);
 }
 
 // 複数の図(files: [{ path, text }])にまたがる改名の計画。書き込みは呼び出し側。

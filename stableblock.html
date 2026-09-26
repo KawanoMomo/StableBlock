@@ -44,12 +44,19 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .toolbar { display:flex; gap:4px; align-items:center; }
 .tb { padding:4px 10px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; font-family:inherit; }
 .tb:hover { background:#334155; }
+/* ツールバーは 1366 幅でもボタン名が折れない幅に収める(左右の余白を詰める) */
+#header .toolbar > .tb { padding:4px 8px; }
+#header .toolbar > .tb-split-r { padding:4px 5px; }
+#header .toolbar > .sep { margin:0 2px; }
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
 .tb-more[hidden] { display:none; }
-#export-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
-#export-menu[hidden] { display:none; }
-#export-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
-#export-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
+#export-menu, #png-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+#export-menu[hidden], #png-menu[hidden] { display:none; }
+/* PNG と ▾ は 1 つの入口(押せば PNG を保存、▾ で透過・コピーを選ぶ)。見た目は隣り合う 1 組 */
+.tb-split-l { border-top-right-radius:0; border-bottom-right-radius:0; }
+.tb-split-r { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:-4px; border-left-width:0; padding:4px 6px; }
+#export-menu .tb, #png-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
+#export-menu .em-head, #png-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
@@ -77,6 +84,10 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 
 /* Preview Panel */
 #preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+#canvas-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:11px; line-height:1.6; border-bottom:1px solid #F59E0B; }
+#canvas-bar[hidden] { display:none; }
+#canvas-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
+#canvas-bar button.plain { border-color:transparent; color:#D6B98C; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
 #svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
@@ -119,21 +130,36 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #export-report[hidden] { display:none; }
 #search-hits { position:fixed; z-index:60; width:420px; max-height:60vh; overflow:auto; background:var(--bg2); border:1px solid #475569; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,0.45); padding:4px; font-size:11px; }
 #search-hits[hidden] { display:none; }
-.search-count { font-size:10px; color:var(--muted); margin-left:4px; white-space:nowrap; min-width:28px; }
+/* 検索の件数は検索欄の内側の右端に出す(ツールバーの幅を取らない) */
+.search-box { position:relative; display:inline-flex; align-items:center; }
+.search-count { position:absolute; right:6px; font-size:10px; color:var(--muted); white-space:nowrap; pointer-events:none; }
 .search-count[hidden] { display:none; }
 #search-hits .sh-head { color:#94A3B8; padding:4px 6px; }
 #search-hits .sh-item { display:block; width:100%; text-align:left; background:none; border:0; border-radius:4px; color:#E2E8F0; padding:4px 6px; cursor:pointer; font:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #search-hits .sh-item:hover { background:#334155; }
 #search-hits .sh-line { color:#A5B4FC; }
 #search-hits code { color:#CBD5E1; font-family:Consolas,monospace; }
+#search-hits .sh-item:focus { background:#334155; outline:1px solid var(--accent); }
+#search-hits .sh-unsaved { color:var(--amber); }
 /* キャンバス上のラベル編集(ダブルクリック / F2 / Enter)。#svg-wrap の外に置き、再描画で消えない */
 .inline-label { position:fixed; z-index:40; box-sizing:border-box; margin:0; padding:2px 6px; border:2px solid var(--accent); border-radius:4px; background:#FFFFFF; color:#0F172A; font:600 12px 'IBM Plex Sans','Noto Sans JP',sans-serif; text-align:center; outline:none; box-shadow:0 4px 12px rgba(0,0,0,0.35); resize:none; }
 textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #export-report ul { margin:4px 0 0 16px; }
 #export-report .hint { color:#D6B98C; font-size:10px; margin-top:4px; }
 #status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
-#status .status-btn { font:inherit; font-size:10px; padding:0 6px; margin-left:4px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
-.canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:10px; color:var(--muted); }
+#status .status-file { font:inherit; font-size:10px; font-weight:600; padding:0; border:0; background:none; color:#E2E8F0; cursor:pointer; }
+#status .status-file:hover { text-decoration:underline; }
+#status .status-dirty { color:var(--amber); }
+#status .status-pos { color:var(--dim); font-weight:400; }
+#error-bar .diag-file { font:inherit; padding:0; border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; }
+#prop-content .help-keys { margin-top:16px; font-size:10px; color:var(--dim); line-height:1.5; }
+#prop-content .help-keys summary { cursor:pointer; color:var(--muted); font-size:11px; }
+#prop-content .help-keys[open] summary { margin-bottom:6px; }
+.canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:11px; color:#CBD5E1; }
+#status .status-canvas { font:inherit; font-size:10px; padding:0; border:0; border-bottom:1px dotted var(--dim); background:none; color:inherit; cursor:pointer; }
+#status .status-canvas:hover { color:#E2E8F0; border-bottom-color:#E2E8F0; }
+#canvas-section { padding:4px; margin-left:-4px; margin-right:-4px; border-radius:4px; transition:box-shadow .3s, background-color .3s; }
+#canvas-section.flash { box-shadow:0 0 0 2px var(--amber); background-color:rgba(245,158,11,0.10); }
 
 input[type=number] { -moz-appearance:textfield; }
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
@@ -160,7 +186,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
   <div class="logo">
     <div class="logo-icon">◆</div>
     <span class="logo-text">StableBlock</span>
-    <span class="badge">v1.0</span>
+    <span class="badge">v2.0</span>
   </div>
   <div class="toolbar">
     <button class="tb" data-term="zoom-out" onclick="setZoom(-1)" title="縮小する">−</button>
@@ -171,15 +197,15 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="undo" onclick="undo()" title="元に戻す(Ctrl+Z)">↩</button>
     <button class="tb" data-term="redo" onclick="redo()" title="やり直す(Ctrl+Y)">↪</button>
     <div class="sep"></div>
-    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="図全体の線の形(route を書いていない接続)を 曲線 → 直線 → 直角 の順に切り替え、本文の @canvas 行に書く(L キー)">⌇ 線の形: 曲線</button>
-    <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続を薄く</button>
+    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)">⌇ 曲線</button>
+    <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続</button>
     <div class="sep"></div>
-    <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈を表示</button>
+    <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
+    <button class="tb" data-term="fix-id" id="fix-id-btn" onclick="fixIds()" title="仮の ID(__new_)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま、接続も追従)。英数字の無いラベルはプロパティ欄の ID で付ける">ID補正</button>
     <div class="sep"></div>
     <button class="tb tb-accent" data-term="export-svg" onclick="exportSVG()" title="SVG で書き出す">SVG</button>
-    <button class="tb tb-accent" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button>
-    <button class="tb tb-accent" data-term="export-png-transparent" onclick="exportPNGTransparent()" title="背景を透過した PNG で書き出す">透過PNG</button>
-    <button class="tb tb-accent" data-term="copy-png" onclick="copyPNG()" title="PNG 画像をクリップボードにコピーする">PNGをコピー</button>
+    <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)">▾</button>
+    <div id="png-menu" role="menu" hidden><div class="em-head">PNG(表示中の図)</div><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGTransparent)" title="背景を透過した PNG で書き出す">透過PNG</button><button class="tb tb-accent" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="PNG 画像をクリップボードにコピーする">コピー</button></div>
     <button class="tb tb-accent" data-term="export-xlsx" onclick="exportXlsx()" title="Excel(.xlsx)で書き出す">Excel</button>
     <button class="tb tb-accent" data-term="export-mermaid" onclick="exportMermaid()" title="Mermaid(.mmd)で書き出す">Mermaid</button>
     <button class="tb tb-accent tb-more" data-term="export-all" onclick="openExportAll(this)" title="一緒に読み込んだ全部の図を書き出す。形式を選ぶと 1 枚ずつ include を解決して 1 つの zip で保存する" hidden>一括 ▾</button>
@@ -190,9 +216,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
-    <input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="if(event.key==='Escape'){searchHitsOpen=false;renderSearchHits();}else if(event.key==='Enter'&&!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}">
-    <span id="search-count" class="search-count" aria-live="polite"></span>
-    <div id="search-hits" role="listbox" hidden></div>
+    <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
+<span id="search-count" class="search-count" aria-live="polite"></span></span>
+    <div id="search-hits" role="listbox" hidden onkeydown="searchHitsKey(event)"></div>
   </div>
 </div>
 
@@ -206,10 +232,10 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     </div>
   </div>
   <div id="preview-panel">
-    <div class="panel-label">
+    <div class="panel-label" title="ドラッグで移動(親グループは子も連動)">
       <span class="dot" style="color:var(--green)">●</span> PREVIEW
-      <span style="margin-left:auto;color:var(--dim);font-weight:400">ドラッグで移動（親グループは子も連動）</span>
     </div>
+    <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
   </div>
   <div id="prop-panel">
@@ -225,7 +251,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 // ═══════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════
-let dsl = `# StableBlock v1.0
+let dsl = `# StableBlock v2.0
 @canvas width=960 height=520 grid=20
 
 # Application
@@ -359,10 +385,11 @@ function renderLineModeBtn(){
   btn.textContent=window.StableBlockTerms.lineModeText(m);
   btn.classList.toggle('tb-line-active',m!=='curved');
 }
-function doSearch(q){searchQuery=q.toLowerCase();searchHitsOpen=true;renderSVG();renderSearchHits();}
+function doSearch(q){searchQuery=q.toLowerCase();searchHitsOpen=true;searchListAll=false;renderSVG();renderSearchHits();}
 // 検索の当たり(core/render の searchMatches: block / group / note を読み順)。件数は検索欄の横に出し、0 件なら残りが無いと分かる
 function searchMatchesNow(){return parsed?window.StableBlockRender.searchMatches(parsed,searchQuery,{showAnnotations}):[];}
-function renderSearchCount(){const el=document.getElementById('search-count');if(!el)return;const on=!!searchQuery.trim();el.textContent=on?`${searchMatchesNow().length} 件`:'';el.hidden=!on;}
+function renderSearchCount(){const el=document.getElementById('search-count');if(!el)return;const on=!!searchQuery.trim();el.textContent=on?`${searchMatchesNow().length} 件`:'';el.hidden=!on;
+  const inp=document.getElementById('search-input');if(inp)inp.style.paddingRight=on?`${el.offsetWidth+10}px`:'';}
 // 検索欄の Enter / Shift+Enter: 当たりを読み順に 1 つずつ選び(プロパティ欄の ID 欄でそのまま直せる)、画面の外なら見える位置へ寄せる
 function searchStep(dir){const t=window.StableBlockRender.nextMatch(searchMatchesNow(),sel.length===1?sel[0]:null,dir);if(!t)return;
   sel=[t];selClicked=false;justLinked=[];searchHitsOpen=false;renderSearchHits();renderSVG();renderProps();renderStatus();
@@ -375,18 +402,38 @@ function readInclude(p){return window.StableBlockCheck.loadedReader(includeFiles
 // 一緒に読み込んだ図(「.sb 読込」で複数選んだもの)。表示中の図の本文は dsl が正で、includeFiles[dslFile] に写してから使う。loadedTexts は読込・保存した時の本文(違えば未保存)。
 // ツールバーの検索は表示中でない図の当たりも図と行で並べ(クリックでその図を開く)、プロパティ欄の ID の改名はほかの図が同じ ID を使っていれば
 // 全部の図に当てる(core/label の planRename。CLI の --rename・VSCode の F2 と同じ)。「.sb 保存」は表示中の図と、変わったほかの図を全部書き出す
-let loadedTexts={},searchHits=[],searchHitsOpen=false,idNote=null;
+// 検索は一緒に読み込んだ図の名前(パス)にも当たり、当たった図は一覧の先頭に図名だけの行で出す(押すか Enter で開く)。ステータスバーの図名を押すと、空の検索欄で読み込んだ図の名前を全部並べる(searchListAll)
+let loadedTexts={},searchHits=[],searchFiles=[],searchHitsOpen=false,searchListAll=false,idNote=null;
 const hasLoaded=p=>Object.prototype.hasOwnProperty.call(includeFiles,p);
 function syncLoaded(){if(dslFile&&hasLoaded(dslFile))includeFiles[dslFile]=dsl;}
 function otherLoaded(){return Object.keys(includeFiles).filter(k=>k!==dslFile);}
 function baseName(p){return String(p).split('/').pop();}
 function unsavedOthers(){syncLoaded();return otherLoaded().filter(k=>includeFiles[k]!==loadedTexts[k]);}
 function idUsesElsewhere(id){const SL=window.StableBlockLabel;return otherLoaded().map(k=>({path:k,hits:SL.findIdInDsl(includeFiles[k],id)})).filter(x=>x.hits.length);}
-function renderSearchHits(){const el=document.getElementById('search-hits');if(!el)return;const others=otherLoaded();
-  if(!searchQuery.trim()||!others.length||!searchHitsOpen){el.hidden=true;el.innerHTML='';searchHits=[];return;}
-  searchHits=window.StableBlockLabel.searchIdsInFiles(others.map(k=>({path:k,text:includeFiles[k]})),searchQuery);const n=new Set(searchHits.map(h=>h.path)).size;
-  el.innerHTML=`<div class="sh-head">ほかに読み込んだ図 ${others.length} 枚のうち ${n} 枚・${searchHits.length} 行${searchHits.length?'(クリックでその図を開く)':''}</div>`+searchHits.map((h,i)=>`<button type="button" class="sh-item" data-path="${esc(h.path)}" data-line="${h.line}" onclick="openSearchHit(${i})"><b>${esc(baseName(h.path))}</b> <span class="sh-line">L${h.line} ${h.kind==='def'?'定義':'接続'}</span> <code>${esc(h.text.trim())}</code></button>`).join('');
+function renderSearchHits(){const el=document.getElementById('search-hits');if(!el)return;const others=otherLoaded(),q=searchQuery.trim();
+  if((!q&&!searchListAll)||!others.length||!searchHitsOpen){el.hidden=true;el.innerHTML='';searchHits=[];searchFiles=[];return;}
+  searchFiles=q?window.StableBlockLabel.searchFileNames(others,q):others.slice();
+  searchHits=q?window.StableBlockLabel.searchIdsInFiles(others.map(k=>({path:k,text:includeFiles[k]})),searchQuery):[];const n=new Set(searchHits.map(h=>h.path)).size,un=new Set(unsavedOthers());
+  const how=searchEnterOpensFile()?'押すか Enter で開く':'押すか ↓ で選んで Enter で開く';
+  const fileHead=q?`図名で当たった図 ${searchFiles.length} 枚(${how})`:`読み込んだ図 ${others.length+1} 枚・表示中は ${esc(baseName(dslFile)||sbFileName)}(${how})`;
+  el.innerHTML=(searchFiles.length?`<div class="sh-head sh-files-head">${fileHead}</div>`+searchFiles.map((k,i)=>`<button type="button" class="sh-item sh-file" data-path="${esc(k)}" onclick="openSearchFile(${i})"><b>${esc(baseName(k))}</b>${un.has(k)?' <span class="sh-unsaved" title="保存していない変更がある">●</span>':''}${k!==baseName(k)?` <span class="sh-line">${esc(k)}</span>`:''}</button>`).join(''):'')
+    +(q&&(searchHits.length||!searchFiles.length)?`<div class="sh-head">ほかに読み込んだ図 ${others.length} 枚のうち ${n} 枚・${searchHits.length} 行${searchHits.length?'(クリックでその図を開く)':''}</div>`+searchHits.map((h,i)=>`<button type="button" class="sh-item" data-path="${esc(h.path)}" data-line="${h.line}" onclick="openSearchHit(${i})"><b>${esc(baseName(h.path))}</b> <span class="sh-line">L${h.line} ${h.kind==='def'?'定義':'接続'}</span> <code>${esc(h.text.trim())}</code></button>`).join(''):'');
   const r=document.getElementById('search-input').getBoundingClientRect();el.style.top=Math.round(r.bottom+4)+'px';el.style.right=Math.max(8,Math.round(window.innerWidth-r.right))+'px';el.hidden=false;}
+// 検索欄の Enter: 図名で当たった図があり、表示中の図に当たりが無ければ(空の欄で図名を並べているときも)先頭の図を開く。ほかは当たりを 1 つずつ選ぶ
+function searchEnterOpensFile(){return searchHitsOpen&&searchFiles.length>0&&(!searchQuery.trim()||!searchMatchesNow().length);}
+// 図名の行を開く。検索語は図名なので消す(開いた図が検索で薄くならない)
+function openSearchFile(i){const k=searchFiles[i];if(!k)return;searchHitsOpen=false;searchListAll=false;searchQuery='';const inp=document.getElementById('search-input');if(inp)inp.value='';
+  if(k===dslFile){renderSVG();renderSearchHits();}else openLoaded(k);renderSearchCount();}
+// 検索欄のキー: ↓ で一覧の行へ移り、行の上で ↑↓ で選び Enter で開く。Esc で閉じて検索欄へ戻る
+function searchKey(ev){
+  if(ev.key==='Escape'){searchHitsOpen=false;searchListAll=false;renderSearchHits();}
+  else if(ev.key==='Enter'&&!ev.isComposing){ev.preventDefault();if(searchEnterOpensFile())openSearchFile(0);else searchStep(ev.shiftKey?-1:1);}
+  else if(ev.key==='ArrowDown'){const b=document.querySelector('#search-hits:not([hidden]) .sh-item');if(b){ev.preventDefault();b.focus();}}}
+function searchHitsKey(ev){const items=[...document.querySelectorAll('#search-hits .sh-item')],i=items.indexOf(document.activeElement),inp=document.getElementById('search-input');
+  if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ev.preventDefault();const j=i+(ev.key==='ArrowDown'?1:-1);if(j<0)inp.focus();else if(items[j])items[j].focus();}
+  else if(ev.key==='Escape'){ev.preventDefault();searchHitsOpen=false;searchListAll=false;renderSearchHits();inp.focus();}}
+// ステータスバーの図名を押す: 検索欄へ移り、読み込んだ図の名前を並べる(1 枚だけならフォーカスだけ)
+function showLoadedList(){const inp=document.getElementById('search-input');if(!inp)return;searchListAll=!inp.value.trim();searchHitsOpen=true;inp.focus();renderSearchHits();}
 function openSearchHit(i){const h=searchHits[i];if(!h)return;searchHitsOpen=false;openLoaded(h.path,h.id);}
 // 一緒に読み込んだ図の 1 枚を表示する(編集中の本文は読み込んだ図の中に残り、「.sb 保存」で書き出す。↩ で前の図に戻る)。id があればそれを選ぶ
 function openLoaded(path,id){if(!hasLoaded(path))return;
@@ -560,7 +607,7 @@ function startInlineEdit(type,id){
     updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
     parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();});
   el.addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);}
+    if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
     else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();const nx=nextInReadingOrder(ed.type,ed.id,e.shiftKey?-1:1);finishInlineEdit(true);if(nx)startInlineEdit(nx.type,nx.id);}});
   el.addEventListener('blur',()=>{if(inlineEd===ed)finishInlineEdit(true);});
@@ -589,10 +636,10 @@ function includeSectionHtml(){const C=window.StableBlockCheck,files=includeFiles
   h+=cur.length?cur.map(x=>`<div class="prop-row inc-row" data-line="${x.line}"><span class="inc-path" title="本文 L${x.line}">${esc(x.path)}${miss.has(x.line)?' <span style="color:var(--red)">(読めない)</span>':''}</span><button class="step-btn inc-remove" data-term="remove-include" onclick="removeInclude(${x.line})" title="この @include 行を本文から消す(取り込んでいた要素は図から消える)">外す</button></div>`).join(''):'<div class="prop-sub">取り込んでいる図は無い</div>';
   if(cand.length){
     h+=`<select class="prop-input" id="include-pick" style="margin-top:6px" title="取り込む図(一緒に読み込んだ図から)" onchange="document.getElementById('include-path').value=this.options[this.selectedIndex].dataset.path">${cand.map((c,i)=>`<option value="${i}" data-path="${esc(c.path)}">${esc(c.file)}</option>`).join('')}</select>`;
-    h+=`<div class="prop-sub" style="margin-top:4px">本文に書くパス(この図のフォルダから。違えば直す)</div><input class="prop-input" id="include-path" value="${esc(cand[0].path)}" spellcheck="false">`;
-    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">この図に取り込む</button></div>`;
-    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">読み込んだ図すべてに取り込む</button></div>`;
-  }else h+=`<div class="prop-sub">取り込める図が無い。共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める</div>`;
+    h+=`<input class="prop-input" id="include-path" style="margin-top:4px" value="${esc(cand[0].path)}" spellcheck="false" title="本文に書くパス(この図のフォルダから。違えば直す)">`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">取り込む</button></div>`;
+    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">すべてに取り込む</button></div>`;
+  }else h+=`<div class="prop-sub" title="共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める">取り込める図が無い</div>`;
   if(includeNote)h+=`<div class="prop-sub" id="include-note" style="color:var(--green)">${esc(includeNote)}</div>`;
   return h+'</div>';}
 // 本文に書くパスは欄の値(直していなければ候補のパス)。「すべてに」では、表示中の図と同じフォルダの図には欄の値、ほかのフォルダの図にはその図から見たパスを書く
@@ -625,23 +672,21 @@ function renderPropsPanel(){
         <button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;margin-bottom:6px" onclick="addGroup()" data-term="add-group" title="グループを空き位置に追加する">+ グループ追加</button>
         <button class="prop-btn" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" data-term="add-note" title="注釈を空き位置に追加する">+ 注釈追加</button>
       </div>
-      <div class="prop-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
+      <div class="prop-section" id="canvas-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
         <div style="flex:1"><div class="prop-sub">幅</div><div class="stepper"><input class="prop-input" id="canvas-w" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.width}" onchange="setCanvasSize('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('w',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('w',-1)">▼</button></div></div></div>
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
-      </div><label class="prop-sub canvas-grow"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label>
-      <div class="prop-sub">${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素より小さくはできない。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}</div></div>
+      </div><label class="prop-sub canvas-grow" title="${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素がはみ出したらキャンバスを広げる(要素より小さくはできない)。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label></div>
       ${includeSectionHtml()}
-      <div class="prop-label" style="margin-top:16px;margin-bottom:6px">接続</div>
-      <div id="conn-guide" style="font-size:11px;color:var(--muted);line-height:1.5">2 つのブロックを Shift+クリックで選び「a → b」で結ぶ。3 つ以上はクリックした順に「a → b → c」で鎖状に結ぶ(Enter でも)。右ボタンで block から block へドラッグしても 1 本結べる</div>
-      <div style="font-size:10px;color:var(--dim);margin-top:16px;line-height:1.5">
-          クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
+      <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
+        <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
+        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
           <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
-          <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示
-        </div>`;
+          <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示</div>
+      </details>`;
     }
     return;
   }
@@ -666,20 +711,19 @@ function renderPropsPanel(){
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
     if(sel.length>=3&&justLinked.length){
       html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
-      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)">`;});
-      html+=`<div class="prop-sub" style="margin-top:6px">打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る</div></div>`;
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
+      html+=`</div>`;
     } else if(sel.length>=3&&chainIds()){
       const ids=chainIds();
-      html+=`<div class="prop-section"><div class="prop-label">接続</div><button class="prop-btn" id="chain-btn" onclick="connectChain()" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に鎖状に結ぶ(Enter)">${ids.map(esc).join(' → ')}</button>`;
-      html+=`<div class="prop-sub" style="margin-top:6px">クリックした順に ${ids.length-1} 本で結ぶ(Enter でも)。結んだ後にラベルを順に入れられる</div></div>`;
+      html+=`<div class="prop-section"><div class="prop-label">接続</div><button class="prop-btn" id="chain-btn" onclick="connectChain()" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に ${ids.length-1} 本で鎖状に結ぶ(Enter でも)。結んだ後にラベルを順に入れられる">${ids.map(esc).join(' → ')}</button></div>`;
     }
     if(sel.length===2){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       if(conns.length===0){
-        html+=`<div style="display:flex;gap:4px"><button class="prop-btn" onclick="connectTwo('${a}','${b}')" style="flex:1;background:#6366F1;color:#fff">${a} → ${b}</button><button class="prop-btn" onclick="connectTwo('${b}','${a}')" style="flex:1;background:#6366F1;color:#fff">${b} → ${a}</button></div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">色・太さ・ラベルは結んだ後にここで変える</div>`;
+        // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。向き違いのボタンは出さず、向きは結んだ後の「⇄ 反転」で変える
+        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える">${esc(a)} → ${esc(b)}</button>`;
       } else {
         const c=conns[0],fa=c.from,ta=c.to;
         html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
@@ -714,12 +758,11 @@ function renderPropsPanel(){
   const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
-    <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
-    <div class="prop-sub" id="dup-hint" style="margin:-6px 0 10px">複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>
+    <span id="dup-hint" style="font-size:12px;font-weight:700;color:${typeColor}" title="複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄">${typeLabel}</span>
+    <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
     ${(n=>n?`<div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(n)}${loadedKey(window.StableBlockCheck.includeOrigin(expanded,item.line).file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(window.StableBlockCheck.includeOrigin(expanded,item.line).file))} を開く</button>`:''}</div>`:'')(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}
-    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter')this.blur()">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
-    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help">英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる</div></details>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
+    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
@@ -735,7 +778,7 @@ function renderPropsPanel(){
   }
   if(!isBlock&&!isNote){
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
-    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ グループ内にブロック追加</button></div>`;
+    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
@@ -833,11 +876,11 @@ function blockLine(id,p,src){const w=src?src.w:8,h=src?src.h:3;let l=`block ${id
 // Where the next block / paste goes (core/layout placeNext): right of prev, wrapping at the canvas edge — or, inside a group,
 // at the group's edge, growing the group downward. groupOf skips the copied groups themselves
 function groupOf(r,skip){return parsed.groups.filter(g=>!(skip&&skip.has(g.id))&&isInside(r,g)).sort((a,b)=>a.w*a.h-b.w*b.h)[0]||null;}
-// In a group (core/layout placeInGroup): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well
+// In a group (core/layout placeInGroupFit): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well,
+// and pushes the groups / blocks it would newly cover (with their contents), keeping the gap — it never runs into another group
 function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
   if(!gr)return L.placeNext(all,w,h,{prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});
-  const before=parentsNow(),p=L.placeInGroup(all,gr,w,h,prev),ng=p.group;
-  if(ng.w!==gr.w||ng.h!==gr.h){updateSize('group',gr.id,ng.w,ng.h);growParents(before,[{id:gr.id,sides:['r','b']}]);}
+  const p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();
   return p;}
 // The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
 function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}
@@ -873,6 +916,28 @@ function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=d
     idNote={id:nv,text:`${plan.changes.length} 枚で改名: ${plan.changes.map(c=>`${baseName(c.path||sbFileName)}(${c.lines.length} 行)`).join('、')}。「.sb 保存」で変わった図を全部書き出す`};
     refresh();renderSearchHits();return;}
   pushHistory();if(!applyRename(s,nv)){if(msg)msg.textContent='この図の本文に定義が無いため変えられません(@include 先)';return;}autoIds.delete(s.id);refresh();}
+// ラベルを確定(Enter)しても ID が仮(__new_)のまま = ラベルに英数字が無く ID を作れなかった。その場で ID 欄へ移って名前を聞く
+// (打って Enter で確定、Esc で後回し。Tab で次の要素へ進む流れは変えない)。残った仮の ID はエラー欄に行番号付きで出る(core/check)
+function askIdIfUnnamed(){const s=sel.length===1?sel[0]:null;if(!s||!window.StableBlockLabel.isPlaceholderId(s.id))return false;
+  const box=document.getElementById('prop-id-box'),inp=document.getElementById('prop-id');if(!box||!inp)return false;box.open=true;
+  const help=document.getElementById('prop-id-help');if(help)help.textContent='ラベルから ID を作れない(英数字が無い)。英数字と _ で打って Enter、Esc で後回し';
+  inp.focus();inp.select();return true;}
+// ID 欄のキー: Enter で確定(使えない ID なら理由を出して欄に残る)、Esc は打ちかけを捨てる(その後は全体の Esc で選択が外れる)
+function idKey(e,inp){if(e.key==='Enter'){e.preventDefault();setId(inp.value);const msg=document.getElementById('prop-id-msg');if(document.body.contains(inp)&&msg&&msg.textContent){inp.select();return;}inp.blur();}
+  else if(e.key==='Escape'&&sel[0])inp.value=sel[0].id;}
+// ツールバーの「ID補正」: 仮の ID(__new_)のままの要素(貼り付け・本文でラベルを直した・ラベルを後で打った要素)に、ラベルから ID を一括で付ける
+// (core/label の fixPlaceholderIdsInDsl。表記はラベルのまま、接続の from / to も追従。本文の差分は改名した定義行と接続行だけ)。
+// 付けた ID と、英数字の無いラベルで付けられなかった要素を右下に出す(押すと閉じる)。include 先の要素は触らない
+function fixIds(){if(!parsed)return;const SL=window.StableBlockLabel,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
+  const own=it=>{const o=expanded&&expanded.origin[it.line-1];return o?(o.file===expanded.file?o.line:null):it.line;};
+  const items=all.filter(it=>SL.isPlaceholderId(it.id)&&own(it)!=null).map(it=>({id:it.id,label:it.label,line:own(it)}));
+  const el=document.getElementById('export-report');
+  if(!items.length){el.innerHTML='<b>ID補正</b><div class="hint">仮の ID(__new_)のままの要素は無い</div>';el.hidden=false;return;}
+  const r=SL.fixPlaceholderIdsInDsl(dsl,items,all.map(x=>x.id));
+  if(r.renamed.length){pushHistory();dsl=r.dsl;const m=new Map(r.renamed.map(x=>[x.from,x.to]));sel=sel.map(x=>m.has(x.id)?{...x,id:m.get(x.id)}:x);r.renamed.forEach(x=>{autoIds.delete(x.from);});refresh();}
+  el.innerHTML=`<b>ID補正: ${r.renamed.length} 件</b>${r.renamed.length?`<ul>${r.renamed.map(x=>`<li>${esc(x.from)} → ${esc(x.to)}</li>`).join('')}</ul>`:''}`+
+    (r.left.length?`<div class="hint">ラベルに英数字が無く付けられなかった ${r.left.length} 件(${r.left.map(x=>`「${esc(x.label)}」`).join('')})は仮の ID のまま。選んでプロパティ欄の ID で付ける</div>`:'');
+  el.hidden=false;}
 function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')||autoIds.has(s.id)))return;const SL=window.StableBlockLabel;const base=SL.labelToId(label);if(!base)return;
   const nid=SL.uniqueId(base,usedIdsExcept(s.id));if(nid===s.id)return;if(!applyRename(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);
   const inp=document.getElementById('prop-id');if(inp)inp.value=nid;const now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
@@ -909,14 +974,32 @@ function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(
 let impactBase={},impact={includers:[],added:[]},hitLine=null;const impactCache=new Map();
 function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
 function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
-function openImpact(i){const d=impact.added[i];if(!d)return;openLoaded(d.path);const l=dsl.split('\n')[d.line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
+// 一緒に読み込んだ図を開き、line があればその行の要素を選んで本文をその行へ送る(エラー欄に出る図名はどれもこれで開く)
+function openImpact(i){const d=impact.added[i];if(d)openLoadedAt(d.path,d.line);}
+function openLoadedAt(path,line){if(!hasLoaded(path))return;openLoaded(path);if(!line)return;const l=dsl.split('\n')[line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
   const find=id=>[...parsed.blocks.map(x=>['block',x]),...parsed.groups.map(x=>['group',x]),...parsed.notes.map(x=>['note',x])].find(([,x])=>x.id===id),s=(m?[m[2]]:c?[c[1],c[3]]:[]).map(find).filter(Boolean).map(([type,x])=>({type,id:x.id}));
-  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:d.path,line:d.line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(d.line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:path,line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+// 診断の文末の include 先の場所「(shared/common.sb L15)」は、その図を一緒に読み込んでいれば押すとその図のその行を開く
+function diagMsgHtml(d){const suf=`(${d.file} L${d.fileLine})`,k=d.file&&d.file!==dslFile&&d.msg.endsWith(suf)&&loadedKey(d.file);if(!k)return esc(d.msg);
+  return `${esc(d.msg.slice(0,-suf.length))}(<button type="button" class="diag-file" data-path="${esc(k)}" data-line="${d.fileLine}" title="その図を開いてその行へ" onclick="openLoadedAt(this.dataset.path,+this.dataset.line)">${esc(d.file)} L${d.fileLine}</button>)`;}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();measureImpact();const inc=impact.includers,oth=impact.added,edited=inc.length&&impactBase[dslFile]!==undefined&&impactBase[dslFile]!==dsl;
   if(lastDiag.length||inc.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));
-    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>esc(baseName(k))).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('')
+    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>`<button type="button" class="diag-file" data-path="${esc(k)}" title="その図を開く" onclick="openLoadedAt(this.dataset.path)">${esc(baseName(k))}</button>`).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${diagMsgHtml(d)}</div>`).join('')
       +oth.map((d,i)=>`<button type="button" class="diag diag-${d.level} diag-other" data-path="${esc(d.path)}" data-line="${d.line}" title="その図を開いてその行へ" onclick="openImpact(${i})">ほかの図: ${esc(baseName(d.path))} L${d.line}: ${esc(d.msg)}</button>`).join('');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
+// ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる
+function statusFileHtml(){const keys=Object.keys(includeFiles),i=dslFile?keys.indexOf(dslFile):-1,dirty=i>=0&&loadedTexts[dslFile]!==undefined&&dsl!==loadedTexts[dslFile];
+  return `<button type="button" id="status-file" class="status-file" onclick="showLoadedList()" title="表示中の図。押すと検索欄で一緒に読み込んだ図の名前を並べる(名前を打って Enter で開く)">${esc(dslFile?baseName(dslFile):sbFileName)}${dirty?'<span class="status-dirty" title="保存していない変更がある"> ●</span>':''}${keys.length>1&&i>=0?` <span class="status-pos">(${i+1}/${keys.length})</span>`:''}</button>`;}
+// ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」。押すと選択を外し、右のツール欄の「キャンバス (px)」(寸法と「はみ出したら自動で広げる」)を光らせて示す
+function statusCanvasHtml(){const c=parsed.canvas,g=window.StableBlockLayout.canvasGrows(c);return `<button type="button" id="status-canvas" class="status-canvas" onclick="showCanvasSettings()" title="キャンバスの寸法と、はみ出したら自動で広げるかの設定。押すと右のツール欄のその場所を示す">Canvas: ${c.width}×${c.height} ${g?'自動拡張':'固定'}</button>`;}
+function showCanvasSettings(){if(!parsed)return;if(sel.length){sel=[];renderSVG();}renderProps();const s=document.getElementById('canvas-section');if(!s)return;s.scrollIntoView({block:'nearest'});s.classList.remove('flash');void s.offsetWidth;s.classList.add('flash');clearTimeout(showCanvasSettings.t);showCanvasSettings.t=setTimeout(()=>s.classList.remove('flash'),1600);document.getElementById('canvas-grow').focus();}
+// 自動で広げた直後はプレビューの上端に「キャンバスを広げた 960×520 → 1100×520 [元の寸法に戻して固定] [このまま]」を出す(操作は止めない)。
+// 下端のステータスバーでは見落とすため、図を見ている場所に出す。元に戻す・読込・新規・寸法の手入力・「このまま」で消える
+function renderCanvasBar(){const el=document.getElementById('canvas-bar');if(!el)return;const c=parsed&&parsed.canvas,on=grewFrom&&c&&(grewFrom.width!==c.width||grewFrom.height!==c.height);
+  if(!on){if(!el.hidden){el.hidden=true;el.innerHTML='';}return;}
+  el.hidden=false;el.title='はみ出した要素に合わせて @canvas 行を広げた。以後も広げるかは下端の Canvas(ツール欄の「はみ出したら自動で広げる」)で切り替える';
+  el.innerHTML=`<span id="canvas-grew">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${c.width}×${c.height}<button type="button" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button><button type="button" class="plain" onclick="keepGrownCanvas()" title="広げた寸法のままにしてこの知らせを閉じる">このまま</button></span>`;}
+function keepGrownCanvas(){grewFrom=null;renderStatus();}
+function renderStatus(){renderCanvasBar();document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
@@ -953,11 +1036,15 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};
 function renderExportAll(){const n=Object.keys(includeFiles).length;document.querySelectorAll('.tb-more').forEach(b=>{b.hidden=n<2;});if(n<2)closeExportMenu();}
-function closeExportMenu(){const m=document.getElementById('export-menu');if(m)m.hidden=true;}
-function openExportAll(btn){const m=document.getElementById('export-menu');if(!m.hidden){m.hidden=true;return;}
+function closeExportMenu(){['export-menu','png-menu'].forEach(id=>{const m=document.getElementById(id);if(m)m.hidden=true;});}
+function openExportAll(btn){const m=document.getElementById('export-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
   syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);
   const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
 function exportAllFromMenu(item){closeExportMenu();exportAll(item.dataset.fmt);}
+// PNG の ▾: 背景の透過・クリップボードへのコピーを選ぶ(「一括 ▾」と同じ出し方。PNG のボタンの下に開き、先頭にフォーカス、Esc・外を押すと閉じる)
+function openPngMenu(btn){const m=document.getElementById('png-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
+  const r=(btn.previousElementSibling||btn).getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function pngMenuDo(fn){closeExportMenu();fn();}
 async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
   if(!window.JSZip){alert('zip 用モジュールがまだ読み込まれていません');return;}
   if(fmt==='xlsx'&&(!window.StableBlockExcel||!window.StableBlockExcelReady)){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}
@@ -978,7 +1065,7 @@ function showBulkReport(label,zipName,per){const el=document.getElementById('exp
   el.innerHTML=`<b>${esc(label)}: ${per.length} 枚を ${esc(zipName)} に書き出した</b><div>${per.map(x=>esc(x.name)).join('、')}</div>`
     +(drops.length?`<b>${esc(label)} に書き出せなかったもの(${drops.length} 件)</b><ul>${drops.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`:'<div class="hint">クリックで閉じる</div>');
   el.hidden=false;}
-document.addEventListener('mousedown',e=>{const m=document.getElementById('export-menu');if(m&&!m.hidden&&!e.target.closest('#export-menu,.tb-more'))m.hidden=true;});
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,.tb-more,#png-more'))closeExportMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
 function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない

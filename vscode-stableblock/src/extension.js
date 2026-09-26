@@ -330,7 +330,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, renameIdInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -363,7 +363,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -406,6 +406,8 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .toolbar{display:flex;gap:6px;align-items:center;padding:6px 8px;font-size:12px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid var(--vscode-widget-border,#444)}
 .tb{padding:3px 10px;font-size:11px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:var(--vscode-button-secondaryForeground,#ccc);border:1px solid var(--vscode-widget-border,#444);border-radius:3px;font-family:inherit}
 .tb:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
+.tb-split-l{border-top-right-radius:0;border-bottom-right-radius:0}.tb-split-r{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-6px;border-left-width:0;padding:3px 6px}
+#png-menu{position:fixed;z-index:60;padding:4px;background:var(--vscode-editorWidget-background,#252526);border:1px solid var(--vscode-widget-border,#444);border-radius:3px;box-shadow:0 4px 12px rgba(0,0,0,.35)}#png-menu[hidden]{display:none}#png-menu .tb{display:block;width:100%;margin-top:4px;text-align:left;white-space:nowrap}
 .sep{width:1px;height:14px;background:var(--vscode-widget-border,#444)}
 .main{flex:1;display:flex;overflow:hidden}
 #preview{flex:1;overflow:auto;padding:8px}
@@ -453,15 +455,15 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
   <button class="tb" data-term="zoom-out" onclick="sz(-1)" title="Zoom out">&minus;</button><span id="zl" style="min-width:36px;text-align:center">100%</span><button class="tb" data-term="zoom-in" onclick="sz(1)" title="Zoom in">+</button><button class="tb" data-term="fit" onclick="fitV()" title="Fit the whole diagram (F key)">Fit</button>
   <div class="sep"></div><button class="tb" data-term="undo" onclick="undo()" title="Undo (Ctrl+Z)">&#x21A9;</button><button class="tb" data-term="redo" onclick="redo()" title="Redo (Ctrl+Y)">&#x21AA;</button>
   <div class="sep"></div><button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHL()" title="Dim blocks without connections / restore (H key)">&#x25CE; Dim unlinked</button>
-  <div class="sep"></div><button class="tb anno-act" data-term="anno" id="anno-btn" onclick="toggleAnno()" title="Show / hide notes (N key). Click a shown note to select it">&#x25C7; Show notes</button>
-  <div class="sep"></div><button class="tb" data-term="export-svg" onclick="exportSVG()" title="Save as SVG">SVG</button><button class="tb" data-term="export-png" onclick="exportPNG()" title="Save as PNG">PNG</button><button class="tb" data-term="export-png-transparent" onclick="exportPNGT()" title="Save as PNG with a transparent background">Transparent PNG</button><button class="tb" data-term="copy-png" onclick="copyPNG()" title="Copy the diagram to the clipboard as PNG">Copy PNG</button><button class="tb" data-term="export-xlsx" onclick="exportXlsx()" title="Save as Excel (.xlsx)">Excel</button>
+  <div class="sep"></div><button class="tb anno-act" data-term="anno" id="anno-btn" onclick="toggleAnno()" title="Show / hide notes (N key). Click a shown note to select it">&#x25C7; Show notes</button><button class="tb" data-term="fix-id" id="fix-id-btn" onclick="fixIds()" title="Give elements still on a placeholder ID (__new_) an ID from their label, as written (connections follow). Labels without letters or digits need the ID field">Fix IDs</button>
+  <div class="sep"></div><button class="tb" data-term="export-svg" onclick="exportSVG()" title="Save as SVG">SVG</button><button class="tb tb-split-l" data-term="export-png" onclick="exportPNG()" title="Save as PNG">PNG</button><button class="tb tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="More PNG options" onclick="openPngMenu(this)" title="More PNG options (transparent background, copy to the clipboard)">&#x25BE;</button><div id="png-menu" role="menu" hidden><button class="tb" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGT)" title="Save as PNG with a transparent background">Save with transparent background</button><button class="tb" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="Copy the diagram to the clipboard as PNG">Copy to clipboard</button></div><button class="tb" data-term="export-xlsx" onclick="exportXlsx()" title="Save as Excel (.xlsx)">Excel</button>
   <div class="sep"></div><button class="tb" data-term="export-mermaid" onclick="exportMmd()" title="Save as Mermaid (.mmd)">Mermaid</button>
   <div class="sep"></div><input class="pi" data-term="search" id="search-input" placeholder="Search ID / label" title="Filter by ID / label and dim the rest. Enter selects the matches one by one in reading order (Shift+Enter: back)" style="width:110px;font-size:10px" oninput="doSearch(this.value)" onkeydown="if(event.key===&quot;Enter&quot;&amp;&amp;!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}"><span id="search-count" style="font-size:10px;color:#888;white-space:nowrap"></span>
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
 </div>
 <div id="err"></div>
 <div class="main"><div id="preview"><div id="wrap"></div></div><div id="propPanel"></div></div>
-<div class="stats"><span id="stats"></span> <span id="cvgrew" style="color:#FDE68A"></span></div>
+<div class="stats"><span id="stats"></span> <button class="sbtn" id="cvstat" onclick="cvShow()" title="Canvas size and whether it grows when items overflow. Click to show the setting in the side panel"></button> <span id="cvgrew" style="color:#FDE68A"></span></div>
 
 <script>
 var vscodeApi = acquireVsCodeApi();
@@ -495,6 +497,9 @@ function showGrew(){var el=document.getElementById('cvgrew'),c=parsed&&parsed.ca
 function cvFix(){if(!grewFrom)return;var L=window.StableBlockLayout,f=grewFrom;pushH();grewFrom=null;dsl=L.setCanvasGrowInDsl(L.setCanvasInDsl(dsl,f.width,f.height),false);go();notify();}
 // 「はみ出したら自動で広げる」の切替。外すと @canvas 行に grow=off を書く
 function cvGrow(on){var nd=window.StableBlockLayout.setCanvasGrowInDsl(dsl,on);if(nd===dsl)return;pushH();grewFrom=null;dsl=nd;go();notify();}
+// 下端の「Canvas WxH grows / fixed」: 押すと選択を外し、右の CANVAS(Grow when items overflow)を光らせて示す(HTML 版のステータスバーの Canvas と同じ)
+function cvStat(){var el=document.getElementById('cvstat'),c=parsed&&parsed.canvas;if(!el||!c)return;el.textContent='Canvas '+c.width+'x'+c.height+(window.StableBlockLayout.canvasGrows(c)?' grows':' fixed');}
+function cvShow(){if(!parsed)return;if(sel.length){sel=[];render();}props();var s=document.getElementById('cv-sec');if(!s)return;s.scrollIntoView({block:'nearest'});s.style.outline='2px solid #F59E0B';setTimeout(function(){s.style.outline='';},1600);var g=document.getElementById('cv-grow');if(g)g.focus();}
 function isSel(id){return sel.some(function(s){return s.id===id});}
 function getIt(s){return parsed.blockMap[s.id]||parsed.groupMap[s.id]||parsed.nm[s.id];}
 function isAnnoConn(c){return !!(parsed.nm[c.from]||parsed.nm[c.to]);}
@@ -617,7 +622,7 @@ function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap
   var ed={el:el,type:tp,id:id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds)};inl=ed;
   el.addEventListener('input',function(){if(inl!==ed)return;if(!ed.pushed){pushH();ed.pushed=true;}var v=isN?el.value.replace(/\\n/g,"\\\\n"):el.value;sel=[{type:ed.type,id:ed.id}];
     upLb(ed.type,ed.id,v);fLbId(isN?el.value:v);ed.id=sel[0].id;parsed=parseDSL(dsl);render();showErr();});
-  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);finInl(true);if(nx)startInl(nx.type,nx.id);}});
+  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);finInl(true);if(nx)startInl(nx.type,nx.id);}});
   el.addEventListener('blur',function(){if(inl===ed)finInl(true);});
   el.focus();el.select();}
 // Tab / Shift+Tab: commit and edit the next / previous item of the same kind in reading order (rows top to bottom, left to right)
@@ -629,7 +634,7 @@ function finInl(commit){var ed=inl;if(!ed)return;inl=null;
 // Property Panel
 // Every selection change goes through props: drop items the DSL no longer has, then keep Sel: N in step
 function props(){if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);propsPanel();if(parsed)selStat();}
-function selStat(){document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
+function selStat(){cvStat();document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';}
 function propsPanel(){
   var el=document.getElementById('propPanel');
@@ -639,9 +644,9 @@ function propsPanel(){
         '<button class="pbtn" data-term="add-block" onclick="addBlock()" title="Add a block right of the last one added (same size and color)">+ Block</button>'+
         '<button class="pbtn" data-term="add-group" onclick="addGroup()" title="Add a group at a free spot">+ Group</button>'+
         '<button class="pbtn" data-term="add-note" style="border-color:#F59E0B;color:#FDE68A" onclick="addNote()" title="Add a note at a free spot">+ Note</button>'+
-        '<div class="pl">CANVAS</div><label style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
+        '<div class="pl">CANVAS</div><label id="cv-sec" style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
-        '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click two blocks, then press "a &rarr; b"</div>'+
+        '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click blocks in order, then press "a &rarr; b" (3+: "a &rarr; b &rarr; c"). Flip the direction afterwards"</div>'+
         '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: dim unlinked N: show notes</div>';
     }
     return;
@@ -657,8 +662,8 @@ function propsPanel(){
       var CC=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       mh+='<div class="pl">Connection</div>';
       if(cns.length===0){
-        mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button><button class="pbtn" style="flex:1;background:#6366F1;color:#fff;border-color:#6366F1" onclick="connTwo(\\''+sb+'\\',\\''+sa+'\\')">'+esc(sb)+' &rarr; '+esc(sa)+'</button></div>';
-        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Color, width and label are set after connecting</div>';
+        mh+='<button class="pbtn" id="chain-btn" style="width:100%;background:#6366F1;color:#fff;border-color:#6366F1" title="Connect in the order you clicked" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button>';
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">In the order you clicked. Flip the direction, set color, width and label after connecting</div>';
       }else{
         var cn=cns[0],fa=cn.from,ta=cn.to;
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
@@ -686,8 +691,8 @@ function propsPanel(){
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
   var incN=window.StableBlockCheck.includedItemNote(EXP,it.line,function(f){return f.split('/').pop();},'en');
   if(incN)h+='<div class="pl" id="prop-included" style="margin-top:4px;font-size:9px;text-transform:none;color:#FCD34D">'+esc(incN)+'</div>';
-  h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)">');
-  h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="if(event.key===\\'Enter\\')this.blur()" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
+  h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)" onkeydown="if(event.key===\\'Enter\\'){this.blur();askId();}">');
+  h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="idKey(event,this)" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div id="prop-id-help" style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
   h+=stepperRow("W","stepF(\\'w\\',\\'dn\\')","stepF(\\'w\\',\\'up\\')",it.w)+stepperRow("H","stepF(\\'h\\',\\'dn\\')","stepF(\\'h\\',\\'up\\')",it.h);
   h+='<div class="pl">Color</div><div class="cg">'+colors.map(function(c){return'<div class="cd'+(it.color===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
@@ -769,7 +774,7 @@ function setCC(a,b,col){setCP(a,b,"color",col);}
 function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot(parsed.blocks.concat(parsed.groups,parsed.notes),w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
 function blockLine(id,p,src){var w=src?src.w:8,h=src?src.h:3;var l='block '+id+' "New Block" at '+p.x+','+p.y+' size '+w+'x'+h+' color='+(src?src.color:'#3B82F6')+' text='+(src?src.textColor:'#FFFFFF')+' round='+(src?src.round:4);if(src&&src.borderColor)l+=' border='+src.borderColor;if(src&&src.style&&src.style!=='solid')l+=' style='+src.style;return l;}
 function groupOf(r,skip){return parsed.groups.filter(function(g){return !(skip&&skip[g.id])&&isIn(r,g)}).sort(function(a,b){return a.w*a.h-b.w*b.h})[0]||null;}
-function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.concat(parsed.groups,parsed.notes);if(!gr)return L.placeNext(all,w,h,{prev:prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});var before=parNow(),p=L.placeInGroup(all,gr,w,h,prev),ng=p.group;if(ng.w!==gr.w||ng.h!==gr.h){upS('group',gr.id,ng.w,ng.h);growPar(before,[{id:gr.id,sides:['r','b']}]);}return p;}
+function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.concat(parsed.groups,parsed.notes);if(!gr)return L.placeNext(all,w,h,{prev:prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});var p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();return p;}
 function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
 function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
@@ -780,7 +785,19 @@ function addNote(){pushH();var id="__new_"+(addC++),p=freeSlot(8,2);dsl=dsl.trim
 var autoIds=new Set();
 function usedEx(id){var u=new Set();parsed.blocks.concat(parsed.groups).concat(parsed.notes).forEach(function(x){if(x.id!==id)u.add(x.id);});return u;}
 function applyRn(s,nid){var it=getIt(s);var dup=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(x){return x.id===s.id;}).length>1;var out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,nid,dup&&it&&EXP&&EXP.origin[it.line-1]&&EXP.origin[it.line-1].file===EXP.file?EXP.origin[it.line-1].line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(function(x){return x.id===s.id?{type:x.type,id:nid}:x;});return true;}
+// Fix IDs (toolbar): give every element still on a placeholder ID (__new_) an ID from its label in one go (core/label fixPlaceholderIdsInDsl, same as the HTML version's ID補正)
+function fixIds(){if(!parsed)return;var SL=window.StableBlockLabel,all=parsed.blocks.concat(parsed.groups).concat(parsed.notes);
+  function own(it){var o=EXP&&EXP.origin[it.line-1];return o?(o.file===EXP.file?o.line:null):it.line;}
+  var items=all.filter(function(it){return SL.isPlaceholderId(it.id)&&own(it)!=null;}).map(function(it){return {id:it.id,label:it.label,line:own(it)};});
+  if(!items.length){vscodeApi.postMessage({type:'info',text:'Fix IDs: no element is on a placeholder ID (__new_)'});return;}
+  var r=SL.fixPlaceholderIdsInDsl(dsl,items,all.map(function(x){return x.id;}));
+  if(r.renamed.length){pushH();dsl=r.dsl;sel=sel.map(function(x){var m=r.renamed.filter(function(y){return y.from===x.id;})[0];return m?{type:x.type,id:m.to}:x;});r.renamed.forEach(function(x){autoIds.delete(x.from);});go();notify();}
+  vscodeApi.postMessage({type:'info',text:'Fix IDs: '+r.renamed.length+' renamed'+(r.renamed.length?' ('+r.renamed.map(function(x){return x.from+' -> '+x.to;}).join(', ')+')':'')+(r.left.length?'. '+r.left.length+' label(s) without letters or digits keep the placeholder: set them in the ID field':'')});}
 function sId(v){if(!sel.length)return;var s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}var SL=window.StableBlockLabel;var err=!SL.isValidId(nv)?'Letters, digits and _ only':usedEx(s.id).has(nv)?'"'+nv+'" is already used':'';if(err){if(msg)msg.textContent=err;return;}pushH();if(!applyRn(s,nv)){if(msg)msg.textContent='Defined outside this file (@include)';return;}autoIds.delete(s.id);go();notify();}
+// Enter on a label that still leaves a placeholder ID (__new_: the label has no letters or digits to make one from) moves to the ID field
+// (type + Enter to set it, Esc to leave it for later; Tab keeps going to the next item). Leftover placeholder IDs are listed as warnings (core/check)
+function askId(){var s=sel.length===1?sel[0]:null;if(!s||!window.StableBlockLabel.isPlaceholderId(s.id))return false;var box=document.getElementById('prop-id-box'),inp=document.getElementById('prop-id');if(!box||!inp)return false;box.open=true;var help=document.getElementById('prop-id-help');if(help)help.textContent='No ID could be made from the label. Type one (letters, digits, _) + Enter, or Esc for later';inp.focus();inp.select();return true;}
+function idKey(e,inp){if(e.key==='Enter'){e.preventDefault();sId(inp.value);var msg=document.getElementById('prop-id-msg');if(document.body.contains(inp)&&msg&&msg.textContent){inp.select();return;}inp.blur();}else if(e.key==='Escape'&&sel[0])inp.value=sel[0].id;}
 function fLbId(label){var s=sel[0];if(!s||!(s.id.indexOf('__new_')===0||autoIds.has(s.id)))return;var SL=window.StableBlockLabel;var base=SL.labelToId(label);if(!base)return;var nid=SL.uniqueId(base,usedEx(s.id));if(nid===s.id)return;if(!applyRn(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);var inp=document.getElementById('prop-id');if(inp)inp.value=nid;var now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
 
 // Group selected blocks
@@ -814,6 +831,11 @@ function exportSVG(){var svg=exportSvgText();if(!svg)return;vscodeApi.postMessag
 function sendIncDrops(fmt){var d=incDrops();if(d.length)vscodeApi.postMessage({type:'exportDrops',format:fmt,items:d});}
 function pngCanvas(transparent,cb){var d=exportSvgText();if(!d)return;var size=window.StableBlockRender.exportPngSize(parsed.canvas),img=new Image();img.onload=function(){var c=document.createElement('canvas');c.width=size.width;c.height=size.height;var ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);cb(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(d)));}
 function exportPNG(){pngCanvas(false,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
+// PNG's ▾: transparent background / copy to the clipboard (opens under PNG, focuses the first item, Esc or a press outside closes it)
+function closePngMenu(){var m=document.getElementById('png-menu');if(m)m.hidden=true;}
+function openPngMenu(btn){var m=document.getElementById('png-menu');if(!m.hidden){m.hidden=true;return;}var r=(btn.previousElementSibling||btn).getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function pngMenuDo(fn){closePngMenu();fn();}
+document.addEventListener('mousedown',function(e){if(!(e.target.closest&&e.target.closest('#png-menu,#png-more')))closePngMenu();});
 function exportPNGT(){pngCanvas(true,function(c){vscodeApi.postMessage({type:'exportPNG',data:c.toDataURL('image/png')});sendIncDrops('PNG');});}
 function copyPNG(){pngCanvas(false,function(c){c.toBlob(function(blob){if(blob&&navigator.clipboard&&navigator.clipboard.write){navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(function(){vscodeApi.postMessage({type:'info',text:'PNG copied to clipboard'});}).catch(function(){vscodeApi.postMessage({type:'info',text:'Clipboard copy failed'});});}else{vscodeApi.postMessage({type:'info',text:'Clipboard API not available'});}});});}
 function exportXlsx(){
@@ -835,7 +857,7 @@ function fitV(){if(!parsed)return;var a=document.getElementById('preview');setZm
 // Keyboard
 document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
-  if(e.key==='Escape'){if(inInput)document.activeElement.blur();clrSel();return;}
+  if(e.key==='Escape'){closePngMenu();if(inInput)document.activeElement.blur();clrSel();return;}
   if(inInput)return;
   if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
   if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}

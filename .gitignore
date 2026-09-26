@@ -2,3 +2,7 @@ CLAUDE.md
 node_modules/
 package-lock.json
 test-results/
+# Windows アプリ版のビルド(npm run build:app・build:html の出力。成果物は Release に付け、リポジトリには入れない)
+dist/
+build/
+__pycache__/

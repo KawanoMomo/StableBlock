@@ -41,10 +41,16 @@ build-vscode.bat
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-1.0.0.vsix
+code --install-extension stableblock-2.0.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
+
+### Windows アプリ版・配布物
+
+入手: GitHub の [Releases](https://github.com/KawanoMomo/StableBlock/releases) にタグごとに `StableBlock-{版}-setup.exe`(インストーラ)・`StableBlock-{版}-portable.zip`(展開して `StableBlock.exe`)・拡張の `.vsix`・1 ファイルで動く `stableblock.html` が付く(タグ `v*` の push で `.github/workflows/windows-app.yml` が作る)。
+作り方: `pip install pywebview pyinstaller` の後に `npm run build:app` で `dist/StableBlock/StableBlock.exe`(画面は `core/` を埋め込んだ stableblock.html を pywebview で開く薄い包み。`npm run build:html` は単体の `dist/stableblock.html` だけを作る)。
+インストーラは Inno Setup 6 で `iscc /DAppVersion=1.1 packaging\installer.iss`。版は git tag から取る(`packaging/version_info.py`)。
 
 ### テスト実行
 
@@ -117,15 +123,15 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 - **接続管理** — 2ブロック選択時に接続・削除・方向変更・双方向切替・色・太さ・スタイル。3 個以上をクリックした順に選ぶと「a → b → c」(または Enter)で鎖状に結ぶ(既にある組は足さない)。右ボタンで block から block へドラッグしても 1 本結べる(HTML 版)。結んだ直後はラベル欄にフォーカスがあり、打って Enter で次の接続へ
 - **矢印キー移動** — 選択アイテムを矢印キーで1グリッド単位ずつ移動
 - **スナップガイド** — ドラッグ中に他ブロックとの整列ガイドラインを表示
-- **検索/フィルタ** — ツールバーの「🔍 ID・ラベルで検索」欄で絞り込み、外れた要素を薄く表示
-- **未接続を薄く** — 接続の無いブロックを薄く表示(ツールバー「◎ 未接続を薄く」/ H キー)
+- **検索/フィルタ** — ツールバーの「🔍 検索」欄で ID・ラベルを絞り込み、外れた要素を薄く表示
+- **未接続を薄く** — 接続の無いブロックを薄く表示(ツールバー「◎ 未接続」/ H キー)
 - **線の形** — route を書いていない接続の形(図全体の既定)を 曲線 → 直線 → 直角 と切り替える(ツールバー「⌇ 線の形」/ L キー)。本文の `@canvas` 行の `route=` に書かれ(曲線に戻すと消える)、画面・SVG・PNG・検査・VSCode 拡張が同じ形になる。接続ごとの形はプロパティ欄の「線の形」(接続行の `route=`。こちらが優先)
 - **全体表示** — 図の全体を画面に収める(ツールバー「全体表示」/ F キー)
 - **ID** — プロパティ欄の「ID」で決める・変える(英数字と `_`、表記はそのまま)。接続の参照も一緒に変わる。新しい要素の ID はラベルの入力に追従する
 
 ### 注釈レイヤー
 - **`note` DSL構文** — ブロックの上位レイヤーに注釈を配置
-- **注釈を表示** — 表示・非表示を切り替える(ツールバー「◇ 注釈を表示」/ N キー)
+- **注釈を表示** — 表示・非表示を切り替える(ツールバー「◇ 注釈」/ N キー)
 - **選択・追加** — 表示中の注釈はブロックと同じにクリックで選び、ドラッグ・ハンドルで動かす。何も選んでいないツール欄の「+ 注釈追加」で置く
 - **注釈→ブロック接続** — 常に破線で描画
 
@@ -152,7 +158,7 @@ stableblock/
 ├── CHANGELOG.md
 ├── VERSION              # バージョン一元管理
 ├── bump-version.sh      # バージョン更新スクリプト
-├── stableblock.html     # スタンドアロン版（これ1つで完結）
+├── stableblock.html     # スタンドアロン版（core/ と一緒に file:// で動く。1 ファイル版は npm run build:html）
 ├── run-tests.bat        # 単体テストの実行
 ├── build-vscode.bat     # VSCode拡張のビルドとインストール
 ├── package.json         # テスト(npm test / npm run test:e2e)の依存
@@ -160,6 +166,9 @@ stableblock/
 ├── core/                # HTML版と VSCode拡張の共通コア(DSL・ラベル・選択・配置・検査・画面の語彙・Excel/Mermaid 書き出し)
 ├── tests/               # コーパス往復テストと E2E(tests/e2e/scenarios)
 ├── docs/                # ECN と ADR
+├── scripts/             # 版の揃え直し(bump-version.mjs)と単体 HTML の生成(build-single-html.mjs)
+├── packaging/           # Windows アプリ版(app.py・StableBlock.spec・installer.iss・アイコン)
+├── .github/             # 配布物の自動ビルド(workflows/windows-app.yml)
 └── vscode-stableblock/  # VSCode拡張
     ├── package.json
     ├── README.md

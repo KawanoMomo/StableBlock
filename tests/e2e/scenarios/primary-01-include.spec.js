@@ -39,7 +39,7 @@ test('primary-01: ツール欄から共通部を読み込んだ図すべてに�
   await expect(page.locator('#include-pick option:checked')).toHaveText('common.sb');   // ほかの図が取り込んでいる共通部が先
   await expect(page.locator('#include-path')).toHaveValue('shared/common.sb');           // 同じフォルダの図の書き方
 
-  await page.getByRole('button', { name: '読み込んだ図すべてに取り込む' }).click();   // 1 クリック
+  await page.getByRole('button', { name: 'すべてに取り込む', exact: true }).click();   // 1 クリック
   await expect(page.locator('#include-note')).toContainText('shared/common.sb を 6 枚に取り込んだ');
   expect(await getEditorText(page)).toBe(withInclude(read(path.join(SET, 'spi_swc.sb')), 'shared/common.sb'));
   await expect(page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]')).toHaveCount(1);
@@ -66,7 +66,7 @@ test('primary-01: 書き方の手本が無いときは本文に書くパスを�
   await page.locator('#include-path').click();
   await page.keyboard.press('Control+A');
   await page.keyboard.type('shared/common.sb');
-  await page.getByRole('button', { name: 'この図に取り込む' }).click();
+  await page.getByRole('button', { name: '取り込む', exact: true }).click();
   expect(await getEditorText(page)).toBe(withInclude(read(path.join(SET, 'spi_swc.sb')), 'shared/common.sb'));
   await expect(page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]')).toHaveCount(1);
   // 共通部は取り込み済みなので候補から消え、自分を取り込める図も無いので案内が出る
