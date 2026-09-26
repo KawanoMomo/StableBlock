@@ -4,6 +4,9 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+## v2.0 (2026-09-27)
+
+- BLK-porter-20260926-2105: 重複した `@canvas` 行を無変更で保存しても先行行の値が保たれる(最後の行が有効・先行行に警告)
 - BLK-human-20260926-2100: タグ v* を push すると GitHub Actions(.github/workflows/windows-app.yml)が .vsix・Windows アプリ(StableBlock-{版}-setup.exe / -portable.zip。pywebview の薄い包み)・1 ファイルで動く stableblock.html を作り、起動スモークを通して Release に添付する。手元では npm run build:app(pyinstaller まで)と npm run build:html
 - BLK-human-20260926-2045-4: ツールバーの「ID補正」を戻し、仮の ID(__new_)のままの要素(貼り付けた要素など)にラベルの表記で ID を一括で付けられる(拡張は「Fix IDs」)。キャンバスを自動で広げた知らせはプレビューの上端に「元の寸法に戻して固定 / このまま」付きで出す
 - BLK-human-20260926-2045-3: キャンバスの自動拡張の設定の在りかが分かるように、ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」を押すと選択を外してツール欄の「キャンバス (px)」とチェック「はみ出したら自動で広げる」を光らせて示す(拡張は下端の「Canvas … grows / fixed」)
