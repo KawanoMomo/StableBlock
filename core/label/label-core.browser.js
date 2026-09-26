@@ -198,7 +198,8 @@ function renameIdInDsl(dsl, oldId, newId, line) {
 }
 
 // ─── 図をまたぐ ID の参照探しと改名(CLI `npm run check -- --refs / --rename` と VSCode 拡張の F2 が共用) ───
-// 書き換えるのは定義行の ID と接続行の from / to だけ。ラベル・属性・コメント・座標の行は 1 バイトも変えない。
+// 書き換えるのは定義行の ID(ラベル全体が旧 ID と同じ文字列ならそのラベルも新 ID に揃える)と接続行の from / to だけ。
+// ラベルの一部に旧 ID を含むだけのとき・属性・コメント・座標の行は 1 バイトも変えない。
 
 const ID_DEF_RE = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
 const ID_CONN_RE = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
@@ -293,6 +294,36 @@ function planRename(files, oldId, newId) {
     changes.push({ path: f.path, text, lines });
   }
   return { changes, defs };
+}
+
+// 表示名を図をまたいで揃える(HTML 版のラベル欄 / キャンバス上のラベル編集で Enter)。同じ ID は図をまたいで同じ部品なので、
+// ほかの図の id の定義行のうち、ラベルが oldLabel と同じもの(unquote 後の文字列で比べる)だけを newLabel にする。違うラベルを付けている図と、
+// 定義行のラベルより後ろ(座標・属性)と、接続行・コメントは 1 バイトも変えない。ラベルは DSL の書き方(note の改行は \n のまま)で渡す。
+// 戻り値: { changes: [{ path, text(書換後の全文), lines: [{ line, before, after }] }] }(変わった図だけ)
+const LABEL_DEF_RE = /^(\s*(?:block|group|note)\s+)(\S+)(\s+)"((?:\\"|[^"])*)"/;
+function relabelIdInDsl(dsl, id, oldLabel, newLabel) {
+  if (oldLabel === newLabel) return dsl;
+  const lines = String(dsl).split('\n');
+  let changed = false;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(LABEL_DEF_RE);
+    if (!m || m[2] !== id || unquoteLabel(m[4]) !== oldLabel) continue;
+    lines[i] = m[1] + m[2] + m[3] + quoteLabel(newLabel) + lines[i].slice(m[0].length);
+    changed = true;
+  }
+  return changed ? lines.join('\n') : dsl;
+}
+function planRelabel(files, id, oldLabel, newLabel) {
+  const changes = [];
+  for (const f of files) {
+    const text = relabelIdInDsl(f.text, id, oldLabel, newLabel);
+    if (text === f.text) continue;
+    const a = f.text.split('\n'), b = text.split('\n');
+    const lines = [];
+    a.forEach((l, i) => { if (l !== b[i]) lines.push({ line: i + 1, before: l.replace(/\r$/, ''), after: b[i].replace(/\r$/, '') }); });
+    changes.push({ path: f.path, text, lines });
+  }
+  return { changes };
 }
 
 // ─── 接続の端点(ポート)と経路の点列。描画(HTML版 / VSCode拡張)と検査(core/check)が同じ計算を使う ───
@@ -534,4 +565,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, uniqueId, renameIdInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
