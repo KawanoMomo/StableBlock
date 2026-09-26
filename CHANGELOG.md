@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-primary-20260926-0950: 一緒に読み込んだ図で、ラベル欄 + Enter(キャンバス上のラベル編集の確定も)が同じ ID を定義するほかの図の同じ表示名も揃える。ID 欄の改名と合わせ、ID 小文字・表示名タイトルケースの規約でも 2 回の入力で全図が揃う
 - BLK-builder-20260926-1000-1-red: Excel 書き出しの雛形(template-inline.js)の生成と検査が作業ツリーの改行コード(CRLF / LF)に依らなくなり、CRLF のチェックアウトでも unit が緑になる
 - BLK-releaser-20260926-0953: bump-version.sh がルートの package.json と package-lock.json の版番号も揃え、置き換える箇所が見つからなければ何も書かずに失敗する(本体は scripts/bump-version.mjs)
 - BLK-junior-20260926-0609-wish: 検索欄に件数を出し(0 件で残りが無いと分かる)、Enter / Shift+Enter で当たりを読み順に 1 つずつ選べる。note も検索で薄くなる(HTML 版と VSCode 拡張で共通)

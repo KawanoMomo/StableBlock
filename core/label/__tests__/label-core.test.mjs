@@ -476,3 +476,32 @@ test('renameIdInDsl / searchIdsInFiles: 引用符を含むラベルの行も定�
   assert.equal(renameIdInDsl('block a "say \\"a\\"" at 1,1 size 4x2\na -> b', 'a', 'z'), 'block z "say \\"a\\"" at 1,1 size 4x2\nz -> b');
   assert.deepEqual(searchIdsInFiles([{ path: 'q.sb', text: 'block q "Block \\"quoted\\" label" at 1,1 size 4x2\n' }], '"quoted"').map(h => h.id), ['q']);
 });
+
+// ─── 表示名を図をまたいで揃える(BLK-primary-20260926-0950) ───
+import { relabelIdInDsl, planRelabel } from '../label-core.mjs';
+
+test('relabelIdInDsl: id の定義行でラベルが旧ラベルと同じものだけを新ラベルにし、座標・属性・接続行は動かさない', () => {
+  const dsl = 'block spimasterdrv "Spi_Driver" at 4,2 size 8x3 color=#6366F1\r\nspimasterdrv -> rte "Spi_Driver"\r\nblock other "Spi_Driver" at 1,1 size 4x2\r\n';
+  assert.equal(relabelIdInDsl(dsl, 'spimasterdrv', 'Spi_Driver', 'SpiMasterDrv'),
+    'block spimasterdrv "SpiMasterDrv" at 4,2 size 8x3 color=#6366F1\r\nspimasterdrv -> rte "Spi_Driver"\r\nblock other "Spi_Driver" at 1,1 size 4x2\r\n');
+  assert.equal(relabelIdInDsl('  group  g1  "Old" at 1,1 size 4x2', 'g1', 'Old', 'New'), '  group  g1  "New" at 1,1 size 4x2');
+  // 違うラベルを付けている図は触らない。同じなら本文をそのまま返す
+  const own = 'block a "独自名" at 1,1 size 4x2';
+  assert.equal(relabelIdInDsl(own, 'a', 'Old', 'New'), own);
+  assert.equal(relabelIdInDsl(own, 'a', '独自名', '独自名'), own);
+  // 引用符は \" で書き、比べるのは unquote した文字列。note の改行は \n のまま比べる
+  assert.equal(relabelIdInDsl('block a "Say \\"hi\\"" at 1,1 size 4x2', 'a', 'Say "hi"', 'A "x"'), 'block a "A \\"x\\"" at 1,1 size 4x2');
+  assert.equal(relabelIdInDsl('note m "a\\nb" at 1,1 size 4x2', 'm', 'a\\nb', 'c\\nd'), 'note m "c\\nd" at 1,1 size 4x2');
+});
+
+test('planRelabel: 同じ旧ラベルの図だけが変わり、変わった行は定義行の 1 行だけ', () => {
+  const files = [
+    { path: 'spi_dataflow.sb', text: '# x\nblock spimasterdrv "Spi_Driver" at 4,14 size 8x3\nspimasterdrv -> spidata\n' },
+    { path: 'custom.sb', text: 'block spimasterdrv "SPI ドライバ" at 1,1 size 4x2\n' },
+    { path: 'can_swc.sb', text: 'block CanDrv "CanDrv" at 4,2 size 8x3\n' },
+  ];
+  const plan = planRelabel(files, 'spimasterdrv', 'Spi_Driver', 'SpiMasterDrv');
+  assert.deepEqual(plan.changes.map(c => [c.path, c.lines]), [['spi_dataflow.sb',
+    [{ line: 2, before: 'block spimasterdrv "Spi_Driver" at 4,14 size 8x3', after: 'block spimasterdrv "SpiMasterDrv" at 4,14 size 8x3' }]]]);
+  assert.deepEqual(planRelabel(files, 'spimasterdrv', 'X', 'X').changes, []);
+});

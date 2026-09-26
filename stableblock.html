@@ -537,7 +537,7 @@ function startInlineEdit(type,id){
   Object.assign(el.style,{left:r.left+'px',top:r.top+'px',width:Math.max(r.width,isGroup?140:80)+'px',height:h+'px'});
   if(isGroup)el.style.textAlign='left';
   document.body.appendChild(el);
-  const ed={el,type,id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds)};inlineEd=ed;
+  const ed={el,type,id,origId:id,from:it.label,snap:dsl,pushed:false,auto:new Set(autoIds)};inlineEd=ed;
   el.addEventListener('input',()=>{if(inlineEd!==ed)return;if(!ed.pushed){pushHistory();ed.pushed=true;}
     const v=isNote?el.value.replace(/\n/g,'\\n'):el.value;sel=[{type:ed.type,id:ed.id}];
     updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
@@ -553,7 +553,7 @@ function nextInReadingOrder(type,id,dir){const list=(type==='block'?parsed.block
   const i=list.findIndex(x=>x.id===id);return i<0?null:list[i+dir]||null;}
 function finishInlineEdit(commit){const ed=inlineEd;if(!ed)return;inlineEd=null;
   if(!commit&&ed.pushed){dsl=ed.snap;history.pop();sel=[{type:ed.type,id:ed.origId}];autoIds.clear();ed.auto.forEach(x=>autoIds.add(x));}
-  ed.el.remove();refresh(!ed.pushed);}
+  ed.el.remove();if(commit&&ed.pushed)relabelElsewhere(ed.type,ed.id,ed.from);refresh(!ed.pushed);if(commit&&ed.pushed)renderSearchHits();}
 
 // ═══════════════════════════════════════════════
 // Property Panel — context-sensitive UI for selected items
@@ -563,6 +563,7 @@ function finishInlineEdit(commit){const ed=inlineEd;if(!ed)return;inlineEd=null;
 // ═══════════════════════════════════════════════
 // Every selection change goes through renderProps: drop items the DSL no longer has, then keep the status bar's Selected: N in step
 function renderProps(){
+  if(labelEdit&&parsed)commitLabelEdit();   // ラベル欄を作り直す前に、確定していない編集をほかの図へも反映する(欄の外を押して選択が変わったとき)
   if(parsed)sel=window.StableBlockSelect.pruneSelection(sel,parsed);
   renderPropsPanel();
   if(parsed)renderStatus();
@@ -669,8 +670,8 @@ function renderPropsPanel(){
     <span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
     <button onclick="sel=[];renderProps();renderSVG()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
     <div class="prop-sub" id="dup-hint" style="margin:-6px 0 10px">複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄</div>
-    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" value="${esc(item.label)}" oninput="setLabel(this.value)">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}</div>
-    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub">英数字と _。接続の参照も一緒に変わる</div></details>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter')this.blur()">`}${isBlock?'<div class="prop-sub">改行は \\\\n で入力</div>':''}${(els=>els.length?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
+    <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="if(event.key==='Enter')this.blur()" spellcheck="false"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help">英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる</div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
       <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
@@ -702,9 +703,9 @@ function renderPropsPanel(){
 // Actions: single
 // ═══════════════════════════════════════════════
 function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
-function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
-function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 const axisSides=(axis,d)=>window.StableBlockLayout.moveSides(axis==='x'?d:0,axis==='y'?d:0);
 function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
 function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
@@ -828,6 +829,19 @@ function followLabelId(label){const s=sel[0];if(!s||!(s.id.startsWith('__new_')|
   const nid=SL.uniqueId(base,usedIdsExcept(s.id));if(nid===s.id)return;if(!applyRename(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);
   const inp=document.getElementById('prop-id');if(inp)inp.value=nid;const now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
 
+// 表示名を図をまたいで揃える(core/label の planRelabel): ほかに読み込んだ図が同じ ID を定義していれば、ラベル欄の Enter(欄を離れたとき)と
+// キャンバス上のラベル編集の確定で、その図の定義行のうち編集前と同じラベルのものも同じラベルにする。違うラベルを付けている図は触らない。
+// 表示中の図へは打つたび(ECN-003: 入力中はプロパティ欄を作り直さない)、ほかの図へは確定の 1 回。↩ はほかの図の分を 1 段で戻す。「.sb 保存」で変わった図を全部書き出す
+var labelEdit=null,labelNote=null;   // var: 初期化前の renderProps からも読む
+function startLabelEdit(){const s=sel[0],it=s&&getItem(s);labelEdit=it?{type:s.type,id:s.id,from:it.label}:null;}
+function followLabelEdit(oldId){if(labelEdit&&labelEdit.id===oldId&&sel[0])labelEdit.id=sel[0].id;}
+function relabelElsewhere(type,id,from){const it=getItem({type,id}),others=otherLoaded();if(!it||it.label===from||!others.length)return false;
+  const plan=window.StableBlockLabel.planRelabel(others.map(k=>({path:k,text:includeFiles[k]})),id,from,it.label);if(!plan.changes.length)return false;
+  pushHistoryAll();plan.changes.forEach(c=>{includeFiles[c.path]=c.text;});
+  labelNote={id,text:`ほかの図 ${plan.changes.length} 枚の表示名も揃えた: ${plan.changes.map(c=>baseName(c.path)).join('、')}。「.sb 保存」で変わった図を全部書き出す`};return true;}
+function commitLabelEdit(){const e=labelEdit;labelEdit=null;return !!e&&relabelElsewhere(e.type,e.id,e.from);}
+function labelChanged(){if(commitLabelEdit()){renderProps();renderStatus();renderSearchHits();}}
+
 // ═══════════════════════════════════════════════
 // Editor / Refresh
 // ═══════════════════════════════════════════════
@@ -875,7 +889,7 @@ async function importSB(input){const files=[...(input.files||[])];input.value=''
   pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
   const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
   let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
+  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};idNote=null;labelNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
