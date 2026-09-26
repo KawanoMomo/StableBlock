@@ -4,6 +4,8 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+## v1.0 (2026-09-26)
+
 ### Added
 - BLK-primary-20260926-1205-wish: 共通部を開いて動かすと、エラー欄に「この図を @include している図」と、その編集で増えたほかの図のエラー・警告(図名と行)が並び、押すとその図のその行へ移れる
 - BLK-primary-20260926-1205-friction: 何も選んでいないときのツール欄「共通部(@include)」から、一緒に読み込んだ図を @include で取り込める(読み込んだ図すべてに 1 クリック)・外せる。本文欄に手打ちしなくてよい
