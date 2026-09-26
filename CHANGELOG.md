@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-junior-20260926-0609-wish: 検索欄に件数を出し(0 件で残りが無いと分かる)、Enter / Shift+Enter で当たりを読み順に 1 つずつ選べる。note も検索で薄くなる(HTML 版と VSCode 拡張で共通)
 - BLK-porter-20260926-0617: ラベルの二重引用符を `\"` で書けるようになり、`"Block \"quoted\" label"` の図が「.sb 読込」で描かれ、GUI のラベル欄(接続のラベルも)に `"` を打っても本文が壊れず、無変更保存はバイト一致、SVG / Mermaid / Excel にも引用符のまま出る(HTML 版・VSCode 拡張・core/dsl が core/label の同じ規則で読む)
 - BLK-human-20260926-1010-1: 資料の寸法に合わせた図はツール欄「はみ出したら自動で広げる」を外して固定できる(本文の @canvas に grow=off)。自動で広がった直後はステータスバーの「元の寸法に戻して固定」1 回で戻せ、キャンバスの外にはみ出した要素はエラー欄に出て画面にも描かれる。VSCode 拡張も同じ
 - BLK-primary-20260926-0451: ブラウザ版で「.sb 読込」でまとめて読んだ図をまたいで、ツールバーの検索が表示していない図の定義・接続を図と行で並べ(押すとその図を開く)、プロパティ欄の ID を 1 回変えると全部の図の定義行と接続の from / to が改名され(ID と同じ表示名も揃う)、「.sb 保存」で変わった図が全部書き出される

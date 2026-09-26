@@ -107,6 +107,8 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #export-report[hidden] { display:none; }
 #search-hits { position:fixed; z-index:60; width:420px; max-height:60vh; overflow:auto; background:var(--bg2); border:1px solid #475569; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,0.45); padding:4px; font-size:11px; }
 #search-hits[hidden] { display:none; }
+.search-count { font-size:10px; color:var(--muted); margin-left:4px; white-space:nowrap; min-width:28px; }
+.search-count[hidden] { display:none; }
 #search-hits .sh-head { color:#94A3B8; padding:4px 6px; }
 #search-hits .sh-item { display:block; width:100%; text-align:left; background:none; border:0; border-radius:4px; color:#E2E8F0; padding:4px 6px; cursor:pointer; font:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #search-hits .sh-item:hover { background:#334155; }
@@ -174,7 +176,8 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
-    <input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="if(event.key==='Escape'){searchHitsOpen=false;renderSearchHits();}">
+    <input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="if(event.key==='Escape'){searchHitsOpen=false;renderSearchHits();}else if(event.key==='Enter'&&!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}">
+    <span id="search-count" class="search-count" aria-live="polite"></span>
     <div id="search-hits" role="listbox" hidden></div>
   </div>
 </div>
@@ -343,6 +346,13 @@ function renderLineModeBtn(){
   btn.classList.toggle('tb-line-active',m!=='curved');
 }
 function doSearch(q){searchQuery=q.toLowerCase();searchHitsOpen=true;renderSVG();renderSearchHits();}
+// 検索の当たり(core/render の searchMatches: block / group / note を読み順)。件数は検索欄の横に出し、0 件なら残りが無いと分かる
+function searchMatchesNow(){return parsed?window.StableBlockRender.searchMatches(parsed,searchQuery,{showAnnotations}):[];}
+function renderSearchCount(){const el=document.getElementById('search-count');if(!el)return;const on=!!searchQuery.trim();el.textContent=on?`${searchMatchesNow().length} 件`:'';el.hidden=!on;}
+// 検索欄の Enter / Shift+Enter: 当たりを読み順に 1 つずつ選び(プロパティ欄の ID 欄でそのまま直せる)、画面の外なら見える位置へ寄せる
+function searchStep(dir){const t=window.StableBlockRender.nextMatch(searchMatchesNow(),sel.length===1?sel[0]:null,dir);if(!t)return;
+  sel=[t];selClicked=false;justLinked=[];searchHitsOpen=false;renderSearchHits();renderSVG();renderProps();renderStatus();
+  const g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===t.id&&x.dataset.type===t.type);if(g&&g.scrollIntoView)g.scrollIntoView({block:'nearest',inline:'nearest'});}
 // @include(core/check の expandIncludes): include 先は「.sb 読込」で本体と一緒に選んだファイルから、読込んだファイルからの相対パスで探す
 // (選んだファイルにフォルダの情報が無ければ同じ名前のファイル)。file:// でも http でも同じ。読めない include はその行のエラーと書き出しの知らせに出す。
 // 保存は本文(dsl)をそのまま書くので @include 行は残る
@@ -388,7 +398,7 @@ function renderSVG(){
   if(!parsed)return;
   renderLineModeBtn();
   // 画面と書き出しは同じ core/render の renderSvg で描く(画面だけの状態は view で渡す)
-  document.getElementById('svg-wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom,sel,highlight,search:searchQuery,showAnnotations,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);
+  document.getElementById('svg-wrap').innerHTML=window.StableBlockRender.renderSvg(parsed,{zoom,sel,highlight,search:searchQuery,showAnnotations,grid:true,font:SVG_FONT},window.StableBlockLabel,measureLabel);renderSearchCount();
   setupInteractions();
 }
 

@@ -27,6 +27,31 @@ function matchesSearchItem(item, q) {
   return has(item.id) || has(item.label) || has(item.from) || has(item.to);
 }
 
+// 検索語に当たる block / group / note を読み順(上から、同じ高さなら左から)に並べた [{type,id}]。
+// 検索欄の件数と Enter / Shift+Enter の移動先(HTML 版・VSCode 拡張で共通)。注釈を隠しているとき(showAnnotations: false)は note を数えない
+function searchMatches(parsed, q, opts = {}) {
+  const s = q ? String(q).toLowerCase() : '';
+  if (!s.trim()) return [];
+  const rank = { group: 0, block: 1, note: 2 };
+  const items = [
+    ...(parsed.groups || []).map(it => ({ type: 'group', it })),
+    ...(parsed.blocks || []).map(it => ({ type: 'block', it })),
+    ...(opts.showAnnotations === false ? [] : (parsed.notes || []).map(it => ({ type: 'note', it }))),
+  ].filter(({ it }) => matchesSearchItem(it, s));
+  items.sort((a, b) => a.it.y - b.it.y || a.it.x - b.it.x || rank[a.type] - rank[b.type]);
+  return items.map(({ type, it }) => ({ type, id: it.id }));
+}
+
+// 当たり matches の中で、今の選択 cur({type,id} か null)の次(dir = 1)/ 前(dir = -1)。端は反対側へ回る。
+// cur が当たりに無ければ(ID を直して外れた・何も選んでいない)次は先頭、前は末尾。当たりが無ければ null
+function nextMatch(matches, cur, dir = 1) {
+  const n = (matches || []).length;
+  if (!n) return null;
+  const i = cur ? matches.findIndex(m => m.type === cur.type && m.id === cur.id) : -1;
+  if (i < 0) return matches[dir < 0 ? n - 1 : 0];
+  return matches[((i + (dir < 0 ? -1 : 1)) % n + n) % n];
+}
+
 // 注釈レイヤーの接続(note が端のもの)
 function isAnnotationConnOf(parsed, c) {
   const nm = parsed.noteMap || parsed.nm || {};
@@ -133,7 +158,8 @@ function renderSvg(parsed, view, L, measure) {
     });
     notes.forEach(n => {
       const sl = isSel(n.id);
-      s += `<g data-type="note" data-id="${n.id}"${grab}>`;
+      const op = q && !matchesSearchItem(n, q) ? RD_SEARCH_DIM : null;
+      s += `<g data-type="note" data-id="${n.id}"${grab}${opAttr(op)}>`;
       s += `<rect x="${n.x * g}" y="${n.y * g}" width="${n.w * g}" height="${n.h * g}" fill="${n.color}" stroke="${sl ? '#F59E0B' : (n.borderColor || '#D97706')}" stroke-width="${sl ? 2.5 : 1}" stroke-dasharray="4,2" rx="${n.round}" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.08))"/>`;
       n.label.split('\\n').forEach((line, li) => {
         const ty = n.y * g + 6 + li * 14;
@@ -173,4 +199,4 @@ function exportSvg(parsed, L, measure, font) {
   return renderSvg(parsed, { zoom: 1, grid: false, interactive: false, showAnnotations: true, font }, L, measure);
 }
 
-;window.StableBlockRender = { matchesSearchItem, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };
+;window.StableBlockRender = { matchesSearchItem, searchMatches, nextMatch, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as L from '../../label/label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
-import { renderSvg, exportSvg, exportPngSize, matchesSearchItem } from '../render-core.mjs';
+import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch } from '../render-core.mjs';
 import { buildRenderCoreBrowser } from '../../excel/build-browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -85,4 +85,30 @@ test('HTML 版と VSCode 拡張は画面と書き出しを core/render で描き
     assert.doesNotMatch(exp, /\bzoom\b|\bzm\b/, f + ' の書き出しが表示倍率に依る');
   }
   assert.match(read('vscode-stableblock/scripts/prepackage-core.js'), /"render", "render-core\.mjs"/);
+});
+
+test('検索: note も薄め、当たりを読み順に数え、Enter / Shift+Enter の移動先は端で回る', () => {
+  const p = parseDSL([
+    '@canvas width=960 height=520 grid=20',
+    'block __new_2 "B" at 12,3 size 6x3',
+    'note __new_3 "memo" at 1,12 size 8x2',
+    'group __new_1 "G" at 1,1 size 20x10',
+    'block keep "Keep" at 2,3 size 6x3',
+    'note keepn "memo keep" at 12,12 size 8x2',
+  ].join('\n'));
+  const s = renderSvg(p, { search: '__new_' }, L, measure);
+  assert.match(s, /data-type="note" data-id="keepn" style="cursor:grab" opacity="0.2"/);
+  assert.match(s, /data-type="note" data-id="__new_3" style="cursor:grab">/);
+  const m = searchMatches(p, '__new_');
+  assert.deepEqual(m.map(x => x.id), ['__new_1', '__new_2', '__new_3']);
+  assert.deepEqual(searchMatches(p, '__new_', { showAnnotations: false }).map(x => x.id), ['__new_1', '__new_2']);
+  assert.deepEqual(searchMatches(p, '  '), []);
+  assert.deepEqual(searchMatches(p, 'zzz'), []);
+  assert.deepEqual(nextMatch(m, null, 1), { type: 'group', id: '__new_1' });
+  assert.deepEqual(nextMatch(m, null, -1), { type: 'note', id: '__new_3' });
+  assert.deepEqual(nextMatch(m, { type: 'block', id: '__new_2' }, 1), { type: 'note', id: '__new_3' });
+  assert.deepEqual(nextMatch(m, { type: 'note', id: '__new_3' }, 1), { type: 'group', id: '__new_1' });
+  assert.deepEqual(nextMatch(m, { type: 'group', id: '__new_1' }, -1), { type: 'note', id: '__new_3' });
+  assert.deepEqual(nextMatch(m, { type: 'block', id: 'keep' }, 1), { type: 'group', id: '__new_1' });   // 直して外れた選択からは先頭へ
+  assert.equal(nextMatch([], null, 1), null);
 });
