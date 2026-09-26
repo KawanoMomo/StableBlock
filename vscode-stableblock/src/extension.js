@@ -512,7 +512,7 @@ function parseDSL(t){
       m=r.match(/^group\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
       if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var g2={type:"group",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF",line:ln};gr.push(g2);gm[g2.id]=g2;continue;}
       m=r.match(/^note\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var n={type:"note",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#FEF3C7",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#92400E",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||"solid",line:ln};nt.push(n);nm[n.id]=n;continue;}
+      if(m){if(aids[m[1]])er.push({line:ln,msg:'Duplicate ID "'+m[1]+'" (L'+aids[m[1]]+')'});aids[m[1]]=ln;var n={type:"note",id:m[1],label:window.StableBlockLabel.unquoteLabel(m[2]),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#FEF3C7",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#92400E",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||null,round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4"),style:(m[7].match(/style=(\\S+)/)||[])[1]||null,line:ln};nt.push(n);nm[n.id]=n;continue;}
       m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)\\s*(?:"((?:\\\\"|[^"])*)")?\\s*(.*)/);
       if(m){cn.push({from:m[1],to:m[3],label:window.StableBlockLabel.unquoteLabel(m[4]||""),color:(m[5].match(/color=(\\S+)/)||[])[1]||"#64748B",style:(m[5].match(/style=(\\S+)/)||[])[1]||"solid",width:+(m[5].match(/width=([\\d.]+)/)||[])[1]||1.5,route:(m[5].match(/route=(\\S+)/)||[])[1]||null,lpos:window.StableBlockLabel.parseLpos(m[5]),lposAuto:!window.StableBlockLabel.hasLpos(m[5]),bidir:m[2]==="-->",line:ln});continue;}
       if(r.startsWith("@include")){er.push({line:ln,msg:"@include requires preprocessing (extension host)"});continue;}
@@ -696,7 +696,7 @@ function propsPanel(){
     h+='<div class="pl">Text Color</div><div class="cg">'+["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(function(c){return'<div class="cd'+(it.textColor===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'text\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     h+=stepperRow("Round","sNudgeR(-1)","sNudgeR(1)",it.round);
   }
-  if(isB){
+  if(isB||isN){
     h+='<div class="pl">Style</div><div style="display:flex;gap:3px">'+["solid","dashed","bold"].map(function(s){return'<button class="sbtn'+(it.style===s?' act':'')+'" onclick="sPr(\\'style\\',\\''+s+'\\')">'+window.StableBlockTerms.styleName(s,'en')+'</button>'}).join('')+'</div>';
   }
   if(!isB&&!isN){

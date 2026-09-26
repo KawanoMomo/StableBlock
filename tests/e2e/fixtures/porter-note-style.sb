@@ -1,0 +1,6 @@
+# porter の corpus 27 の形: 実線枠のつもりの注記(style=solid)と、style を書いていない注記
+@canvas width=480 height=200 grid=20
+block ui "UI" at 1,1 size 5x3 color=#3B82F6 text=#FFFFFF border=#1E40AF round=4
+note memo "実線枠のつもりの注記" at 8,1 size 8x2 color=#FFFFFF text=#374151 style=solid round=0
+note tbd "既定の注記" at 8,5 size 8x2
+ui -> memo "参照"

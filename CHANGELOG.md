@@ -5,6 +5,7 @@ All notable changes to StableBlock will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- BLK-porter-20260926-1205-2: note の style= が効く(書いた note は block と同じく実線・破線・太線、書いていない note は今まで通り破線の注釈枠)。プロパティ欄のスタイルも note で使える。Excel / Mermaid も同じ規則
 - BLK-junior-20260926-1105: 共有部を @include した図でも画布は本文の @canvas のまま(広げた画布が共有部の大きさに戻らず、PNG / SVG が切れない)。共有部の要素を選ぶと定義の場所が出て「○○.sb を開く」で直せる
 - BLK-builder-20260926-1230-1: Excel 書き出しで block の太枠・破線枠が画面どおりに出る。Excel で表せない接続の線の形と lpos= は書き出し後の一覧に出る(parser の全属性を unit で検査)
 - BLK-primary-20260926-0950: 一緒に読み込んだ図で、ラベル欄 + Enter(キャンバス上のラベル編集の確定も)が同じ ID を定義するほかの図の同じ表示名も揃える。ID 欄の改名と合わせ、ID 小文字・表示名タイトルケースの規約でも 2 回の入力で全図が揃う

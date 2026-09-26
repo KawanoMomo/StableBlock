@@ -2,7 +2,7 @@
 // 保存名は読み込んだファイルの名前。
 const fs = require('node:fs');
 const path = require('node:path');
-const { test, expect, bootPlain, importSb, exportSb, saveDir, FIXTURES } = require('./_scenario');
+const { test, expect, bootPlain, importSb, exportSb, getEditorText, saveDir, FIXTURES } = require('./_scenario');
 
 const SRC = path.join(FIXTURES, 'porter-roundtrip.sb');
 
@@ -94,4 +94,32 @@ test('porter-05: ラベルに \\" を含む図が描かれ、無変更で Export
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
   await expect(svg.locator('g[data-type="block"][data-id="a_1_b_2"]')).toContainText('Say "hi"');
   await expect(page.locator('#error-bar .diag')).toHaveCount(0);
+});
+
+// note の style= は画面に効く: 書いた note は block と同じ規則(solid / dashed / bold)、書いていない note は注釈の破線枠。
+// 無変更保存はバイト一致のまま、プロパティ欄のスタイルで変えると本文の style= だけが変わる(BLK-porter-20260926-1205-2)
+test('porter-05: note の style=solid は実線で描かれ、無変更で Export → バイト一致、プロパティ欄で太線にすると style= だけ変わる', async ({ page }, testInfo) => {
+  const SRC_NOTE = path.join(FIXTURES, 'porter-note-style.sb');
+  const original = fs.readFileSync(SRC_NOTE);
+  await bootPlain(page);
+  await importSb(page, SRC_NOTE);
+  const svg = page.locator('#svg-wrap svg');
+  const memo = svg.locator('g[data-type="note"][data-id="memo"] rect');
+  await expect(memo).not.toHaveAttribute('stroke-dasharray', /./);
+  await expect(svg.locator('g[data-type="note"][data-id="tbd"] rect')).toHaveAttribute('stroke-dasharray', '4,2');
+
+  const { bytes } = await exportSb(page, saveDir(testInfo));
+  expect(bytes.equals(original), '無変更保存が元と違う').toBe(true);
+
+  await svg.locator('g[data-type="note"][data-id="memo"]').click();
+  await page.getByRole('button', { name: '太線', exact: true }).click();
+  const after = (await getEditorText(page)).split('\n');
+  const before = original.toString('utf8').replace(/\r\n/g, '\n').split('\n');
+  const changed = after.map((l, i) => (l !== before[i] ? i : -1)).filter(i => i >= 0);
+  expect(changed).toEqual([3]);
+  expect(after[3]).toBe('note memo "実線枠のつもりの注記" at 8,1 size 8x2 color=#FFFFFF text=#374151 style=bold round=0');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#status')).toContainText('Selected: 0');   // 選択の太枠でなく style=bold の太さを見る
+  await expect(svg.locator('g[data-type="note"][data-id="memo"] rect')).toHaveAttribute('stroke-width', '2.5');
 });

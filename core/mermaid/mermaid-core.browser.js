@@ -44,7 +44,7 @@ function mmdStyle(item, kind) {
   const stroke = item.borderColor || (kind === 'note' ? '#D97706' : kind === 'block' ? item.color : null);
   if (stroke) p.push(`stroke:${stroke}`);
   if (item.textColor) p.push(`color:${item.textColor}`);
-  if (kind === 'note' || item.style === 'dashed') p.push('stroke-dasharray:5 3');
+  if ((kind === 'note' && item.style == null) || item.style === 'dashed') p.push('stroke-dasharray:5 3');   // style= を書いていない note は破線
   if (item.style === 'bold') p.push('stroke-width:2.5px');
   return p.join(',');
 }
