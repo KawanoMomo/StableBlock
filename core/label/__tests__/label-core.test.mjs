@@ -416,6 +416,20 @@ test('chainConnectInDsl: 選んだ順に鎖状に結び、既にある組(向き
 // ─── 読み込んだ図をまたぐ検索(HTML 版のツールバーの検索が、表示中でない図の当たりを並べる) ───
 import { searchIdsInFiles } from '../label-core.mjs';
 
+import { searchFileNames } from '../label-core.mjs';
+
+test('searchFileNames: 一緒に読み込んだ図のパスに query を含む図を、名前の先頭で当たる図 → 名前に含む図 → フォルダ名で当たる図の順で返す', () => {
+  const paths = ['adc_dataflow.sb', 'can_swc.sb', 'shared/common.sb', 'spi_swc.sb', 'swc_can.sb'];
+  assert.deepEqual(searchFileNames(paths, 'can'), ['can_swc.sb', 'swc_can.sb']);
+  assert.deepEqual(searchFileNames(paths, 'CAN_SWC'), ['can_swc.sb']);         // 大文字小文字を区別しない
+  assert.deepEqual(searchFileNames(paths, 'swc'), ['swc_can.sb', 'can_swc.sb', 'spi_swc.sb']);
+  assert.deepEqual(searchFileNames(paths, 'shared'), ['shared/common.sb']);     // フォルダ名でも当たる
+  assert.deepEqual(searchFileNames(paths, 'common.sb'), ['shared/common.sb']);
+  assert.deepEqual(searchFileNames(['a\\b.sb', 'b\\c.sb'], 'b'), ['a\\b.sb', 'b\\c.sb']);   // 区切りが \ でも名前で当たる(名前の先頭が先)
+  assert.deepEqual(searchFileNames(paths, '  '), []);
+  assert.deepEqual(searchFileNames(paths, 'nothing'), []);
+});
+
 test('searchIdsInFiles: ID・ラベルに含む定義行と、from / to に含む接続行を図と行で返す(大文字小文字を区別しない)', () => {
   const files = [
     { path: 'spi_swc.sb', text: '# SpiDrv の構成\r\nblock SpiDrv "SPI Driver" at 1,1 size 4x2\r\nblock app "App" at 8,1 size 4x2\r\napp -> SpiDrv "spidrv"\r\n' },

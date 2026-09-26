@@ -135,12 +135,19 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #search-hits .sh-item:hover { background:#334155; }
 #search-hits .sh-line { color:#A5B4FC; }
 #search-hits code { color:#CBD5E1; font-family:Consolas,monospace; }
+#search-hits .sh-item:focus { background:#334155; outline:1px solid var(--accent); }
+#search-hits .sh-unsaved { color:var(--amber); }
 /* キャンバス上のラベル編集(ダブルクリック / F2 / Enter)。#svg-wrap の外に置き、再描画で消えない */
 .inline-label { position:fixed; z-index:40; box-sizing:border-box; margin:0; padding:2px 6px; border:2px solid var(--accent); border-radius:4px; background:#FFFFFF; color:#0F172A; font:600 12px 'IBM Plex Sans','Noto Sans JP',sans-serif; text-align:center; outline:none; box-shadow:0 4px 12px rgba(0,0,0,0.35); resize:none; }
 textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #export-report ul { margin:4px 0 0 16px; }
 #export-report .hint { color:#D6B98C; font-size:10px; margin-top:4px; }
 #status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
+#status .status-file { font:inherit; font-size:10px; font-weight:600; padding:0; border:0; background:none; color:#E2E8F0; cursor:pointer; }
+#status .status-file:hover { text-decoration:underline; }
+#status .status-dirty { color:var(--amber); }
+#status .status-pos { color:var(--dim); font-weight:400; }
+#error-bar .diag-file { font:inherit; padding:0; border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; }
 #status .status-btn { font:inherit; font-size:10px; padding:0 6px; margin-left:4px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
 .canvas-grow { display:flex; align-items:center; gap:4px; margin-top:6px; cursor:pointer; font-size:10px; color:var(--muted); }
 
@@ -198,9 +205,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
     <div class="sep"></div>
-    <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="if(event.key==='Escape'){searchHitsOpen=false;renderSearchHits();}else if(event.key==='Enter'&&!event.isComposing){event.preventDefault();searchStep(event.shiftKey?-1:1);}">
+    <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 ID・ラベルで検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
 <span id="search-count" class="search-count" aria-live="polite"></span></span>
-    <div id="search-hits" role="listbox" hidden></div>
+    <div id="search-hits" role="listbox" hidden onkeydown="searchHitsKey(event)"></div>
   </div>
 </div>
 
@@ -367,7 +374,7 @@ function renderLineModeBtn(){
   btn.textContent=window.StableBlockTerms.lineModeText(m);
   btn.classList.toggle('tb-line-active',m!=='curved');
 }
-function doSearch(q){searchQuery=q.toLowerCase();searchHitsOpen=true;renderSVG();renderSearchHits();}
+function doSearch(q){searchQuery=q.toLowerCase();searchHitsOpen=true;searchListAll=false;renderSVG();renderSearchHits();}
 // 検索の当たり(core/render の searchMatches: block / group / note を読み順)。件数は検索欄の横に出し、0 件なら残りが無いと分かる
 function searchMatchesNow(){return parsed?window.StableBlockRender.searchMatches(parsed,searchQuery,{showAnnotations}):[];}
 function renderSearchCount(){const el=document.getElementById('search-count');if(!el)return;const on=!!searchQuery.trim();el.textContent=on?`${searchMatchesNow().length} 件`:'';el.hidden=!on;
@@ -384,18 +391,38 @@ function readInclude(p){return window.StableBlockCheck.loadedReader(includeFiles
 // 一緒に読み込んだ図(「.sb 読込」で複数選んだもの)。表示中の図の本文は dsl が正で、includeFiles[dslFile] に写してから使う。loadedTexts は読込・保存した時の本文(違えば未保存)。
 // ツールバーの検索は表示中でない図の当たりも図と行で並べ(クリックでその図を開く)、プロパティ欄の ID の改名はほかの図が同じ ID を使っていれば
 // 全部の図に当てる(core/label の planRename。CLI の --rename・VSCode の F2 と同じ)。「.sb 保存」は表示中の図と、変わったほかの図を全部書き出す
-let loadedTexts={},searchHits=[],searchHitsOpen=false,idNote=null;
+// 検索は一緒に読み込んだ図の名前(パス)にも当たり、当たった図は一覧の先頭に図名だけの行で出す(押すか Enter で開く)。ステータスバーの図名を押すと、空の検索欄で読み込んだ図の名前を全部並べる(searchListAll)
+let loadedTexts={},searchHits=[],searchFiles=[],searchHitsOpen=false,searchListAll=false,idNote=null;
 const hasLoaded=p=>Object.prototype.hasOwnProperty.call(includeFiles,p);
 function syncLoaded(){if(dslFile&&hasLoaded(dslFile))includeFiles[dslFile]=dsl;}
 function otherLoaded(){return Object.keys(includeFiles).filter(k=>k!==dslFile);}
 function baseName(p){return String(p).split('/').pop();}
 function unsavedOthers(){syncLoaded();return otherLoaded().filter(k=>includeFiles[k]!==loadedTexts[k]);}
 function idUsesElsewhere(id){const SL=window.StableBlockLabel;return otherLoaded().map(k=>({path:k,hits:SL.findIdInDsl(includeFiles[k],id)})).filter(x=>x.hits.length);}
-function renderSearchHits(){const el=document.getElementById('search-hits');if(!el)return;const others=otherLoaded();
-  if(!searchQuery.trim()||!others.length||!searchHitsOpen){el.hidden=true;el.innerHTML='';searchHits=[];return;}
-  searchHits=window.StableBlockLabel.searchIdsInFiles(others.map(k=>({path:k,text:includeFiles[k]})),searchQuery);const n=new Set(searchHits.map(h=>h.path)).size;
-  el.innerHTML=`<div class="sh-head">ほかに読み込んだ図 ${others.length} 枚のうち ${n} 枚・${searchHits.length} 行${searchHits.length?'(クリックでその図を開く)':''}</div>`+searchHits.map((h,i)=>`<button type="button" class="sh-item" data-path="${esc(h.path)}" data-line="${h.line}" onclick="openSearchHit(${i})"><b>${esc(baseName(h.path))}</b> <span class="sh-line">L${h.line} ${h.kind==='def'?'定義':'接続'}</span> <code>${esc(h.text.trim())}</code></button>`).join('');
+function renderSearchHits(){const el=document.getElementById('search-hits');if(!el)return;const others=otherLoaded(),q=searchQuery.trim();
+  if((!q&&!searchListAll)||!others.length||!searchHitsOpen){el.hidden=true;el.innerHTML='';searchHits=[];searchFiles=[];return;}
+  searchFiles=q?window.StableBlockLabel.searchFileNames(others,q):others.slice();
+  searchHits=q?window.StableBlockLabel.searchIdsInFiles(others.map(k=>({path:k,text:includeFiles[k]})),searchQuery):[];const n=new Set(searchHits.map(h=>h.path)).size,un=new Set(unsavedOthers());
+  const how=searchEnterOpensFile()?'押すか Enter で開く':'押すか ↓ で選んで Enter で開く';
+  const fileHead=q?`図名で当たった図 ${searchFiles.length} 枚(${how})`:`読み込んだ図 ${others.length+1} 枚・表示中は ${esc(baseName(dslFile)||sbFileName)}(${how})`;
+  el.innerHTML=(searchFiles.length?`<div class="sh-head sh-files-head">${fileHead}</div>`+searchFiles.map((k,i)=>`<button type="button" class="sh-item sh-file" data-path="${esc(k)}" onclick="openSearchFile(${i})"><b>${esc(baseName(k))}</b>${un.has(k)?' <span class="sh-unsaved" title="保存していない変更がある">●</span>':''}${k!==baseName(k)?` <span class="sh-line">${esc(k)}</span>`:''}</button>`).join(''):'')
+    +(q&&(searchHits.length||!searchFiles.length)?`<div class="sh-head">ほかに読み込んだ図 ${others.length} 枚のうち ${n} 枚・${searchHits.length} 行${searchHits.length?'(クリックでその図を開く)':''}</div>`+searchHits.map((h,i)=>`<button type="button" class="sh-item" data-path="${esc(h.path)}" data-line="${h.line}" onclick="openSearchHit(${i})"><b>${esc(baseName(h.path))}</b> <span class="sh-line">L${h.line} ${h.kind==='def'?'定義':'接続'}</span> <code>${esc(h.text.trim())}</code></button>`).join(''):'');
   const r=document.getElementById('search-input').getBoundingClientRect();el.style.top=Math.round(r.bottom+4)+'px';el.style.right=Math.max(8,Math.round(window.innerWidth-r.right))+'px';el.hidden=false;}
+// 検索欄の Enter: 図名で当たった図があり、表示中の図に当たりが無ければ(空の欄で図名を並べているときも)先頭の図を開く。ほかは当たりを 1 つずつ選ぶ
+function searchEnterOpensFile(){return searchHitsOpen&&searchFiles.length>0&&(!searchQuery.trim()||!searchMatchesNow().length);}
+// 図名の行を開く。検索語は図名なので消す(開いた図が検索で薄くならない)
+function openSearchFile(i){const k=searchFiles[i];if(!k)return;searchHitsOpen=false;searchListAll=false;searchQuery='';const inp=document.getElementById('search-input');if(inp)inp.value='';
+  if(k===dslFile){renderSVG();renderSearchHits();}else openLoaded(k);renderSearchCount();}
+// 検索欄のキー: ↓ で一覧の行へ移り、行の上で ↑↓ で選び Enter で開く。Esc で閉じて検索欄へ戻る
+function searchKey(ev){
+  if(ev.key==='Escape'){searchHitsOpen=false;searchListAll=false;renderSearchHits();}
+  else if(ev.key==='Enter'&&!ev.isComposing){ev.preventDefault();if(searchEnterOpensFile())openSearchFile(0);else searchStep(ev.shiftKey?-1:1);}
+  else if(ev.key==='ArrowDown'){const b=document.querySelector('#search-hits:not([hidden]) .sh-item');if(b){ev.preventDefault();b.focus();}}}
+function searchHitsKey(ev){const items=[...document.querySelectorAll('#search-hits .sh-item')],i=items.indexOf(document.activeElement),inp=document.getElementById('search-input');
+  if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ev.preventDefault();const j=i+(ev.key==='ArrowDown'?1:-1);if(j<0)inp.focus();else if(items[j])items[j].focus();}
+  else if(ev.key==='Escape'){ev.preventDefault();searchHitsOpen=false;searchListAll=false;renderSearchHits();inp.focus();}}
+// ステータスバーの図名を押す: 検索欄へ移り、読み込んだ図の名前を並べる(1 枚だけならフォーカスだけ)
+function showLoadedList(){const inp=document.getElementById('search-input');if(!inp)return;searchListAll=!inp.value.trim();searchHitsOpen=true;inp.focus();renderSearchHits();}
 function openSearchHit(i){const h=searchHits[i];if(!h)return;searchHitsOpen=false;openLoaded(h.path,h.id);}
 // 一緒に読み込んだ図の 1 枚を表示する(編集中の本文は読み込んだ図の中に残り、「.sb 保存」で書き出す。↩ で前の図に戻る)。id があればそれを選ぶ
 function openLoaded(path,id){if(!hasLoaded(path))return;
@@ -928,14 +955,22 @@ function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(
 let impactBase={},impact={includers:[],added:[]},hitLine=null;const impactCache=new Map();
 function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
 function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
-function openImpact(i){const d=impact.added[i];if(!d)return;openLoaded(d.path);const l=dsl.split('\n')[d.line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
+// 一緒に読み込んだ図を開き、line があればその行の要素を選んで本文をその行へ送る(エラー欄に出る図名はどれもこれで開く)
+function openImpact(i){const d=impact.added[i];if(d)openLoadedAt(d.path,d.line);}
+function openLoadedAt(path,line){if(!hasLoaded(path))return;openLoaded(path);if(!line)return;const l=dsl.split('\n')[line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
   const find=id=>[...parsed.blocks.map(x=>['block',x]),...parsed.groups.map(x=>['group',x]),...parsed.notes.map(x=>['note',x])].find(([,x])=>x.id===id),s=(m?[m[2]]:c?[c[1],c[3]]:[]).map(find).filter(Boolean).map(([type,x])=>({type,id:x.id}));
-  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:d.path,line:d.line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(d.line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:path,line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+// 診断の文末の include 先の場所「(shared/common.sb L15)」は、その図を一緒に読み込んでいれば押すとその図のその行を開く
+function diagMsgHtml(d){const suf=`(${d.file} L${d.fileLine})`,k=d.file&&d.file!==dslFile&&d.msg.endsWith(suf)&&loadedKey(d.file);if(!k)return esc(d.msg);
+  return `${esc(d.msg.slice(0,-suf.length))}(<button type="button" class="diag-file" data-path="${esc(k)}" data-line="${d.fileLine}" title="その図を開いてその行へ" onclick="openLoadedAt(this.dataset.path,+this.dataset.line)">${esc(d.file)} L${d.fileLine}</button>)`;}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();measureImpact();const inc=impact.includers,oth=impact.added,edited=inc.length&&impactBase[dslFile]!==undefined&&impactBase[dslFile]!==dsl;
   if(lastDiag.length||inc.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));
-    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>esc(baseName(k))).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${esc(d.msg)}</div>`).join('')
+    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>`<button type="button" class="diag-file" data-path="${esc(k)}" title="その図を開く" onclick="openLoadedAt(this.dataset.path)">${esc(baseName(k))}</button>`).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${diagMsgHtml(d)}</div>`).join('')
       +oth.map((d,i)=>`<button type="button" class="diag diag-${d.level} diag-other" data-path="${esc(d.path)}" data-line="${d.line}" title="その図を開いてその行へ" onclick="openImpact(${i})">ほかの図: ${esc(baseName(d.path))} L${d.line}: ${esc(d.msg)}</button>`).join('');}else{el.style.display='none';}}
-function renderStatus(){document.getElementById('status').innerHTML=`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
+// ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる
+function statusFileHtml(){const keys=Object.keys(includeFiles),i=dslFile?keys.indexOf(dslFile):-1,dirty=i>=0&&loadedTexts[dslFile]!==undefined&&dsl!==loadedTexts[dslFile];
+  return `<button type="button" id="status-file" class="status-file" onclick="showLoadedList()" title="表示中の図。押すと検索欄で一緒に読み込んだ図の名前を並べる(名前を打って Enter で開く)">${esc(dslFile?baseName(dslFile):sbFileName)}${dirty?'<span class="status-dirty" title="保存していない変更がある"> ●</span>':''}${keys.length>1&&i>=0?` <span class="status-pos">(${i+1}/${keys.length})</span>`:''}</button>`;}
+function renderStatus(){document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span><span>Canvas: ${parsed.canvas.width}×${parsed.canvas.height}</span>`+(grewFrom&&(grewFrom.width!==parsed.canvas.width||grewFrom.height!==parsed.canvas.height)?`<span id="canvas-grew" style="color:var(--amber)">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${parsed.canvas.width}×${parsed.canvas.height} <button class="status-btn" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button></span>`:'')+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file

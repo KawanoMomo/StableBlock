@@ -57,3 +57,30 @@ test('primary-04: 共通部の RTE を動かすと、取り込んでいる 12 �
   await expect(page.locator('#error-bar .diag-warn', { hasText: 'L6: 接続「SpiDrv -> rte」の線が block「os」' })).toHaveCount(1);
   expect(await page.evaluate(() => sel.map(s => s.id))).toEqual(['SpiDrv', 'rte']);   // eslint-disable-line no-undef
 });
+
+// エラー欄に出る図名はどれも押すとその図(行があればその行)を開く(BLK-owner-20260926-1525-1)。見出しの「この図を @include している図」の図名と、
+// 取り込み側の診断の文末に出る include 先の場所「(shared/common.sb L6)」
+test('primary-04: エラー欄の図名(@include している図・include 先の場所)を押すとその図を開く', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, [...DIAGRAMS.map(f => path.join(SET, f)), COMMON]);
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
+
+  // SpiDrv を RTE と OS の間(20,5)へ: 共通部の「rte -> os」の線が SpiDrv を横切り、診断は共通部の行から来る
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="SpiDrv"]').click();
+  for (let i = 0; i < 16; i++) await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#editor')).toHaveValue(/block SpiDrv "SpiDrv" at 20,5 /);
+  const diag = page.locator('#error-bar .diag-warn', { hasText: '接続「rte -> os」の線が block「SpiDrv」(L4)の上を横切る' });
+  await expect(diag).toHaveText('L3: 接続「rte -> os」の線が block「SpiDrv」(L4)の上を横切る(shared/common.sb L6)');
+  await diag.getByRole('button', { name: 'shared/common.sb L6' }).click();
+  await expect(page).toHaveTitle(/common\.sb/);
+  await expect(page.locator('#line-nums .ln-hit')).toHaveText('6');
+  expect(await page.evaluate(() => sel.map(s => s.id))).toEqual(['rte', 'os']);   // eslint-disable-line no-undef
+
+  // 見出しの「この図を @include している図」の図名を押すとその図が開く
+  const head = page.locator('#impact-head');
+  await expect(head).toContainText('この図を @include している図: ');
+  await head.getByRole('button', { name: 'adc_swc.sb', exact: true }).click();
+  await expect(page).toHaveTitle(/adc_swc\.sb/);
+  await expect(page.locator('#status-file')).toContainText('adc_swc.sb');
+});
