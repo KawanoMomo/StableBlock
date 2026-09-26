@@ -7,9 +7,9 @@ const { test, expect, bootPlain, importSb, saveDir, FIXTURES } = require('./_sce
 
 const SRC = path.join(FIXTURES, 'owner-critique-swc.sb');
 
-// 透過 PNG は PNG の ▾ の「背景を透過して保存」(menuitem)。ほかはツールバーのボタン
+// 透過 PNG は PNG の ▾ の「透過PNG」(menuitem)。ほかはツールバーのボタン
 async function download(page, name, dir) {
-  const item = name === '透過PNG' ? page.getByRole('menuitem', { name: '背景を透過して保存' }) : page.getByRole('button', { name, exact: true });
+  const item = name === '透過PNG' ? page.getByRole('menuitem', { name: '透過PNG', exact: true }) : page.getByRole('button', { name, exact: true });
   if (name === '透過PNG') await page.locator('#png-more').click();
   const [dl] = await Promise.all([
     page.waitForEvent('download'),

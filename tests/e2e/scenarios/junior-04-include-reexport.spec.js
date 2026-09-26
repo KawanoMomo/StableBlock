@@ -32,7 +32,7 @@ test('junior-04: 共有部を include した図の画布を広げると、透過
   await expect(svg).toHaveAttribute('viewBox', /^0 0 960 780$/);
 
   await page.locator('#png-more').click();   // 透過は PNG の ▾ から
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: '背景を透過して保存' }).click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: '透過PNG', exact: true }).click()]);
   const file = path.join(saveDir(testInfo), dl.suggestedFilename());
   await dl.saveAs(file);
   expect(pngSize(file)).toEqual({ w: 1920, h: 1560 });   // @canvas × 2。下半分が切れない
