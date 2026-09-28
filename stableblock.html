@@ -121,6 +121,9 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 .inc-row .inc-remove { flex:none; height:22px; padding:0 8px; font-size:10px; border-radius:4px; }
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
+/* include 先の要素の値(打てない。枠を点線にして欄と見分ける) */
+.prop-ro { border:1px dashed var(--border); border-radius:4px; color:var(--muted); padding:4px 8px; font-size:12px; font-family:'IBM Plex Mono',monospace; overflow-wrap:anywhere; user-select:text; }
+.prop-ro-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; border:1px solid var(--border); }
 .prop-sub { font-size:9px; color:var(--dim); }
 .prop-id-box > summary { cursor:pointer; text-transform:none; }
 .prop-id-box > summary #prop-id-now { font-family:monospace; color:var(--text,#E2E8F0); }
@@ -615,6 +618,7 @@ function startInlineEdit(type,id){
   if(inlineEd)finishInlineEdit(true);
   const it=type==='block'?parsed.blockMap[id]:type==='group'?parsed.groupMap[id]:parsed.noteMap[id];if(!it)return;
   sel=[{type,id}];renderProps();renderSVG();
+  if(window.StableBlockCheck.includeOrigin(expanded,it.line))return;   // include 先の要素は打てない(プロパティ欄の「{ファイル} を開く」で直す)
   const g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);if(!g)return;
   const r=g.querySelector('rect').getBoundingClientRect(),isNote=type==='note',isGroup=type==='group';
   const el=document.createElement(isNote?'textarea':'input');
@@ -779,6 +783,14 @@ function renderPropsPanel(){
   const colorDots=colors.map(c=>`<div class="color-dot ${item.color===c?'active':''}" style="background:${c}" onclick="setProp('color','${c}')"></div>`).join('');
   const typeLabel=window.StableBlockTerms.typeName(item.type);
   const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
+  // include 先の要素(core/check includedItemRows): 本文に行が無く打っても変わらないので、値を見せるだけ。直す入口は「{ファイル} を開く」の 1 つ
+  const roRows=window.StableBlockCheck.includedItemRows(expanded,item);
+  if(roRows){const o=window.StableBlockCheck.includeOrigin(expanded,item.line);
+    el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
+    <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
+    <div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}${loadedKey(o.file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(o.file))} を開く</button>`:''}</div>
+    ${roRows.map(r=>`<div class="prop-section"><div class="prop-label">${esc(r.label)}</div><div class="prop-ro" id="prop-ro-${r.key}" title="include 先の値(この図からは変えられない)">${r.key==='color'||r.key==='text'||r.key==='border'?`<span class="prop-ro-dot" style="background:${esc(r.value)}"></span>`:''}${esc(r.value)}</div></div>`).join('')}`;
+    return;}
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span id="dup-hint" style="font-size:12px;font-weight:700;color:${typeColor}" title="複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄">${typeLabel}</span>

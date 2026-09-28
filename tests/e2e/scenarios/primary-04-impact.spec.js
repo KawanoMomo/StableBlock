@@ -19,6 +19,20 @@ test('primary-04: 共通部の RTE を動かすと、取り込んでいる 12 �
 
   // 共通部を開く: 図の RTE(include 先の要素)を押し、プロパティ欄の「common.sb を開く」
   await page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]').click();
+  // 共有部の block のプロパティ欄は値を見せるだけで、ラベル欄・ID 欄・位置・色・削除は打てる形で出ない。直す入口は「common.sb を開く」の 1 つ
+  // (打っても本文が変わらず何も知らせない欄を出さない。BLK-owner-20260927-0728-5)
+  const props = page.locator('#prop-content');
+  await expect(props.locator('#prop-included')).toContainText('この図からは動かせない・変えられないので common.sb で直す');
+  await expect(props.locator('#prop-ro-label')).toHaveText('RTE');
+  await expect(props.locator('#prop-ro-id')).toHaveText('rte');
+  await expect(props.locator('input, textarea, .color-dot, .step-btn, .style-btn')).toHaveCount(0);
+  await expect(props.locator('#prop-label-elsewhere')).toHaveCount(0);        // 「Enter でほかの図の同じ表示名も揃う」も出ない
+  await expect(props.getByRole('button', { name: '削除' })).toHaveCount(0);
+  const before = await page.locator('#editor').inputValue();
+  await page.keyboard.type('RTE2');                                            // 選んだまま打っても、その場編集は開かず本文も変わらない
+  await expect(page.locator('#inline-label')).toHaveCount(0);
+  await expect(page.locator('#editor')).toHaveValue(before);
+  await expect(page).toHaveTitle(/spi_swc\.sb/);
   await page.getByRole('button', { name: 'common.sb を開く' }).click();
   await expect(page).toHaveTitle(/common\.sb/);
   const head = page.locator('#impact-head');

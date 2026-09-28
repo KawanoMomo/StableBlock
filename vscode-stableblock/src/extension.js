@@ -405,7 +405,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const checkCoreAsGlobals = checkCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote };';
+    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote, includedItemRows };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -680,6 +680,7 @@ function relFocus(){if(inl)finInl(true);var a=document.activeElement;if(a&&a!==d
 // Enter or a press elsewhere commits, Esc restores the text as it was. Notes are multi-line (Shift+Enter).
 function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap[id]:tp==='group'?parsed.groupMap[id]:parsed.nm[id];if(!it)return;
   sel=[{type:tp,id:id}];render();props();
+  if(window.StableBlockCheck.includeOrigin(EXP,it.line))return;
   var gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}if(!g)return;
   var r=g.querySelector('rect').getBoundingClientRect(),isN=tp==='note',isG=tp==='group';
   var el=document.createElement(isN?'textarea':'input');el.className='inline-label';el.id='inline-label';el.spellcheck=false;
@@ -759,6 +760,9 @@ function propsPanel(){
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
   var incN=window.StableBlockCheck.includedItemNote(EXP,it.line,function(f){return f.split('/').pop();},'en');
   if(incN)h+='<div class="pl" id="prop-included" style="margin-top:4px;font-size:9px;text-transform:none;color:#FCD34D">'+esc(incN)+'</div>';
+  // include 先の要素(core/check includedItemRows): 打っても本文は変わらないので値を見せるだけ(直すのは include 先のファイル)
+  var roR=window.StableBlockCheck.includedItemRows(EXP,it,'en');
+  if(roR){h+=roR.map(function(r){return '<div class="pl">'+esc(r.label)+'</div><div class="pi prop-ro" id="prop-ro-'+r.key+'" style="border-style:dashed;color:#999;user-select:text">'+esc(String(r.value))+'</div>';}).join('');el.innerHTML=h;return;}
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)" onkeydown="if(event.key===\\'Enter\\'){this.blur();askId();}">');
   h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="idKey(event,this)" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div id="prop-id-help" style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
