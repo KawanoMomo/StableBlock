@@ -4,7 +4,7 @@
   "private": true,
   "description": "StableBlock — text-based block diagram editor",
   "scripts": {
-    "test": "node --test \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\" \"core/layout/__tests__/*.test.mjs\" \"core/dsl/__tests__/*.test.mjs\" \"core/select/__tests__/*.test.mjs\" \"core/mermaid/__tests__/*.test.mjs\" \"core/check/__tests__/*.test.mjs\" \"core/terms/__tests__/*.test.mjs\" \"core/render/__tests__/*.test.mjs\" \"core/diff/__tests__/*.test.mjs\" \"tests/corpus-roundtrip.test.js\" \"tests/bump-version.test.mjs\" \"tests/single-html.test.mjs\"",
+    "test": "node --test \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\" \"core/layout/__tests__/*.test.mjs\" \"core/dsl/__tests__/*.test.mjs\" \"core/select/__tests__/*.test.mjs\" \"core/mermaid/__tests__/*.test.mjs\" \"core/check/__tests__/*.test.mjs\" \"core/terms/__tests__/*.test.mjs\" \"core/render/__tests__/*.test.mjs\" \"core/diff/__tests__/*.test.mjs\" \"tests/corpus-roundtrip.test.js\" \"tests/bump-version.test.mjs\" \"tests/version-match.test.mjs\" \"tests/single-html.test.mjs\"",
     "test:watch": "node --test --watch \"core/excel/__tests__/*.test.mjs\" \"core/label/__tests__/*.test.mjs\" \"core/layout/__tests__/*.test.mjs\" \"core/dsl/__tests__/*.test.mjs\" \"core/select/__tests__/*.test.mjs\" \"core/mermaid/__tests__/*.test.mjs\" \"core/check/__tests__/*.test.mjs\" \"core/terms/__tests__/*.test.mjs\" \"core/render/__tests__/*.test.mjs\"",
     "test:e2e": "playwright test --project=scenarios",
     "check": "node core/check/check-cli.mjs",
