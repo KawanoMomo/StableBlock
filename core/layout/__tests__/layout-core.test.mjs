@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths,
-  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit,
+  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -550,4 +550,50 @@ test('fitParents(drop): 落とした先の左上が group の外なら取り込�
   ];
   assert.deepEqual(fitParents(items, {}, [{ id: 'B', sides: ['r'], drop: true }]), []);
   assert.deepEqual(fitParents(items, {}, [{ id: 'Big', sides: ['r'], drop: true }]), []);
+});
+
+// 選んでいない要素を囲まない「選択をグループ化」(BLK-owner-20260929-0405-2)。動かしてよいのは選んだ要素だけ
+const hitsR = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+test('groupPlanFor: 2 列の読み順で選んだ 4 個の間に選んでいない block があれば、選んだ block を空きへ寄せて、それを囲まない', () => {
+  const swc = G('Spi_Swc', 1, 1, 20, 18);
+  const [api, cfg, diag, hl, ll, irq, dma] = [[2, 3], [11, 3], [2, 7], [11, 7], [2, 11], [11, 11], [2, 15]]
+    .map(([x, y], i) => B(['Spi_Api', 'Spi_Cfg', 'Spi_Diag', 'Spi_Hl', 'Spi_Ll', 'Spi_Irq', 'Spi_Dma'][i], x, y, 8));
+  const members = [hl, ll, irq, dma], others = [swc, api, cfg, diag];
+  const plan = groupPlanFor(members, others, swc);
+  assert.ok(plan.rect, plan.reason);
+  const moved = Object.fromEntries(plan.moves.map(m => [m.id, m]));
+  assert.deepEqual(Object.keys(moved), ['Spi_Hl']);                 // 動くのは 1 個だけ
+  const placed = members.map(m => ({ ...m, ...(moved[m.id] || {}) }));
+  for (const o of others.slice(1)) assert.ok(!hitsR(plan.rect, o), `${o.id} に掛かる ${JSON.stringify(plan.rect)}`);
+  for (const m of placed) assert.ok(m.x >= plan.rect.x && m.y >= plan.rect.y && m.x + m.w <= plan.rect.x + plan.rect.w && m.y + m.h <= plan.rect.y + plan.rect.h, m.id);
+  // 親の内側 1 に収まる(親の行を書き換えない)
+  assert.ok(plan.rect.x >= 2 && plan.rect.y >= 2 && plan.rect.x + plan.rect.w <= 20 && plan.rect.y + plan.rect.h <= 18, JSON.stringify(plan.rect));
+  // 選んだ block 同士は重ならない
+  for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) assert.ok(!hitsR(placed[i], placed[j]));
+  // 結果の所属: 新しい group の子は選んだ 4 個だけ、Spi_Diag は Spi_Swc の直下のまま
+  const pm = parentMap([swc, api, cfg, diag, ...placed, { type: 'group', id: 'N', ...plan.rect }]);
+  assert.equal(pm.Spi_Diag, 'Spi_Swc');
+  for (const m of placed) assert.equal(pm[m.id], 'N');
+});
+
+test('groupPlanFor: 囲んでも選んでいない要素が入らなければ、今までどおり何も動かさない(groupRectFor と同じ矩形)', () => {
+  const ecu = G('ECU', 1, 1, 20, 14);
+  const bs = [[2, 3], [11, 3], [2, 7], [11, 7], [2, 11], [11, 11]].map(([x, y], i) => B(`b${i}`, x, y, 8));
+  const plan = groupPlanFor(bs.slice(0, 4), [ecu, ...bs.slice(4)], ecu);
+  assert.deepEqual(plan.moves, []);
+  assert.deepEqual(plan.rect, groupRectFor(bs.slice(0, 4), [ecu, ...bs.slice(4)], ecu));
+});
+
+test('groupPlanFor: 親の無い図で間に挟まった block も囲まない。空きが無ければ囲まずに理由を返す', () => {
+  const a = B('a', 1, 1, 8), u = B('u', 10, 1, 8), b = B('b', 19, 1, 8);
+  const plan = groupPlanFor([a, b], [u]);
+  assert.ok(plan.rect, plan.reason);
+  assert.equal(plan.moves.length, 1);
+  assert.ok(!hitsR(plan.rect, u));
+  // 親の中で空きが無い: 親 P(1,1 28x5)に a u b が 1 列に詰まっている → 囲めない
+  const p = G('P', 0, 0, 28, 5);
+  const a2 = B('a', 1, 2, 8), u2 = B('u', 10, 2, 8), b2 = B('b', 19, 2, 8);
+  const none = groupPlanFor([a2, b2], [p, u2], p);
+  assert.equal(none.rect, null);
+  assert.match(none.reason, /u/);
 });

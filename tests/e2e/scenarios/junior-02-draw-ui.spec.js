@@ -1311,3 +1311,64 @@ test('junior-02: group を別の group の中へドラッグで入れると外�
     prevH = all.Ecu_Sw.h;
   }
 });
+
+// 「選択をグループ化」は選んだ要素だけを子にする。間に選んでいない block があれば選んだ block を空きへ寄せ、寄せられなければ囲まずに理由を出す
+// (BLK-owner-20260929-0405-2)。親と選んでいない要素の行は変わらない
+test('junior-02: 2 列に並んだ block を飛び飛びに選んで「選択をグループ化」しても、選んでいない block は新しい group に入らない', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const block = id => svg.locator(`g[data-type="block"][data-id="${id}"]`);
+  const lineOf = (text, id) => text.split('\n').find(l => new RegExp(`^(block|group) ${id} `).test(l));
+  const src = [
+    '@canvas width=960 height=520 grid=20',
+    'group Spi_Swc "Spi_Swc" at 1,1 size 20x18 color=#F1F5F9 border=#94A3B8',
+    ...[['Spi_Api', 2, 3], ['Spi_Cfg', 11, 3], ['Spi_Diag', 2, 7], ['Spi_Hl', 11, 7], ['Spi_Ll', 2, 11], ['Spi_Irq', 11, 11], ['Spi_Dma', 2, 15]]
+      .map(([id, x, y]) => `block ${id} "${id}" at ${x},${y} size 8x3 color=#3B82F6 text=#FFFFFF round=4`),
+    '',
+  ].join('\n');
+  await page.locator('#editor').fill(src);
+  await expect(block('Spi_Dma')).toHaveCount(1);
+  const picked = ['Spi_Hl', 'Spi_Ll', 'Spi_Irq', 'Spi_Dma'];
+  await block(picked[0]).click();
+  for (const id of picked.slice(1)) await block(id).click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: '選択をグループ化' }).click();
+  await expect(svg.locator('g[data-type="group"]')).toHaveCount(2);
+  const after = await getEditorText(page);
+  const all = boxes(after);
+  const gid = Object.keys(all).find(id => all[id].type === 'group' && id !== 'Spi_Swc');
+  for (const id of picked) expect(parentOf(all, id), `${id} の親 ${JSON.stringify(all)}`).toBe(gid);
+  for (const id of ['Spi_Api', 'Spi_Cfg', 'Spi_Diag']) {
+    expect(parentOf(all, id), `${id} の親`).toBe('Spi_Swc');
+    expect(hits(all[id], all[gid]), `${id} が新しい group に掛かる`).toBe(false);
+    expect(lineOf(after, id), `${id} の行`).toBe(lineOf(src, id));
+  }
+  expect(lineOf(after, 'Spi_Swc')).toBe(lineOf(src, 'Spi_Swc'));
+  expect(within(all[gid], all.Spi_Swc, 1)).toBe(true);
+  expect(picked.filter(id => lineOf(after, id) !== lineOf(src, id)), '動いた選んだ block').toHaveLength(1);
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+  // Ctrl+Z 1 回で、寄せた block ごとグループ化の前に戻る
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => getEditorText(page)).toBe(src);
+
+  // 寄せる空きが無い(親の中に 1 列に詰まっている): 囲まずに理由を出し、本文は変わらない
+  const tight = [
+    '@canvas width=960 height=520 grid=20',
+    'group P "P" at 0,0 size 28x5 color=#F1F5F9 border=#94A3B8',
+    'block a "a" at 1,2 size 8x3',
+    'block u "u" at 10,2 size 8x3',
+    'block b "b" at 19,2 size 8x3',
+    '',
+  ].join('\n');
+  await page.locator('#editor').fill(tight);
+  await expect(block('b')).toHaveCount(1);
+  await block('a').click();
+  await block('b').click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: '選択をグループ化' }).click();
+  await expect(page.locator('#group-sel-msg')).toBeVisible();
+  await expect(page.locator('#group-sel-msg')).toContainText('u');
+  await expect(page.locator('#group-sel-msg')).toContainText('グループ化しませんでした');
+  expect(await getEditorText(page)).toBe(tight);
+});

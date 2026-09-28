@@ -395,6 +395,55 @@ export function groupRectFor(members, others, parent) {
   return rectOf(m);
 }
 
+// 「選択をグループ化」の置き方。groupRectFor の矩形が選んでいない要素に掛かる(選んだ要素の間に挟まっている)ときは、
+// 選んだ block を動かして、選んでいない要素に掛からない矩形に寄せる(選んでいない要素・親は動かさない。所属も変えない)。
+// 寄せ方: 選んだ要素の辺で決まる矩形のうち選んでいない要素に掛からないものを取り、その外の選んだ block を読み順で矩形の空きへ
+// placeNext で置く(足りなければ矩形を下へ伸ばす。親があれば親の内側 1 まで)。動かす数が少なく、動く距離が短いものを選ぶ。
+// 選んだ group は動かさない(中身ごと動かすと別の行が変わる)。どう寄せても掛かるなら囲まない。
+// 返り値 { rect, moves: [{ id, x, y }] }。囲めなければ { rect: null, moves: [], reason }(reason は画面に出す文)。
+export function groupPlanFor(members, others, parent) {
+  const ms = (members || []).filter(Boolean);
+  if (!ms.length) return { rect: null, moves: [], reason: '' };
+  const bx = Math.min(...ms.map(m => m.x)), by = Math.min(...ms.map(m => m.y));
+  const bbox = { x: bx, y: by, w: Math.max(...ms.map(m => m.x + m.w)) - bx, h: Math.max(...ms.map(m => m.y + m.h)) - by };
+  const ids = new Set(ms.map(m => m.id));
+  const mgroups = ms.filter(m => m.type === 'group');
+  // 選んでいない要素のうち、新しい group に入ってはいけないもの(親・祖先と、選んだ group の中身は除く)
+  const outsiders = (others || []).filter(o => o && !ids.has(o.id) && o.type !== 'note' && !inside(bbox, o) && !mgroups.some(g => inside(o, g)));
+  const caught = r => outsiders.filter(o => overlapArea(r, o) > 0);
+  const r0 = groupRectFor(ms, others, parent);
+  if (!caught(r0).length) return { rect: r0, moves: [] };
+  const bottomMax = parent ? parent.y + parent.h - 1 : Infinity;
+  const xs1 = [...new Set(ms.map(m => m.x))], xs2 = [...new Set(ms.map(m => m.x + m.w))];
+  const ys1 = [...new Set(ms.map(m => m.y))], ys2 = [...new Set(ms.map(m => m.y + m.h))];
+  const order = (a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y);
+  let best = null;
+  for (const x1 of xs1) for (const x2 of xs2) for (const y1 of ys1) for (const y2 of ys2) {
+    if (x2 <= x1 || y2 <= y1) continue;
+    let R = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    if (caught(R).length || mgroups.some(g => !inside(g, R))) continue;
+    const stay = ms.filter(m => inside(m, R)), go = ms.filter(m => !inside(m, R)).sort(order);
+    const placed = [...stay], moves = [];
+    let ok = true;
+    for (const m of go) {
+      const p = placeNext(placed, m.w, m.h, { x0: R.x, y0: R.y, cols: R.x + R.w, gap: 1 });
+      if (p.x + m.w > R.x + R.w || p.y + m.h > bottomMax) { ok = false; break; }
+      if (p.y + m.h > R.y + R.h) R = { ...R, h: p.y + m.h - R.y };
+      if (caught(R).length) { ok = false; break; }
+      placed.push({ ...m, x: p.x, y: p.y });
+      moves.push({ id: m.id, x: p.x, y: p.y });
+    }
+    if (!ok) continue;
+    const rect = groupRectFor(placed, others, parent);
+    if (caught(rect).length) continue;
+    const dist = moves.reduce((s, mv) => { const m = ms.find(k => k.id === mv.id); return s + Math.abs(mv.x - m.x) + Math.abs(mv.y - m.y); }, 0);
+    if (!best || moves.length < best.moves.length || (moves.length === best.moves.length && dist < best.dist)) best = { rect, moves, dist };
+  }
+  if (best) return { rect: best.rect, moves: best.moves };
+  const names = caught(r0).map(o => o.id).join('・');
+  return { rect: null, moves: [], reason: `選んだ要素の間に選んでいない ${names} があり、選んだ要素だけを囲む空きが無いのでグループ化しませんでした(選んだ要素を並べ直すか、${names} も選んでください)` };
+}
+
 // group gr の直下の block(子 group の中の block は含まない)のうち、読み順で最後のもの。無ければ null
 export function lastChildBlock(items, gr) {
   const list = (items || []).filter(Boolean), parents = parentMap(list);

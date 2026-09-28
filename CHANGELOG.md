@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260929-0405-2: 「選択をグループ化」で選んだ block の間に選んでいない block があっても、選んだ block だけを空きへ寄せて囲み、選んでいない block は元の group の直下に残る(寄せる空きが無ければ囲まずに理由を出す)
 - BLK-owner-20260929-0405-1: group を別の group の中へドラッグで落とすと外側の group が(祖先まで)広がって中に収め、枠をまたいだ group がある図で外側に「+ 中にブロック」を押しても、またいだ group の中の block が飛ばない
 - BLK-porter-20260929-0530: 取れない属性値(`style=dotted` など、style / route / grow / lpos)を書いた行に「style=dotted は使えない。実線で描く(使える値: …)」の警告がエラー欄・ステータスバー・`npm run check`・VSCode 拡張に出る(本文は書き換えない)
 - BLK-owner-20260928-2255-2: 同じ 2 つの block の間に向きの違う接続(行き A → B「req」と戻り B → A「notify」)を作図 UI だけで結べる。B → A の順に選ぶと既存の接続の上に「B → A」ボタンが出る(Enter・右ボタンのドラッグでも。同じ向きは今どおり足さない)。2 つを選んだ接続パネルは向きごとに行を並べ、ラベル・色・太さ・形・削除をその向きの線だけに効かせる。逆向きが別にあるときの「⇄ 反転」「↔ 双方向」は押せない。行きと戻りは「同じ組の 2 本目」の警告を出さず、同じ向きの 2 本目だけを警告する(HTML 版・VSCode 拡張、core/label の hasConnDir・connsBetween ほか、core/check)

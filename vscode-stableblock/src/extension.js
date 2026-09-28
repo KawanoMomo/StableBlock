@@ -427,7 +427,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -750,7 +750,7 @@ function propsPanel(){
         mh+='</div>';
       });
     }
-    mh+='<button class="pbtn" style="border-color:#8B5CF6;color:#C4B5FD;margin-top:8px" onclick="grpSel()">Group Selected</button>';
+    mh+='<button class="pbtn" style="border-color:#8B5CF6;color:#C4B5FD;margin-top:8px" onclick="grpSel()">Group Selected</button><div id="grp-msg" hidden style="margin-top:4px;color:#F59E0B;font-size:11px"></div>';
     mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:12px" onclick="bDel()">Delete All</button>';
     el.innerHTML=mh;
     return;
@@ -895,7 +895,7 @@ function idKey(e,inp){if(e.key==='Enter'){e.preventDefault();sId(inp.value);var 
 function fLbId(label){var s=sel[0];if(!s||!(s.id.indexOf('__new_')===0||autoIds.has(s.id)))return;var SL=window.StableBlockLabel;var base=SL.labelToId(label);if(!base)return;var nid=SL.uniqueId(base,usedEx(s.id));if(nid===s.id)return;if(!applyRn(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);var inp=document.getElementById('prop-id');if(inp)inp.value=nid;var now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
 
 // Group selected blocks
-function grpSel(){var its=sel.map(function(si){return getIt(si)}).filter(function(x){return x&&x.type!=='note'});if(its.length<2)return;pushH();var L=window.StableBlockLayout;var bx=Math.min.apply(null,its.map(function(b){return b.x})),by=Math.min.apply(null,its.map(function(b){return b.y}));var box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};var pid=L.parentMap(parsed.groups.concat([box]))[box.id],parent=pid?parsed.groupMap[pid]:null;var r=L.groupRectFor(its,boxIt().filter(function(x){return its.indexOf(x)<0}),parent);var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "Group" at '+r.x+','+r.y+' size '+r.w+'x'+r.h+' color=#F1F5F9 border=#94A3B8\\n';parsed=parseDoc();var after=parNow();if(pid)after[id]=pid;its.forEach(function(b){after[b.id]=id;});growPar(after,[{id:id,sides:['l','t','r','b']}],[{id:id,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);go();notify();}
+function grpSel(){var its=sel.map(function(si){return getIt(si)}).filter(function(x){return x&&x.type!=='note'});if(its.length<2)return;var L=window.StableBlockLayout;var bx=Math.min.apply(null,its.map(function(b){return b.x})),by=Math.min.apply(null,its.map(function(b){return b.y}));var box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};var pid=L.parentMap(parsed.groups.concat([box]))[box.id],parent=pid?parsed.groupMap[pid]:null;var plan=L.groupPlanFor(its,boxIt().filter(function(x){return its.indexOf(x)<0}),parent);if(!plan.rect){var gm=document.getElementById('grp-msg');if(gm){gm.textContent=plan.reason;gm.hidden=false;}return;}pushH();var r=plan.rect;if(plan.moves.length){plan.moves.forEach(function(mv){upP('block',mv.id,mv.x,mv.y);});parsed=parseDoc();its=its.map(function(b){return parsed.blockMap[b.id]||parsed.groupMap[b.id]||b;});bx=Math.min.apply(null,its.map(function(b){return b.x}));by=Math.min.apply(null,its.map(function(b){return b.y}));box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};}var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "Group" at '+r.x+','+r.y+' size '+r.w+'x'+r.h+' color=#F1F5F9 border=#94A3B8\\n';parsed=parseDoc();var after=parNow();if(pid)after[id]=pid;its.forEach(function(b){after[b.id]=id;});growPar(after,[{id:id,sides:['l','t','r','b']}],[{id:id,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);go();notify();}
 
 // Search / Filter
 function matchSearch(item){if(!searchQ)return true;var q=searchQ.toLowerCase();if(item.id&&item.id.toLowerCase().indexOf(q)>=0)return true;if(item.label&&item.label.toLowerCase().indexOf(q)>=0)return true;if(item.from&&item.from.toLowerCase().indexOf(q)>=0)return true;if(item.to&&item.to.toLowerCase().indexOf(q)>=0)return true;return false;}
