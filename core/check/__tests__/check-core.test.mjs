@@ -537,3 +537,34 @@ test('trimCommonDir: 選んだフォルダの名前を外し、フォルダの�
   assert.deepEqual(t([]), []);
   assert.equal(trimCommonDir([{ path: 'j/x.sb', x: 1 }])[0].x, 1);
 });
+
+// @include が本文の後ろにある図(primary の 12 枚の形)では、共通部の block を取り込み側の block に重ねた診断が共通部の行に付く。
+// 相手が取り込み側の行なら取り込み側の図の診断として数え、その行で出す(BLK-owner-20260926-2005-1)
+test('includeImpact: @include が本文の後ろの図で、共通部の block を取り込み側の block に重ねると取り込み側の行で出る', () => {
+  const tail = p => `@canvas width=960 height=520 grid=20\nblock ${p}drv "${p}Drv" at 4,4 size 8x3\n${p}drv -> rte\n@include "shared/common.sb"`;
+  const files = { 'adc_swc.sb': tail('adc'), 'can_swc.sb': tail('can'), 'common.sb': IMP_COMMON };
+  const base = IMP_COMMON;
+  const r = includeImpact({ ...files, 'common.sb': base.replace('block os "OS" at 20,8', 'block os "OS" at 4,4') }, 'common.sb', base, checkLoaded);
+  const overlaps = r.added.filter(d => /重なっている/.test(d.msg));
+  assert.deepEqual(overlaps.map(d => `${d.path}:${d.line}`), ['adc_swc.sb:2', 'can_swc.sb:2']);
+  assert.match(overlaps[0].msg, /block「os」が block「adcdrv」\(L2\)に重なっている\(shared\/common\.sb L3\)/);
+  // 共通部の中だけの重なり(os を rte に重ねる)は、@include が後ろでも数えない
+  const inner = includeImpact({ ...files, 'common.sb': base.replace('block os "OS" at 20,8', 'block os "OS" at 21,3') }, 'common.sb', base, checkLoaded);
+  assert.deepEqual(inner.added.filter(d => /重なっている/.test(d.msg)), []);
+});
+
+test('includeImpact: 取り込み側のキャンバスの外に出た共通部の block は、取り込み側の @canvas 行で出る', () => {
+  const small = '@canvas width=600 height=400 grid=20\n@include "shared/common.sb"\nblock x "X" at 1,1 size 4x2';
+  const files = { 'small.sb': small, 'common.sb': IMP_COMMON };
+  const r = includeImpact({ ...files, 'common.sb': IMP_COMMON.replace('block hal "HAL" at 20,14', 'block hal "HAL" at 26,14') }, 'common.sb', IMP_COMMON, checkLoaded);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}`), ['small.sb:1']);
+  assert.match(r.added[0].msg, /block「hal」がキャンバス\(600×400\)の外に右へ 4 グリッドはみ出している/);
+});
+
+test('includeImpact: 共通部の ID を取り込み側の ID と同じにすると、@include が後ろの図でも取り込み側の定義の行で出る', () => {
+  const tail = '@canvas width=960 height=520 grid=20\nblock adcdrv "AdcDrv" at 4,4 size 8x3\n@include "shared/common.sb"';
+  const files = { 'adc_swc.sb': tail, 'common.sb': IMP_COMMON };
+  const r = includeImpact({ ...files, 'common.sb': IMP_COMMON.replace('block hal "HAL"', 'block adcdrv "HAL"') }, 'common.sb', IMP_COMMON, checkLoaded);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}:${d.level}`), ['adc_swc.sb:2:error']);
+  assert.equal(r.added[0].msg, 'ID "adcdrv" が重複 (L2)(shared/common.sb L4)');
+});

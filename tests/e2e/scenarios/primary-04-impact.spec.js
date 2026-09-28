@@ -4,7 +4,7 @@
 // 共通部を動かすと、その編集で増えたほかの図のエラー・警告が「ほかの図: {図名} L{n}: ...」で並び(core/check の includeImpact。CLI と同じ診断)、
 // 押すとその図のその行へ。ステータスバーの Warn は表示中の図の数のまま、ほかの図の分は「ほかの図 Warn」(BLK-primary-20260926-1205-wish)
 const path = require('node:path');
-const { test, expect, bootPlain, importSb, FIXTURES } = require('./_scenario');
+const { test, expect, bootPlain, importSb, importFolder, FIXTURES } = require('./_scenario');
 
 const SET = path.join(FIXTURES, 'primary-set');
 const PERIPH = ['spi', 'can', 'uart', 'adc', 'timer', 'gpio'];
@@ -83,4 +83,42 @@ test('primary-04: エラー欄の図名(@include している図・include 先�
   await head.getByRole('button', { name: 'adc_swc.sb', exact: true }).click();
   await expect(page).toHaveTitle(/adc_swc\.sb/);
   await expect(page.locator('#status-file')).toContainText('adc_swc.sb');
+});
+
+// primary の図は @include が本文の後ろ(L16)にある。共通部の block を取り込み側の block に重ねた診断は共通部の行に付くが、相手が取り込み側の
+// 行なので取り込み側の図の診断として数える。「増えたものは無い」と言い切らない(BLK-owner-20260926-2005-1)
+test('primary-04: @include が本文の後ろの図で、共通部の OS を取り込み側の Drv にドラッグで重ねると、取り込み側の行で並ぶ', async ({ page }) => {
+  const TAIL = path.join(FIXTURES, 'primary-tail');
+  await bootPlain(page);
+  await importFolder(page, TAIL, path.join(TAIL, 'adc_swc.sb'));
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]').click();
+  await page.getByRole('button', { name: 'common.sb を開く' }).click();
+  await expect(page).toHaveTitle(/common\.sb/);
+  const head = page.locator('#impact-head');
+  await expect(head).toContainText('この図を @include している図: adc_swc.sb、can_swc.sb');
+
+  // OS を実マウスでドラッグし、取り込み側の Drv と同じ 4,4 に置く(Drv は共通部の図には無いので、グリッドの大きさで動かす)
+  const os = page.locator('#svg-wrap svg g[data-type="block"][data-id="os"] rect').first();
+  const rte = page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"] rect').first();
+  const bo = await os.boundingBox(), br = await rte.boundingBox();
+  const cell = br.width / 8;                                                   // RTE は幅 8 グリッド
+  const sx = bo.x + bo.width / 2, sy = bo.y + bo.height / 2;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx - 16 * cell, sy - 2 * cell, { steps: 5 });
+  await page.mouse.move(sx - 32 * cell, sy - 4 * cell, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator('#editor')).toHaveValue(/block os "OS" at 4,4 /);
+
+  const overlap = page.locator('#error-bar .diag-other', { hasText: '重なっている' });
+  await expect(overlap).toHaveCount(2);
+  expect(await overlap.evaluateAll(els => els.map(e => `${e.dataset.path}:${e.dataset.line}`))).toEqual(['adc_swc.sb:14', 'can_swc.sb:14']);
+  await expect(overlap.first()).toHaveText('ほかの図: adc_swc.sb L14: block「os」が block「adcdrv」(L14)に重なっている(shared/common.sb L15)');
+  await expect(head).not.toContainText('増えたエラー・警告は無い');
+  await expect(page.locator('#status-impact-warn')).toContainText('ほかの図 Warn:');
+
+  // 押すと取り込み側の図の Drv の行(L14)へ
+  await overlap.first().click();
+  await expect(page).toHaveTitle(/adc_swc\.sb/);
+  await expect(page.locator('#line-nums .ln-hit')).toHaveText('14');
 });
