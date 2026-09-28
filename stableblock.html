@@ -787,24 +787,24 @@ function renderPropsPanel(){
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
     <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" ${fieldAttrs('x',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" ${fieldAttrs('y',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
     </div></div>
     <div class="prop-section"><div class="prop-label">サイズ (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" oninput="setSz('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" oninput="setSz('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" ${fieldAttrs('w',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" ${fieldAttrs('h',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
     </div></div>
-    <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" oninput="setProp('color',this.value)" placeholder="#RRGGBB"></div>`;
+    <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" ${fieldAttrs('color',item)} placeholder="#RRGGBB"></div>`;
 
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
   }
   if(!isBlock&&!isNote){
-    html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" ${fieldAttrs('border',item)} placeholder="#RRGGBB"></div>`;
     html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button></div>`;
   }
   if(isBlock||isNote){
-    html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" ${fieldAttrs('round',item)}><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn ${item.style===st?'active':''}" onclick="setProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
@@ -816,13 +816,33 @@ function renderPropsPanel(){
 // ═══════════════════════════════════════════════
 // Actions: single
 // ═══════════════════════════════════════════════
-function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
+function setProp(p,v,t){if(!t&&!sel.length)return;pushHistory();const s=t||sel[0];updateProp(s.type,s.id,p,v);refresh();}
 function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+// プロパティ欄の数値・色の欄(core/select fieldCommit): 打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く
+// (色は # と 6 桁が揃えば打っている間にも)。▲▼ と欄の中の ↑↓ は 1 押しで書く。Esc は打った値を捨てる。
+// 欄は入ったときの要素(data-ftype / data-fid)に書く: 欄から出るのがキャンバスを押して選択が変わる途中でも、打った要素に入る
+function fieldAttrs(f,item){return `data-field="${f}" data-ftype="${item.type}" data-fid="${esc(item.id)}" onfocus="fieldFocus(this)" oninput="fieldInput(this)" onchange="fieldCommitEl(this)" onkeydown="fieldKey(event,this)"`;}
+// 欄に入ったときの選択を書き先に控える(ラベルに追従して ID が変わっても、欄は描き直されないので描いたときの ID は古いことがある)
+function fieldFocus(el){if(sel.length===1){el.dataset.ftype=sel[0].type;el.dataset.fid=sel[0].id;}}
+function fieldCur(it,f){return f==='color'?it.color:f==='border'?(it.borderColor||''):f==='round'?it.round:it[f];}
+function fieldCommitEl(el,trigger='commit'){const S=window.StableBlockSelect,f=el.dataset.field,t={type:el.dataset.ftype,id:el.dataset.fid},it=getItem(t);if(!it)return false;
+  const v=S.fieldCommit(S.fieldKind(f),el.value,trigger,fieldCur(it,f));
+  if(v===null){if(trigger==='commit')el.value=fieldCur(it,f);return false;}
+  if(f==='x'||f==='y')setPos(f,v,t);else if(f==='w'||f==='h')setSz(f,v,t);else setProp(f,v,t);
+  return true;}
+function refocusField(f,end){const n=document.querySelector(`#prop-content [data-field="${f}"]`);if(!n)return;n.focus();if(end&&n.type!=='number')n.setSelectionRange(n.value.length,n.value.length);else n.select();}
+function fieldInput(el){if(window.StableBlockSelect.fieldKind(el.dataset.field)!=='color')return;const f=el.dataset.field;if(fieldCommitEl(el,'input'))refocusField(f,true);}
+function fieldKey(e,el){const S=window.StableBlockSelect,a=S.fieldKeyAction(e.key,e.shiftKey),f=el.dataset.field;if(!a)return;
+  if(a==='cancel'){const it=getItem({type:el.dataset.ftype,id:el.dataset.fid});if(it)el.value=fieldCur(it,f);return;}
+  if(a==='commit'){e.preventDefault();fieldCommitEl(el);refocusField(f);return;}
+  if(a==='up'||a==='dn'){if(S.fieldKind(f)==='color')return;e.preventDefault();fieldCommitEl(el);if(f==='round')nudgeRound(S.stepDelta(a));else stepField(f,a);refocusField(f);return;}
+  const fs=[...document.querySelectorAll('#prop-content [data-field]')],next=fs[fs.indexOf(el)+(a==='next'?1:-1)];
+  if(!next)return;e.preventDefault();const nf=next.dataset.field;fieldCommitEl(el);refocusField(nf);}
 const axisSides=(axis,d)=>window.StableBlockLayout.moveSides(axis==='x'?d:0,axis==='y'?d:0);
-function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
-function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
+function setPos(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
+function setSz(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();
   if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
   updatePos(s.type,s.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
@@ -831,7 +851,7 @@ function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],
 function stepField(field,button){const d=window.StableBlockSelect.stepDelta(button);if(!sel.length||!d)return;
   if(field==='x'||field==='y'){if(sel.length>1)batchNudge(field,d);else nudge(field,d);}
   else if(sel.length>1)batchNudgeSz(field,d);else nudgeSz(field,d);}
-function nudgeRound(delta){if(!sel.length)return;pushHistory();const it=parsed.blockMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}
+function nudgeRound(delta){if(!sel.length)return;const it=parsed.blockMap[sel[0].id]||parsed.noteMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}   // setProp が履歴を 1 つ積む(Ctrl+Z 1 回で戻る)
 function deleteItem(){if(!sel.length)return;pushHistory();const{type,id}=sel[0];const lines=dsl.split("\n"),re=new RegExp(`^\\s*${type}\\s+${id}\\s+`),c1=new RegExp(`(^|\\s)${id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${id}(\\s|$)`);dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");sel=[];refresh();}
 
 // ═══════════════════════════════════════════════

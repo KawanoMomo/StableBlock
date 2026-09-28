@@ -554,6 +554,7 @@ test('junior-02: ツール欄の「+ ブロック追加」は直前の block の
   await props.locator('.color-dot').nth(3).click();
   const w = props.locator('.prop-label', { hasText: 'サイズ' }).locator('xpath=..').locator('input').first();
   await w.fill('6');
+  await w.press('Enter');                                                         // 数値の欄は Enter・Tab・欄から出たときに確定する
   await page.keyboard.press('Escape');                                            // ツール欄に戻る
   await props.getByRole('button', { name: '+ ブロック追加' }).click();
   await page.keyboard.press('Escape');
@@ -562,6 +563,7 @@ test('junior-02: ツール欄の「+ ブロック追加」は直前の block の
   const bs = boxesOf(await page.locator('#editor').inputValue());
   expect(bs).toHaveLength(3);
   expect(new Set(bs.map(b => `${b.w}x${b.h} ${b.color}`)).size).toBe(1);
+  expect(bs[0].w).toBe(6);                                                        // W 欄に打った 6 を引き継ぐ
   expect(bs.map(b => b.y)).toEqual([bs[0].y, bs[0].y, bs[0].y]);                  // 同じ行
   expect(bs[1].x).toBe(bs[0].x + bs[0].w + 1);                                    // 右隣(1 グリッド空ける)
   expect(bs[2].x).toBe(bs[1].x + bs[1].w + 1);
@@ -910,6 +912,86 @@ test('junior-02: プロパティ欄の X / Y / W / H の ▲ は 1 つ選択で�
   await expect.poll(() => line('dma')).toContain('at 14,7 size 10x3');
 });
 
+// プロパティ欄の数値・色の欄は打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く(BLK-owner-20260927-0728-1)
+test('junior-02: プロパティ欄の W・H・色・角丸にキーボードで 2 桁以上を打て、Enter・Tab・欄から出たときに 1 回で確定し、Ctrl+Z 1 回で戻る', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const field = f => props.locator(`[data-field="${f}"]`);
+  const focused = () => page.evaluate(() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.field || null : null);
+  const line = id => getEditorText(page).then(t => t.split('\n').find(l => l.startsWith(`block ${id} `)) || '');
+
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await props.locator('#prop-label').fill('Cpu');
+  await props.locator('#prop-label').press('Enter');
+  await expect.poll(() => line('Cpu')).toContain('size 8x3');
+
+  // W にキーボードで 12: 1 文字目では書かず、Enter で 1 回。フォーカスは W に残る
+  await field('w').click({ clickCount: 3 });
+  await page.keyboard.type('1');
+  expect(await line('Cpu')).toContain('size 8x3');
+  await expect(field('w')).toBeFocused();
+  await page.keyboard.type('2');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => line('Cpu')).toContain('size 12x3');
+  expect(await focused()).toBe('w');
+
+  // Tab で H へ移り、そのまま 4 と打って Tab で確定(次の欄へ進む)
+  await page.keyboard.press('Tab');
+  expect(await focused()).toBe('h');
+  await page.keyboard.type('4');
+  await page.keyboard.press('Tab');
+  await expect.poll(() => line('Cpu')).toContain('size 12x4');
+  expect(await focused()).toBe('color');
+
+  // 色 #FF0000: # や桁の足りない途中では書かず(色が消えない)、6 桁が揃って書く
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('#FF00');
+  expect(await line('Cpu')).toMatch(/color=#3B82F6/);
+  await page.keyboard.type('00');
+  await expect.poll(() => line('Cpu')).toMatch(/color=#FF0000/);
+  await expect(field('color')).toBeFocused();
+
+  // 角丸に 12 と打ち、キャンバスの余白を押して欄から出ると確定する
+  await field('round').click({ clickCount: 3 });
+  await page.keyboard.type('12');
+  expect(await line('Cpu')).toMatch(/round=4/);
+  await svg.click({ position: { x: 600, y: 300 } });
+  await expect.poll(() => line('Cpu')).toMatch(/round=12/);
+
+  // 確定 1 回 = Ctrl+Z 1 回
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => line('Cpu')).toMatch(/round=4/);
+  expect(await line('Cpu')).toMatch(/size 12x4 color=#FF0000/);
+
+  // Esc は打った値を捨てる。欄の中の ↑ は ▲ と同じく 1 押しで確定
+  await svg.locator('g[data-type="block"][data-id="Cpu"]').click();
+  await field('x').click({ clickCount: 3 });
+  const x0 = Number(await field('x').inputValue());
+  await page.keyboard.type('9');
+  await page.keyboard.press('Escape');
+  expect(await line('Cpu')).toContain(`at ${x0},`);
+  await svg.locator('g[data-type="block"][data-id="Cpu"]').click();
+  await field('w').click();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(() => line('Cpu')).toContain('size 13x4');
+  expect(await focused()).toBe('w');
+
+  // 打ちかけの W を残したままほかの block を押しても、打った block に入る(押した block には入らない)
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await props.locator('#prop-label').fill('Ram');
+  await props.locator('#prop-label').press('Enter');
+  await expect.poll(() => line('Ram')).toMatch(/ size \d+x\d+/);
+  const ramH = (await line('Ram')).match(/ size \d+x(\d+)/)[1];
+  await field('w').click({ clickCount: 3 });
+  await page.keyboard.type('20');
+  await svg.locator('g[data-type="block"][data-id="Cpu"]').click();
+  await expect.poll(() => line('Ram')).toContain(`size 20x${ramH}`);
+  expect(await line('Cpu')).toContain('size 13x4');
+});
+
 test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動で広げる」を外して固定でき、広がった直後は「元の寸法に戻して固定」で戻せる', async ({ page }) => {
   await bootPlain(page);
   await importSb(page, SMALL);
@@ -924,6 +1006,7 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await page.getByRole('button', { name: '+ ブロック追加' }).click();
   const x = page.locator('#prop-content div:has(> .prop-sub:text-is("X")) input');
   await x.fill('30');
+  await x.press('Enter');
   await expect.poll(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');
   await expect(grew).toContainText('400×300 →');
   await expect(bar.getByText('キャンバス')).toBeHidden();
@@ -939,6 +1022,7 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
 
   // 固定中は GUI の操作でも広げない(X を 31 にしても @canvas はそのまま)。ツール欄のチェックは外れている
   await x.fill('31');
+  await x.press('Enter');
   await expect.poll(async () => (await getEditorText(page)).includes(' at 31,')).toBe(true);
   expect(await canvasLine()).toBe('@canvas width=400 height=300 grid=20 grow=off');
   // 設定の在りか(BLK-human-20260926-2045-3): block を選んだままでも、下端の「Canvas: 400×300 固定」を押せば選択が外れ、
@@ -954,6 +1038,7 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   // はみ出しを直して(X を 2 に)チェックを戻すと grow=off が消え、元の 1 行に戻る
   await page.locator('#svg-wrap svg g[data-type="block"]').click();
   await x.fill('2');
+  await x.press('Enter');
   await expect(bar.getByText('キャンバス')).toBeHidden();
   await page.keyboard.press('Escape');
   await page.locator('#canvas-grow').check();
@@ -961,6 +1046,7 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   // 広げたままでよければ「このまま」で知らせを閉じる(寸法は広げたまま)
   await page.locator('#svg-wrap svg g[data-type="block"]').click();
   await x.fill('30');
+  await x.press('Enter');
   await expect(grew).toContainText('400×300 →');
   await grew.getByRole('button', { name: 'このまま' }).click();
   await expect(page.locator('#canvas-bar')).toBeHidden();
