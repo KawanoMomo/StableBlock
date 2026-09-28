@@ -269,7 +269,7 @@ function growToContain(p, c, sides, margin = 1) {
 // 押し出す(group なら中身ごと。押し出した要素がさらに別の要素に掛かれば、それも押す)。広げた group が黙って兄弟を
 // 子に取り込んだり、兄弟の枠をまたいだりしない。押し出した要素が親をはみ出せば、その親も広げる。
 // items: 操作後の block / group の矩形。parents: 操作前の parentMap。moved: [{ id, sides }](sides は枠を越えうる辺)。
-// 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない。親も一緒に動いた要素は相対位置が変わらないので見ない。
+// 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない(押し出した要素は出切っても親を広げる)。親も一緒に動いた要素は相対位置が変わらないので見ない。
 // 返り値: 動いた・広がった要素の [{ type, id, x, y, w, h }](呼び出し側が本文の行の at / size に書く)。
 // seeds: [{ id, from }] 操作で from から今の矩形に広がった要素(新しい group など)。その広がりで掛かる要素を先に押し出す。
 function fitParents(items, parents, moved, margin = 1, seeds = []) {
@@ -307,15 +307,16 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
       const old = { x: q.x, y: q.y, w: q.w, h: q.h };
       shift(q, dx, dy);
       push(old, q, q.id, depth + 1);
-      queue.push({ id: q.id, sides: moveSides(dx, dy) });
+      queue.push({ id: q.id, sides: moveSides(dx, dy), pushed: true });
     }
   };
   for (const sd of seeds || []) { const it = byId.get(sd.id); if (it && sd.from) push(sd.from, it, sd.id, 0); }
   for (let guard = 0; queue.length && guard < 1000; guard++) {
-    const { id, sides } = queue.shift();
+    const { id, sides, pushed } = queue.shift();
     const it = byId.get(id), pid = parents[id], p = pid && byId.get(pid);
     if (!it || !p || !sides || !sides.length) continue;
-    if (overlapArea(it, p) === 0) continue;
+    // 利用者が親の外へ出し切った要素は親から出たもの。押し出した要素は出切っても親の子のまま(親が広がる)
+    if (!pushed && overlapArea(it, p) === 0) continue;
     const n = growToContain(p, it, sides, margin);
     const grew = [];
     if (n.x < p.x) grew.push('l'); if (n.y < p.y) grew.push('t');
