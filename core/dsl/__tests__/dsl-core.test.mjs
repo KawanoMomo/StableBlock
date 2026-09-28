@@ -56,7 +56,6 @@ test('serializeDSL: parser が読んだ値を書き戻す(座標を変えると�
 test('serializeDSL: parser が黙って捨てる記法は往復で差分になる', () => {
   const cases = [
     'block a "A" at 1,1 size 2x2 shape=cylinder',   // 未知の属性
-    'a -> b lpos=middle',                              // 不正な lpos は right に丸められる
     'block a "A" at 01,1 size 2x2',                    // 数値の正規化
     'a -> b width=1.50',
     '@canvas width=400 bg=#fff',
@@ -139,8 +138,9 @@ test('parseDSL: 取れない style / route / grow / lpos の値はその行で�
     'a -> b "style=dotted in label" style=bold route=spline lpos=middle',
   ].join('\n');
   const p = parseDSL(text);
-  // lpos は parser が読める値に寄せる(core/label の parseLpos)ので core/dsl の直列化では変わる。GUI の保存は本文をそのまま書く
-  assert.equal(serializeDSL(p), text.replace('lpos=middle', 'lpos=right'));
+  // lpos も描く位置だけ既定(right)に倒し、本文の値は書いたまま往復する(BLK-porter-20260929-0511)
+  assert.equal(serializeDSL(p), text);
+  assert.equal(p.connections[0].lpos, 'right');
   assert.equal(p.blockMap.b.style, 'dotted');   // 値は読んだまま(描画は既定の実線)
   assert.deepEqual(p.warnings, [
     { line: 1, msg: 'route=zigzag は使えない。route を書いていない接続を曲線で描く(使える値: curved / straight / ortho)' },
@@ -165,4 +165,34 @@ test('parseDSL: 取れる値だけなら値の警告は 0 件。@canvas の 2 �
   assert.deepEqual(parseDSL(ok).warnings, []);
   const two = 'block a "A" at 1,1 size 6x3 style=dotted\n@canvas width=480\n@canvas width=500\n';
   assert.deepEqual(parseDSL(two).warnings.map(w => w.line), [1, 2]);
+});
+
+test('serializeDSL: 取れない値(lpos / round / width / @canvas の数)は警告し、値を変えない限り本文のまま書き戻す(BLK-porter-20260929-0511)', () => {
+  const text = [
+    '@canvas width=wide height=300px grid=20',
+    'block a "A" at 1,1 size 6x3 round=abc',
+    'note n "N" at 1,6 size 4x2 round=8px',
+    'a -> b "斜め置き" lpos=diagonal width=thick',
+    'b -> a width=1.2.3 lpos=top',
+  ].join('\r\n');
+  const p = parseDSL(text);
+  assert.equal(serializeDSL(p), text);
+  // 描く値は今までどおり(既定、または先頭の数字)
+  assert.deepEqual(p.canvas, { width: 960, height: 300, grid: 20 });
+  assert.deepEqual([p.blocks[0].round, p.notes[0].round], [4, 8]);
+  assert.deepEqual(p.connections.map(c => [c.lpos, c.width]), [['right', 1.5], ['top', NaN]]);
+  assert.deepEqual(p.warnings.map(w => [w.line, w.msg.split('。')[0]]), [
+    [1, 'width=wide は使えない'], [1, 'height=300px は使えない'], [2, 'round=abc は使えない'], [3, 'round=8px は使えない'],
+    [4, 'lpos=diagonal は使えない'], [4, 'width=thick は使えない'], [5, 'width=1.2.3 は使えない'],
+  ]);
+  // 値を変えたところだけ新しい値になる
+  p.connections[0].lpos = 'top';
+  p.blocks[0].round = 6;
+  assert.deepEqual(serializeDSL(p).split('\r\n'), [
+    '@canvas width=wide height=300px grid=20',
+    'block a "A" at 1,1 size 6x3 round=6',
+    'note n "N" at 1,6 size 4x2 round=8px',
+    'a -> b "斜め置き" lpos=top width=thick',
+    'b -> a width=1.2.3 lpos=top',
+  ]);
 });

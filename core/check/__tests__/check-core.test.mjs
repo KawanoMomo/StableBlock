@@ -656,3 +656,19 @@ test('checkIncluded: include 先の取れない値は include 先の場所で出
   assert.equal(d[0].fileLine, 1);
   assert.match(d[0].msg, /^style=dotted は使えない。/);
 });
+
+import { badAttrValues } from '../check-core.mjs';
+test('badAttrValues: 数の属性(round / 接続の width / @canvas の width・height・grid)の取れない値は、実際に描く値を言う(BLK-porter-20260929-0511)', () => {
+  assert.deepEqual(badAttrValues('block', ' round=abc').map(b => b.msg), ['round=abc は使えない。角の丸みを既定の 4 で描く(使える値: 0 以上の整数)']);
+  assert.deepEqual(badAttrValues('note', ' round=8px').map(b => b.msg), ['round=8px は使えない。角の丸みを 8 で描く(使える値: 0 以上の整数)']);
+  assert.deepEqual(badAttrValues('conn', ' width=thick lpos=diagonal').map(b => b.msg), [
+    'lpos=diagonal は使えない。ラベルを線の右に置く(使える値: right / left / top / bottom / center)',
+    'width=thick は使えない。線の太さを既定の 1.5 で描く(使える値: 0 以上の数)',
+  ]);
+  assert.deepEqual(badAttrValues('conn', ' width=1.2.3').map(b => b.msg), ['width=1.2.3 は使えない。線の太さを数字として読めない(使える値: 0 以上の数)']);
+  assert.deepEqual(badAttrValues('canvas', ' width=wide height=300px grid=x').map(b => b.attr), ['width', 'height', 'grid']);
+  // 取れる数は警告しない(小数の太さ、先頭 0 の整数も読める)
+  assert.deepEqual(badAttrValues('block', ' round=0'), []);
+  assert.deepEqual(badAttrValues('conn', ' width=2.5'), []);
+  assert.deepEqual(badAttrValues('canvas', ' width=0960 height=640 grid=20'), []);
+});
