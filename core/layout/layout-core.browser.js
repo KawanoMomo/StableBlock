@@ -272,13 +272,31 @@ function growToContain(p, c, sides, margin = 1) {
 // 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない(押し出した要素は出切っても親を広げる)。親も一緒に動いた要素は相対位置が変わらないので見ない。
 // 返り値: 動いた・広がった要素の [{ type, id, x, y, w, h }](呼び出し側が本文の行の at / size に書く)。
 // seeds: [{ id, from }] 操作で from から今の矩形に広がった要素(新しい group など)。その広がりで掛かる要素を先に押し出す。
+// moved の drop: true(ドラッグで落とした要素): 左上の角が別の group の内側にあってその枠をまたげば、その group(左上を含む最も小さい、
+// 落とした要素以上の大きさのもの)の子として、枠の内側に収まるまでその group を(祖先まで)広げる。落とした要素は動かさない。
+// 押し出すのは広がった要素の兄弟と祖先の兄弟(親の無い要素を含む)だけ。別の group の子は、その group ごと押すときだけ動く
+// (枠をまたいだ group の中身を 1 つずつ押し出して、group から出したり並びを崩したりしない)。
 function fitParents(items, parents, moved, margin = 1, seeds = []) {
   const byId = new Map((items || []).filter(Boolean).map(i => [i.id, { ...i }]));
   const movedIds = new Set((moved || []).map(m => m.id));
-  const queue = (moved || []).filter(m => !movedIds.has(parents[m.id])).map(m => ({ id: m.id, sides: m.sides }));
+  parents = { ...(parents || {}) };
   const changed = new Map();
   const chain = id => { const out = []; for (let p = parents[id], n = 0; p && n < 100; p = parents[p], n++) out.push(p); return out; };
   const isDesc = (id, anc) => chain(id).includes(anc);
+  const dropped = new Set();
+  for (const m of moved || []) {
+    const it = m.drop && byId.get(m.id);
+    if (!it) continue;
+    let best = null;
+    for (const g of byId.values()) {
+      if (g.type !== 'group' || g.id === it.id || movedIds.has(g.id) || isDesc(g.id, it.id)) continue;
+      if (!(g.x <= it.x && it.x < g.x + g.w && g.y <= it.y && it.y < g.y + g.h) || area(g) < area(it)) continue;
+      if (!best || area(g) < area(best)) best = g;
+    }
+    if (best && !inside(it, best) && overlapArea(it, best) > 0) { parents[it.id] = best.id; dropped.add(it.id); }
+  }
+  const queue = (moved || []).filter(m => !movedIds.has(parents[m.id]))
+    .map(m => ({ id: m.id, sides: dropped.has(m.id) ? ['l', 't', 'r', 'b'] : m.sides }));
   const shift = (q, dx, dy) => {
     for (const it of byId.values()) {
       if (it.id !== q.id && !isDesc(it.id, q.id)) continue;
@@ -294,6 +312,7 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
     // 外側の要素から見る: group を押すと中身も一緒に動くので、中身を先に押すと二重に動く
     for (const q of [...byId.values()].sort((a, b) => chain(a.id).length - chain(b.id).length)) {
       if (q.id === owner || movedIds.has(q.id) || anc.has(q.id) || isDesc(q.id, owner)) continue;
+      if (parents[q.id] && !anc.has(parents[q.id])) continue;   // 別の group の子(その group ごと押す)
       if (overlapArea(q, from) > 0) continue;
       // 広がった向きの先にあって、その向きと直交する範囲が重なる要素だけ。元の隙間(1 グリッドまで)を保つ分だけ押す
       const hx = q.x < to.x + to.w && to.x < q.x + q.w, hy = q.y < to.y + to.h && to.y < q.y + q.h;

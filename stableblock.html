@@ -579,7 +579,7 @@ function setupInteractions(){
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
-        if(moved){const sides=window.StableBlockLayout.moveSides(lastDx,lastDy);growParents(before,items.map(it=>({id:it.id,sides})));refresh();return;}
+        if(moved){const sides=window.StableBlockLayout.moveSides(lastDx,lastDy);growParents(before,items.map(it=>({id:it.id,sides,drop:sel.some(s=>s.id===it.id)})));refresh();return;}
         // 動かさずに同じ要素を 2 回続けてクリック(ダブルクリック)するとキャンバス上でラベルを編集する。押すたびに再描画で要素が作り直されるので dblclick イベントには頼らない
         const now=Date.now();if(!shift&&lastClick&&lastClick.id===id&&now-lastClick.t<450){lastClick=null;startInlineEdit(type,id);return;}lastClick=shift?null:{id,t:now};
         const next=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);

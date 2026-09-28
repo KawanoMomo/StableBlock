@@ -1223,3 +1223,91 @@ test('junior-02: 検索欄に __new_ と打つと件数が出て、Enter で読�
   await search.press('Enter');   // 当たりが無ければ何もしない
   await expect(count).toHaveText('0 件');
 });
+
+// group を別の group の中へドラッグで落とすと外側が広がり、枠をまたいだまま残らない。枠をまたいだ group がある図でも、外側に
+// 「+ 中にブロック」を押して動くのは足した block と広がる group だけ(またいだ group の中身が飛ばない)(BLK-owner-20260929-0405-1)
+test('junior-02: group を別の group の中へドラッグで入れると外側が広がり、外側に「+ 中にブロック」を押しても中の group の block は動かない', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const groupEl = id => svg.locator(`g[data-type="group"][data-id="${id}"]`);
+  const selectGroup = id => groupEl(id).click({ position: { x: 30, y: 8 } });
+  const lineOf = (text, id) => text.split('\n').find(l => new RegExp(`^(block|group) ${id} `).test(l));
+  const canvasH = text => +text.match(/^@canvas .*height=(\d+)/m)[1];
+
+  for (const name of ['Ecu_Sw', 'Adc_Stack']) {
+    await props.getByRole('button', { name: '+ グループ追加' }).click();
+    await label().fill(name);
+    await label().press('Enter');
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#prop-title')).toHaveText('ツール');
+  }
+  let all = boxes(await getEditorText(page));
+  expect(all.Adc_Stack.x, JSON.stringify(all)).toBeGreaterThan(all.Ecu_Sw.x + all.Ecu_Sw.w);   // 右隣に置かれる
+
+  // Adc_Stack をラベルの所でつかみ、左上が Ecu_Sw の (1,2) 内側に来るよう落とす(右下は Ecu_Sw の枠を越える)
+  const gb = await groupEl('Adc_Stack').boundingBox();
+  const px = gb.width / all.Adc_Stack.w;                                   // 1 グリッドの画面 px
+  const to = { x: all.Ecu_Sw.x + 1, y: all.Ecu_Sw.y + 2 };
+  const grab = { x: gb.x + 30, y: gb.y + 8 };
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + (to.x - all.Adc_Stack.x) * px, grab.y + (to.y - all.Adc_Stack.y) * px, { steps: 8 });
+  await page.mouse.up();
+  all = boxes(await getEditorText(page));
+  expect([all.Adc_Stack.x, all.Adc_Stack.y], JSON.stringify(all)).toEqual([to.x, to.y]);
+  expect(within(all.Adc_Stack, all.Ecu_Sw, 1), `Ecu_Sw が広がって Adc_Stack を収める ${JSON.stringify(all)}`).toBe(true);
+  expect(parentOf(all, 'Adc_Stack')).toBe('Ecu_Sw');
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+
+  // Adc_Stack に 4 個、Ecu_Sw に 1 個: 4 個は Adc_Stack の中に読み順のまま残り、Ecu_Sw は足した分だけ広がる
+  const names = ['Adc_Hw', 'Adc_Drv', 'Adc_If', 'Adc_Filter'];
+  for (const name of names) {
+    await selectGroup('Adc_Stack');
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
+    await label().fill(name);
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+  }
+  const before = await getEditorText(page);
+  await selectGroup('Ecu_Sw');
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('Ecu_Diag');
+  await expect(props.locator('#prop-id')).toHaveValue('Ecu_Diag');
+  const after = await getEditorText(page);
+  all = boxes(after);
+  for (const id of ['Adc_Stack', ...names]) expect(lineOf(after, id), `${id} の行`).toBe(lineOf(before, id));
+  expect(parentOf(all, 'Ecu_Diag')).toBe('Ecu_Sw');
+  expect(all.Ecu_Sw.h - boxes(before).Ecu_Sw.h).toBeLessThanOrEqual(all.Ecu_Diag.h + 1);
+  expect(canvasH(after)).toBeLessThanOrEqual(Math.max(canvasH(before), (all.Ecu_Sw.y + all.Ecu_Sw.h + 1) * 20));
+
+  // 枠をまたいだまま開いた図(owner の再現): 外側に「+ 中にブロック」を 2 回押しても、Adc_Stack と中の block の行は変わらない
+  const straddle = [
+    '@canvas width=960 height=520 grid=20',
+    'group Ecu_Sw "Ecu_Sw" at 1,1 size 20x8 color=#F1F5F9 border=#94A3B8',
+    'group Adc_Stack "Adc_Stack" at 2,3 size 20x15 color=#F1F5F9 border=#94A3B8',
+    'block Adc_Hw "Adc_Hw" at 3,10 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    'block Adc_Drv "Adc_Drv" at 12,10 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    'block Adc_If "Adc_If" at 3,14 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    'block Adc_Filter "Adc_Filter" at 12,14 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    '',
+  ].join('\n');
+  await page.locator('#editor').fill(straddle);
+  await expect(groupEl('Ecu_Sw')).toHaveCount(1);
+  let prevH = 8;
+  for (const name of ['N1', 'N2']) {
+    await selectGroup('Ecu_Sw');
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
+    await label().fill(name);
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    const text = await getEditorText(page);
+    for (const id of ['Adc_Stack', ...names]) expect(lineOf(text, id), `${name}: ${id} の行`).toBe(lineOf(straddle, id));
+    all = boxes(text);
+    expect(all.Ecu_Sw.y + all.Ecu_Sw.h, `${name}: Ecu_Sw は足した block が収まる分だけ広がる`).toBeLessThanOrEqual(Math.max(all.Ecu_Sw.y + prevH, all[name].y + all[name].h + 1));
+    expect(canvasH(text), `${name}: キャンバス`).toBeLessThanOrEqual(Math.max(520, (all.Ecu_Sw.y + all.Ecu_Sw.h + 1) * 20));
+    prevH = all.Ecu_Sw.h;
+  }
+});
