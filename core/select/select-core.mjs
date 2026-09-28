@@ -92,3 +92,17 @@ export function fieldKeyAction(key, shift) {
     default: return null;
   }
 }
+
+// ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
+// 1 つ選んでいるときの文字(IME の変換中 'Process' を含む)は、その文字からラベルのその場編集に入る(Excel・draw.io・Visio と同じ)。
+// 表示だけの切替(H 未接続を薄く・N 注釈・F 全体表示)は 1 つ選んでいないときに効く。本文を書き換える L(線の形)は何も選んでいないときだけ。
+// 返り値: 'label' | 'highlight' | 'annotations' | 'fit' | 'line-mode' | null
+export function typedKeyAction(key, selCount, mods = {}) {
+  if (mods.ctrl || mods.meta || mods.alt) return null;
+  const k = String(key || '');
+  if (selCount === 1 && ((k.length === 1 && k !== ' ') || k === 'Process')) return 'label';
+  const c = k.length === 1 ? k.toLowerCase() : '';
+  if (c === 'l') return selCount === 0 ? 'line-mode' : null;
+  if (selCount === 1) return null;
+  return c === 'h' ? 'highlight' : c === 'n' ? 'annotations' : c === 'f' ? 'fit' : null;
+}

@@ -407,7 +407,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -706,7 +706,7 @@ function propsPanel(){
         '<div class="pl">CANVAS</div><label id="cv-sec" style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
         '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click blocks in order, then press "a &rarr; b" (3+: "a &rarr; b &rarr; c"). Flip the direction afterwards"</div>'+
-        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: dim unlinked N: show notes</div>';
+        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Select 1 and type: edit its label<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>Nothing selected: H dim unlinked, N show notes</div>';
     }
     return;
   }
@@ -935,9 +935,12 @@ document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(e.key==='Escape'){closePngMenu();if(inInput)document.activeElement.blur();clrSel();return;}
   if(inInput)return;
-  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
-  if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}
-  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitV();return;}
+  // 1 キー(core/select typedKeyAction): 1 つ選んで文字を打つと、その文字からラベルのその場編集。H・N・F(表示だけ)は 1 つ選んでいないとき
+  var ta=window.StableBlockSelect.typedKeyAction(e.key,sel.length,{ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});
+  if(ta==='label'&&!(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))){startInl(sel[0].type,sel[0].id);return;}
+  if(ta==='highlight'){e.preventDefault();toggleHL();return;}
+  if(ta==='annotations'){e.preventDefault();toggleAnno();return;}
+  if(ta==='fit'){e.preventDefault();fitV();return;}
   var tg=e.target&&e.target.tagName;if((tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'))return;
   if((e.key==='F2'||(e.key==='Enter'&&!(document.activeElement&&document.activeElement.tagName==='BUTTON')&&tg!=='BUTTON'))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInl(sel[0].type,sel[0].id);return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClk=false;var an=showAnno?parsed.notes.map(function(n){return{type:'note',id:n.id}}):[];sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}})).concat(an);render();props();return;}

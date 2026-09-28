@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260927-0728-2: block・group・注釈を 1 つ選んだまま文字(IME を含む)を打つと、その文字からラベルのその場編集になる(追加した直後に名前を打てる)。単キーの L(線の形。本文の @canvas 行を書く)は何も選んでいないときだけ、H・N・F は 1 つ選んでいないときだけ効き、Filter・Logger・Nvm のような名前を打っても本文や表示が変わらない(HTML 版・VSCode 拡張、core/select の typedKeyAction)
 - BLK-owner-20260927-0728-1: プロパティ欄の X/Y/W/H・角丸・背景色・枠線色の欄にキーボードで 2 桁以上(34、#FF0000)を打てる。打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ確定(色は # と 6 桁が揃った時点でも)し、Ctrl+Z 1 回で戻る。Esc は打った値を捨て、欄の中の ↑↓ は ▲▼ と同じ(HTML 版・VSCode 拡張、core/select の fieldCommit)
 - BLK-owner-20260928-2255-1: 入れ子の group(ECU > MCU)の子 group に「+ 中にブロック」や Ctrl+C → Ctrl+V で足して子 group が広がり、兄弟の block を押し出しても、押し出された block は外側の group の外へ出ず、外側の group(と祖先)が下へ広がる(core/layout の fitParents)
 - BLK-human-20260928-2310: Windows アプリの CI で setup.exe の版とタグを突き合わせるとき、読み取った版の空白の埋めと 2.0 / 2.0.0 の違いで落ちなくなる(scripts/version-match.mjs、先頭 2 要素で比べる)
