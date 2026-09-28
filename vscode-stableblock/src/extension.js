@@ -407,7 +407,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -755,7 +755,7 @@ function propsPanel(){
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
   h+=stepperRow("W","stepF(\\'w\\',\\'dn\\')","stepF(\\'w\\',\\'up\\')",it.w)+stepperRow("H","stepF(\\'h\\',\\'dn\\')","stepF(\\'h\\',\\'up\\')",it.h);
   h+='<div class="pl">Color</div><div class="cg">'+colors.map(function(c){return'<div class="cd'+(it.color===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
-  h+='<input class="pi" style="width:80px" value="'+it.color+'" oninput="sPr(\\'color\\',this.value)">';
+  h+='<input class="pi" style="width:80px" value="'+it.color+'" data-field="color" onfocus="fFocus(this)" oninput="fInput(this)" onchange="fCommit(this)" onkeydown="fKey(event,this)" placeholder="#RRGGBB">';
   if(isB||isN){
     h+='<div class="pl">Text Color</div><div class="cg">'+["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(function(c){return'<div class="cd'+(it.textColor===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'text\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     h+=stepperRow("Round","sNudgeR(-1)","sNudgeR(1)",it.round);
@@ -772,25 +772,42 @@ function propsPanel(){
 }
 
 function stepperRow(label,decF,incF,val){
-  return '<div class="pl">'+label+'</div><div class="stepper" style="margin-bottom:4px"><input class="pi" type="number" value="'+val+'" oninput="sField(\\''+label.toLowerCase()+'\\',this.value)"><div class="stcol"><button class="stb up" onclick="'+incF+'">&#x25B2;</button><button class="stb dn" onclick="'+decF+'">&#x25BC;</button></div></div>';
+  return '<div class="pl">'+label+'</div><div class="stepper" style="margin-bottom:4px"><input class="pi" type="number" value="'+val+'" data-field="'+label.toLowerCase()+'" onfocus="fFocus(this)" onchange="fCommit(this)" onkeydown="fKey(event,this)"><div class="stcol"><button class="stb up" onclick="'+incF+'">&#x25B2;</button><button class="stb dn" onclick="'+decF+'">&#x25BC;</button></div></div>';
 }
 function stepper2(label,xd,xi,yd,yi){
   return '<div class="pl">'+label+'</div><div class="pr"><div style="flex:1"><div style="font-size:8px;color:#888">X</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+xi+'">&#x25B2;</button><button class="stb dn" onclick="'+xd+'">&#x25BC;</button></div></div></div><div style="flex:1"><div style="font-size:8px;color:#888">Y</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+yi+'">&#x25B2;</button><button class="stb dn" onclick="'+yd+'">&#x25BC;</button></div></div></div></div>';
 }
 
 // Single-item actions
-function sPr(p,v){if(!sel.length)return;pushH();upPr(sel[0].type,sel[0].id,p,v);go();notify();}
+function sPr(p,v,t){if(!t&&!sel.length)return;var s=t||sel[0];pushH();upPr(s.type,s.id,p,v);go();notify();}
 function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);fLbId(v);parsed=parseDoc();render();
   showErr();
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
 function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();render();notify();}
 function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v.replace(/\\n/g,"\\\\n"));fLbId(v);parsed=parseDoc();render();notify();}
-function sField(f,v){if(!sel.length)return;var n=parseInt(v);if(isNaN(n))return;pushH();var it=getIt(sel[0]);if(!it)return;
-  if(f==='x'||f==='y')upP(sel[0].type,sel[0].id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
-  else if(f==='w'||f==='h')upS(sel[0].type,sel[0].id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
-  else if(f==='round')upPr(sel[0].type,sel[0].id,'round',Math.max(0,n));
+function sField(f,v,t){if(!t&&!sel.length)return;var s=t||sel[0],n=parseInt(v);if(isNaN(n))return;var it=getIt(s);if(!it)return;pushH();
+  if(f==='x'||f==='y')upP(s.type,s.id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
+  else if(f==='w'||f==='h')upS(s.type,s.id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
+  else if(f==='round')upPr(s.type,s.id,'round',Math.max(0,n));
   go();notify();}
+// プロパティ欄の数値・色の欄(core/select fieldCommit): 打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く
+// (色は # と 6 桁が揃えば打っている間にも)。欄の中の ↑↓ は ▲▼ と同じく 1 押しで書く。Esc は打った値を捨てる。書き先は欄に入ったときの要素
+function fFocus(el){if(sel.length===1){el.setAttribute('data-ftype',sel[0].type);el.setAttribute('data-fid',sel[0].id);}}
+function fTarget(el){return el.getAttribute('data-fid')?{type:el.getAttribute('data-ftype'),id:el.getAttribute('data-fid')}:sel[0];}
+function fCur(it,f){return f==='color'?it.color:f==='round'?it.round:it[f];}
+function fCommit(el,trig){var S=window.StableBlockSelect,f=el.getAttribute('data-field'),tr=trig||'commit',t=fTarget(el);if(!t)return false;var it=getIt(t);if(!it)return false;
+  var v=S.fieldCommit(S.fieldKind(f),el.value,tr,fCur(it,f));
+  if(v===null){if(tr==='commit')el.value=fCur(it,f);return false;}
+  if(f==='color')sPr('color',v,t);else sField(f,String(v),t);return true;}
+function fRefocus(f,end){var n=document.querySelector('#propPanel [data-field="'+f+'"]');if(!n)return;n.focus();if(end&&n.type!=='number')n.setSelectionRange(n.value.length,n.value.length);else n.select();}
+function fInput(el){var f=el.getAttribute('data-field');if(window.StableBlockSelect.fieldKind(f)!=='color')return;if(fCommit(el,'input'))fRefocus(f,true);}
+function fKey(e,el){var S=window.StableBlockSelect,a=S.fieldKeyAction(e.key,e.shiftKey),f=el.getAttribute('data-field');if(!a)return;
+  if(a==='cancel'){var t=fTarget(el),it=t&&getIt(t);if(it)el.value=fCur(it,f);return;}
+  if(a==='commit'){e.preventDefault();fCommit(el);fRefocus(f);return;}
+  if(a==='up'||a==='dn'){if(S.fieldKind(f)==='color')return;e.preventDefault();fCommit(el);if(f==='round')sNudgeR(S.stepDelta(a));else stepF(f,a);fRefocus(f);return;}
+  var fs=Array.prototype.slice.call(document.querySelectorAll('#propPanel [data-field]')),nx=fs[fs.indexOf(el)+(a==='next'?1:-1)];
+  if(!nx)return;e.preventDefault();var nf=nx.getAttribute('data-field');fCommit(el);fRefocus(nf);}
 function sNudge(ax,d){if(!sel.length)return;pushH();var s=sel[0],it=getIt(s);if(!it)return;var before=parNow();
   if(s.type==='group'){var ch=fCh(it);ch.cb.forEach(function(b){upP('block',b.id,b.x+(ax==='x'?d:0),b.y+(ax==='y'?d:0))});ch.cg.forEach(function(g){upP('group',g.id,g.x+(ax==='x'?d:0),g.y+(ax==='y'?d:0))});}
   upP(s.type,s.id,Math.max(0,it.x+(ax==='x'?d:0)),Math.max(0,it.y+(ax==='y'?d:0)));growPar(before,[{id:s.id,sides:axSides(ax,d)}]);go();notify();}

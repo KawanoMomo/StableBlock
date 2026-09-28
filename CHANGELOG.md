@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260927-0728-1: プロパティ欄の X/Y/W/H・角丸・背景色・枠線色の欄にキーボードで 2 桁以上(34、#FF0000)を打てる。打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ確定(色は # と 6 桁が揃った時点でも)し、Ctrl+Z 1 回で戻る。Esc は打った値を捨て、欄の中の ↑↓ は ▲▼ と同じ(HTML 版・VSCode 拡張、core/select の fieldCommit)
 - BLK-owner-20260928-2255-1: 入れ子の group(ECU > MCU)の子 group に「+ 中にブロック」や Ctrl+C → Ctrl+V で足して子 group が広がり、兄弟の block を押し出しても、押し出された block は外側の group の外へ出ず、外側の group(と祖先)が下へ広がる(core/layout の fitParents)
 - BLK-human-20260928-2310: Windows アプリの CI で setup.exe の版とタグを突き合わせるとき、読み取った版の空白の埋めと 2.0 / 2.0.0 の違いで落ちなくなる(scripts/version-match.mjs、先頭 2 要素で比べる)
 - BLK-owner-20260926-2005-1: 共通部の block を取り込み側の block に重ねると、@include が本文の後ろにある図(primary の 12 枚の形)でもエラー欄に「ほかの図: adc_swc.sb L14: block「os」が block「adcdrv」(L14)に重なっている」と出て、「増えたものは無い」と言わなくなる。取り込み側のキャンバスの外に出た・ID が重なった場合も同じ
