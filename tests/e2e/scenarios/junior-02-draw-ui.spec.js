@@ -701,6 +701,70 @@ test('junior-02: group にブロックを足し続けて group が広がって�
   await expect(page.locator('#error-bar')).not.toContainText('重なって');
 });
 
+// 入れ子の子 group に足して兄弟を押し出しても、兄弟は外側の group の外へ出ず、外側の group が広がる(BLK-owner-20260928-2255-1)。
+// 「+ 中にブロック」と Ctrl+C → Ctrl+V の両方で
+test('junior-02: 入れ子の子 group に足して兄弟の block を押し出しても、押し出された block は外側の group の中に残る', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+  const block = id => svg.locator(`g[data-type="block"][data-id="${id}"]`);
+
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  await label().fill('ECU');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('ECU');
+  const names = ['Cpu', 'Spi0', 'Can0', 'Adc0', 'Pmic', 'Wdg'];
+  for (const name of names) {
+    await selectGroup('ECU');
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
+    await label().fill(name);
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+  }
+  await block('Cpu').click();
+  for (const id of ['Spi0', 'Can0', 'Adc0']) await block(id).click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: '選択をグループ化' }).click();
+  await label().fill('MCU');
+  await expect(props.locator('#prop-id')).toHaveValue('MCU');
+  const grouped = await getEditorText(page);
+  let all = boxes(grouped);
+  expect(parentOf(all, 'MCU')).toBe('ECU');
+  for (const id of ['Pmic', 'Wdg']) expect(parentOf(all, id), `${id} の親`).toBe('ECU');
+  const check = (all, when) => {
+    expect(hits(all.MCU, all.Pmic) || hits(all.MCU, all.Wdg), `${when}: MCU が Pmic・Wdg に掛かる`).toBe(false);
+    for (const id of ['Pmic', 'Wdg']) expect(within(all[id], all.ECU, 1), `${when}: ${id} が ECU の外 ${JSON.stringify([all.ECU, all[id]])}`).toBe(true);
+    expect(within(all.MCU, all.ECU, 1), `${when}: MCU が ECU の外`).toBe(true);
+    for (const id of ['Pmic', 'Wdg']) expect(parentOf(all, id), `${when}: ${id} の親`).toBe('ECU');
+  };
+
+  // MCU に「+ 中にブロック」: MCU が下へ広がり Pmic・Wdg を押し出す → ECU も広がり、Pmic・Wdg は ECU の中に残る
+  await selectGroup('MCU');
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('Ram');
+  await expect(props.locator('#prop-id')).toHaveValue('Ram');
+  all = boxes(await getEditorText(page));
+  expect(parentOf(all, 'Ram')).toBe('MCU');
+  expect(all.ECU.h).toBeGreaterThan(boxes(grouped).ECU.h);
+  check(all, '+ 中にブロック');
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+
+  // グループ化した直後の本文に戻して、MCU の中の Spi0 を Ctrl+C → Ctrl+V でも同じ
+  await page.locator('#editor').fill(grouped);
+  await expect(block('Ram')).toHaveCount(0);
+  await block('Spi0').click();
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect.poll(async () => Object.keys(boxes(await getEditorText(page))).length).toBe(Object.keys(boxes(grouped)).length + 1);
+  all = boxes(await getEditorText(page));
+  const pasted = Object.keys(all).find(id => !(id in boxes(grouped)));
+  expect(parentOf(all, pasted)).toBe('MCU');
+  check(all, 'Ctrl+V');
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+});
+
 test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、見本の見出し・要素が本文に混ざらない。保存名は diagram.sb', async ({ page }, testInfo) => {
   await bootPlain(page);
   await expect(page.locator('#editor')).toHaveValue(/# Application/);          // 起動時は見本

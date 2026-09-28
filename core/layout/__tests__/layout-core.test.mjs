@@ -399,3 +399,36 @@ test('placeInGroupFit: 広がらなければ何も変えない。親 group の�
   assert.equal(by.CAN.y, 13);                                        // MCU の下端(12)から元の隙間 1 を空ける
   assert.equal(by.ECU.h, 22);                                        // 押し出した CAN が収まるよう ECU も下に広がる
 });
+
+// 押し出された兄弟が親の枠の外まで出切っても、親の子のまま(親が広がる)(BLK-owner-20260928-2255-1)
+test('placeInGroupFit: 入れ子の子 group に足して兄弟を親の枠の外まで押し出しても、兄弟は元の親の内側に残り、親(と祖先)が広がる', () => {
+  const inside = (c, p) => c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h;
+  // 「+ 中にブロック」6 個 →上 4 個を「選択をグループ化」した後のハード接続図(ECU > MCU、Pmic・Wdg は MCU の下の兄弟)
+  const top = G('Top', 0, 0, 40, 30);
+  const ecu = G('ECU', 0, 1, 21, 15), mcu = G('MCU', 1, 2, 19, 9);
+  const cpu = B('Cpu', 2, 3, 8), spi = B('Spi0', 11, 3, 8), can = B('Can0', 2, 7, 8), adc = B('Adc0', 11, 7, 8);
+  const pmic = B('Pmic', 2, 12, 8), wdg = B('Wdg', 11, 12, 8);
+  const items = [cpu, spi, can, adc, pmic, wdg, ecu, mcu];
+  const r = placeInGroupFit(items, mcu, 8, 3, adc);
+  const cur = Object.fromEntries(items.map(i => [i.id, { ...i }]));
+  for (const c of r.changes) Object.assign(cur[c.id], c);
+  assert.equal(cur.MCU.h, 13);                                       // MCU は 19x9 → 19x13
+  assert.deepEqual([cur.Pmic.y, cur.Wdg.y], [16, 16]);               // 兄弟は隙間 1 を保って下がる
+  assert.ok(inside(cur.Pmic, cur.ECU) && inside(cur.Wdg, cur.ECU), `Pmic・Wdg が ECU の外 ${JSON.stringify([cur.ECU, cur.Pmic])}`);
+  assert.ok(inside(cur.MCU, cur.ECU));
+  assert.deepEqual([cur.ECU.x, cur.ECU.y, cur.ECU.w], [0, 1, 21]);   // ECU は下にだけ広がる
+  assert.equal(cur.ECU.y + cur.ECU.h, 20);                           // Wdg の下端(19)+ 余白 1
+  // 祖先まで順に: ECU の外側の group も、広がった ECU を内側に収める
+  const items2 = [...items.map(i => ({ ...i })), { ...top, h: 17 }];
+  const r2 = placeInGroupFit(items2, items2.find(i => i.id === 'MCU'), 8, 3, adc);
+  const cur2 = Object.fromEntries(items2.map(i => [i.id, { ...i }]));
+  for (const c of r2.changes) Object.assign(cur2[c.id], c);
+  assert.ok(inside(cur2.ECU, cur2.Top), `ECU が Top の外 ${JSON.stringify([cur2.Top, cur2.ECU])}`);
+  assert.ok(inside(cur2.Pmic, cur2.ECU));
+});
+
+test('fitParents: 利用者が親の外へ出し切った要素では親を広げない(押し出しだけが親を広げる)', () => {
+  const p = G('P', 0, 0, 20, 10), a = B('A', 25, 2, 4);
+  const parents = { A: 'P' };
+  assert.deepEqual(fitParents([p, a], parents, [{ id: 'A', sides: ['r'] }]), []);
+});
