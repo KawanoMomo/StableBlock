@@ -332,8 +332,12 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
 }
 
 // 「選択をグループ化」の新しい group の矩形。選んだ要素の外接矩形に、左右下 1・上 2(ラベルの帯)の余白を付ける。
-// 余白が選んでいない要素の枠をまたぐ(一部だけ重なる)なら、その辺の余白を 1、0 と詰める。親 group(parent)があれば、
-// 1 を超える余白は親の内側 1 グリッドに収まる範囲に詰める(親の枠に重ねない。足りない分は fitParents で親が広がる)。
+// 余白は辺ごとに、次を満たす範囲で 0 まで詰める(選んだ要素の外接の内側に収めれば、親も兄弟も動かない):
+// - 選んでいない要素の枠をまたがない(一部だけ重ならない)
+// - 親 group(parent)があれば親の内側 1 グリッドに収まる(親の枠に重ねない。親の行を書き換えない)
+// - 右・下は、選んでいない要素との元の隙間(1 グリッドまで)を食わない(食うと fitParents が兄弟を押し出し、兄弟の行を書き換える)
+// 0 まで詰めても親の内側に収まらない(選んだ要素が親の枠の内側 1 に無い)辺だけは、従来どおり枠をまたがない最大 1 の余白を取り、
+// 足りない分は fitParents で親が広がる。
 // members: 選んだ要素。others: 選んでいない block / group(親 group 自身を含めてよい。選んだ要素を内側に含む group は見ない)。
 function groupRectFor(members, others, parent) {
   const ms = (members || []).filter(Boolean);
@@ -352,15 +356,25 @@ function groupRectFor(members, others, parent) {
   const straddles = r => obs.some(o => overlapArea(r, o) > 0 && !inside(o, r));
   const inParent = (r, side) => !parent || (side === 'l' ? r.x >= parent.x + 1 : side === 't' ? r.y >= parent.y + 1
     : side === 'r' ? r.x + r.w <= parent.x + parent.w - 1 : r.y + r.h <= parent.y + parent.h - 1);
+  // fitParents(seeds の from は外接の右端・下端)が押し出す要素があるか: 広げた向きの先にあり、直交する範囲が重なり、元の隙間(1 まで)を食う
+  const crowds = (r, side) => obs.some(o => {
+    if (overlapArea(r, o) > 0) return false;
+    if (side === 'r') return o.y < r.y + r.h && r.y < o.y + o.h && o.x >= maxX && r.x + r.w + Math.min(1, o.x - maxX) > o.x;
+    if (side === 'b') return o.x < r.x + r.w && r.x < o.x + o.w && o.y >= maxY && r.y + r.h + Math.min(1, o.y - maxY) > o.y;
+    return false;
+  });
+  const ok = (cand, side) => { const r = rectOf(cand); return !straddles(r) && inParent(r, side) && !crowds(r, side); };
   for (const side of ['t', 'l', 'r', 'b']) {
-    for (let k = want[side]; k >= 1; k--) {
-      const cand = { ...m, [side]: k }, r = rectOf(cand);
-      if (straddles(r)) continue;
-      if (k > 1 && !inParent(r, side)) continue;
-      m[side] = k;
-      break;
+    let k = want[side];
+    while (k >= 0 && !ok({ ...m, [side]: k }, side)) k--;
+    if (k < 0) {   // 親の内側に収まらない辺: 枠をまたがない最大 1(親が広がる)
+      for (k = Math.min(1, want[side]); k >= 1 && straddles(rectOf({ ...m, [side]: k })); k--);
+      k = Math.max(0, k);
     }
+    m[side] = k;
   }
+  // 右の余白を決めた後に下の余白で広がった範囲の要素も、右・下の隙間を食わないよう詰める
+  for (const side of ['r', 'b']) while (m[side] > 0 && crowds(rectOf(m), side)) m[side]--;
   return rectOf(m);
 }
 

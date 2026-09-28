@@ -606,9 +606,13 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   // 親の中の 2 つを「選択をグループ化」: 新しい group は親の内側に 1 グリッド以上空けて収まり、ほかの block に掛からない
   await svg.locator('g[data-type="block"][data-id="CPU"]').click();
   await svg.locator('g[data-type="block"][data-id="RAM"]').click({ modifiers: ['Shift'] });
+  const lineOf = (text, id) => text.split('\n').find(l => new RegExp(`^(block|group) ${id} `).test(l));
+  const ungrouped = await getEditorText(page);
   await props.getByRole('button', { name: '選択をグループ化' }).click();
   await label().fill('MCU');
   await expect(props.locator('#prop-id')).toHaveValue('MCU');
+  // 触っていない親(ECU)と兄弟(Flash)の行は変わらない(BLK-owner-20260927-0728-4)
+  for (const id of ['ECU', 'Flash', 'CPU', 'RAM']) expect(lineOf(await getEditorText(page), id), `${id} の行`).toBe(lineOf(ungrouped, id));
   let all = boxes(await getEditorText(page));
   expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
   expect(hits(all.MCU, all.Flash), 'MCU が Flash に掛かる').toBe(false);
@@ -634,7 +638,9 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   all = boxes(after);
   expect(all.CPU.y).toBe(boxes(before).CPU.y + 5);
   expect(parentOf(all, 'CPU')).toBe('MCU');
-  expect(within(all.CPU, all.MCU, 1), JSON.stringify(all)).toBe(true);
+  // MCU は ECU の左端の CPU を包むとき左の余白を 0 に詰めて作る(ECU を動かさないため)。広がった下の辺には 1 グリッドの余白
+  expect(within(all.CPU, all.MCU), JSON.stringify(all)).toBe(true);
+  expect(all.CPU.y + all.CPU.h + 1, JSON.stringify(all)).toBeLessThanOrEqual(all.MCU.y + all.MCU.h);
   expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
   for (const id of ['Flash', 'CAN_Trcv', 'EEPROM']) {
     expect(parentOf(all, id), `${id} が MCU に取り込まれた`).toBe('ECU');
@@ -728,10 +734,14 @@ test('junior-02: 入れ子の子 group に足して兄弟の block を押し出�
   }
   await block('Cpu').click();
   for (const id of ['Spi0', 'Can0', 'Adc0']) await block(id).click({ modifiers: ['Shift'] });
+  const ungrouped = await getEditorText(page);
   await props.getByRole('button', { name: '選択をグループ化' }).click();
   await label().fill('MCU');
   await expect(props.locator('#prop-id')).toHaveValue('MCU');
   const grouped = await getEditorText(page);
+  // 上の 2 段を group 化しても、親(ECU)と下の段の兄弟(Pmic・Wdg)の行は変わらない(BLK-owner-20260927-0728-4)
+  const lineOf = (text, id) => text.split('\n').find(l => new RegExp(`^(block|group) ${id} `).test(l));
+  for (const id of ['ECU', 'Pmic', 'Wdg', ...names.slice(0, 4)]) expect(lineOf(grouped, id), `${id} の行`).toBe(lineOf(ungrouped, id));
   let all = boxes(grouped);
   expect(parentOf(all, 'MCU')).toBe('ECU');
   for (const id of ['Pmic', 'Wdg']) expect(parentOf(all, id), `${id} の親`).toBe('ECU');
