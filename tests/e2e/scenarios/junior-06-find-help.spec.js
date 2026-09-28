@@ -57,6 +57,24 @@ test('junior-06: 同じ座標の block と、別の block の上を横切る線�
   // 横切られる block を線の脇へ動かすと、その知らせは消える
   await setText(page, lines.join('\n').replace('block b3 "B3" at 1,6', 'block b3 "B3" at 25,6').replace('block b5 "B5" at 1,11', 'block b5 "B5" at 25,11'));
   await expect(bar(page)).not.toContainText('「b1 -> b7」の線が block「b3」');
+
+  // note から出る線(注釈の破線)も、block 同士の線と同じに横切りを知らせる(owner 批評の DFD: Cycle_10ms -> Adc_Drv が Sensor・Tester を横切る)
+  const dfd = [
+    '@canvas width=960 height=520 grid=20',
+    'block Adc_Drv "Adc_Drv" at 11,3 size 8x3',
+    'block Sensor "Sensor" at 22,1 size 8x3',
+    'block Tester "Tester" at 31,1 size 8x3',
+    'note Cycle_10ms "Cycle_10ms" at 40,1 size 8x2',
+    'Cycle_10ms -> Adc_Drv "trigger"',
+  ];
+  await setText(page, dfd.join('\n'));
+  await expect(bar(page)).toContainText('L6: 接続「Cycle_10ms -> Adc_Drv」の線が block「Sensor」(L3)の上を横切る');
+  await expect(bar(page)).toContainText('L6: 接続「Cycle_10ms -> Adc_Drv」の線が block「Tester」(L4)の上を横切る');
+  await expect(page.locator('#status')).toContainText('Warn: 2');
+  // note を線の通り道の外(block の下)へ動かすと消える
+  await setText(page, dfd.join('\n').replace('at 40,1 size 8x2', 'at 11,8 size 8x2'));
+  await expect(bar(page)).toBeHidden();
+  await expect(page.locator('#status')).not.toContainText('Warn:');
 });
 
 test('junior-06: ツールバーとプロパティ欄の入口は、名前とツールチップで何をするかを言う', async ({ page }) => {
