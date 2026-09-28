@@ -1,0 +1,34 @@
+# StableBlock v0.6
+@canvas width=960 height=780 grid=20
+@include "shared/common.sb"
+
+# Application
+
+
+# Middleware
+
+
+# Platform
+
+
+# Connections
+group SpiSwcGroup "SPI Driver" at 1,18 size 46x20 color=#EEF2FF border=#94A3B8
+block RteInterface "RTE_Interface" at 3,20 size 9x3 color=#3B82F6 text=#FFFFFF round=4
+block SpiConfig "SPI_Config" at 14,20 size 9x3 color=#3B82F6 text=#FFFFFF round=4
+block SpiApi "SPI_API" at 25,20 size 9x3 color=#3B82F6 text=#FFFFFF round=4
+block SpiIsr "SPI_ISR" at 36,20 size 9x3 color=#3B82F6 text=#FFFFFF round=4
+block SpiDriverCore "SPI_Driver_Core" at 3,26 size 9x3 color=#F59E0B text=#FFFFFF round=4
+block SpiDma "SPI_DMA" at 14,26 size 9x3 color=#F59E0B text=#FFFFFF round=4
+block GpioCs "GPIO_CS" at 25,26 size 9x3 color=#F59E0B text=#FFFFFF round=4
+block HalSpi "HAL_SPI" at 36,26 size 9x3 color=#F59E0B text=#FFFFFF round=4
+note SpiSwcNote "SPIドライバ構成図(新部品・1周目)" at 3,15 size 20x3 color=#FEF3C7 text=#92400E
+RteInterface -> SpiApi
+SpiConfig -> SpiApi
+SpiApi -> SpiIsr
+SpiApi -> SpiDriverCore
+SpiIsr -> SpiDriverCore
+SpiDriverCore -> SpiDma
+SpiDriverCore -> GpioCs
+SpiDriverCore -> HalSpi
+SpiDma -> HalSpi
+GpioCs -> HalSpi

@@ -3,7 +3,7 @@
 // 各図の差分は @include の 1 行だけ。外すのも同じ欄から(BLK-primary-20260926-1205-friction)
 const fs = require('node:fs');
 const path = require('node:path');
-const { test, expect, bootPlain, importSb, getEditorText, saveDir, FIXTURES } = require('./_scenario');
+const { test, expect, bootPlain, importSb, importFolder, getEditorText, saveDir, FIXTURES } = require('./_scenario');
 
 const SET = path.join(FIXTURES, 'primary-noinc');
 const SWC = ['spi', 'can', 'uart', 'adc', 'timer', 'gpio'].map(p => `${p}_swc.sb`);
@@ -71,4 +71,18 @@ test('primary-01: 書き方の手本が無いときは本文に書くパスを�
   await expect(page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]')).toHaveCount(1);
   // 共通部は取り込み済みなので候補から消え、自分を取り込める図も無いので案内が出る
   await expect(page.locator('#include-section')).toContainText('取り込める図が無い');
+});
+
+// 「.sb 読込 ▾」でフォルダを 1 回選べば 12 枚と共通部を選び直さずに読め、本文に書くパスもフォルダから分かる(BLK-junior-20260926-1705-wish)
+test('primary-01: フォルダを 1 回選ぶと全部の図と共通部が読まれ、本文に書くパスを直さずに取り込める', async ({ page }) => {
+  await bootPlain(page);
+  await importFolder(page, SET, path.join(SET, 'adc_swc.sb'));               // パスの順で最初の、取り込まれていない図
+  await expect(page).toHaveTitle(/adc_swc\.sb/);
+  await expect(page.locator('#error-bar')).not.toContainText('include');      // データフロー図の @include も共通部で解ける
+  await expect(page.locator('#include-pick option:checked')).toHaveText('shared/common.sb');   // 画面の図名もフォルダの中のパス(選んだフォルダ名は付かない)
+  await expect(page.locator('#include-path')).toHaveValue('shared/common.sb');   // フォルダから読んだ図は相対パスが分かる
+  await page.getByRole('button', { name: '取り込む', exact: true }).click();
+  expect(await getEditorText(page)).toBe(withInclude(read(path.join(SET, 'adc_swc.sb')), 'shared/common.sb'));
+  await expect(page.locator('#error-bar .diag:visible', { hasText: 'rte' })).toHaveCount(0);
+  await expect(page.locator('#svg-wrap svg g[data-type="block"][data-id="rte"]')).toHaveCount(1);
 });

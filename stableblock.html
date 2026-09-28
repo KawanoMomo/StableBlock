@@ -50,13 +50,21 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #header .toolbar > .sep { margin:0 2px; }
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
 .tb-more[hidden] { display:none; }
-#export-menu, #png-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
-#export-menu[hidden], #png-menu[hidden] { display:none; }
+#export-menu, #png-menu, #open-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+#export-menu[hidden], #png-menu[hidden], #open-menu[hidden] { display:none; }
 /* PNG と ▾ は 1 つの入口(押せば PNG を保存、▾ で透過・コピーを選ぶ)。見た目は隣り合う 1 組 */
 .tb-split-l { border-top-right-radius:0; border-bottom-right-radius:0; }
 .tb-split-r { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:-4px; border-left-width:0; padding:4px 6px; }
-#export-menu .tb, #png-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
-#export-menu .em-head, #png-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
+#export-menu .tb, #png-menu .tb, #open-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
+#export-menu .em-head, #png-menu .em-head, #open-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
+#open-menu { border-color:var(--green); }
+#open-menu .em-head { color:#86EFAC; }
+/* 「一括 ▾」の前回選んだ形式(先頭に並び、印が付く) */
+#export-menu .em-mark { display:none; margin-left:8px; font-size:9px; font-weight:400; color:#A5B4FC; }
+#export-menu .em-last .em-mark { display:inline; }
+/* ファイル・フォルダをプレビューへドラッグしている間の案内(離すと「.sb 読込」と同じに読む) */
+#drop-hint { position:fixed; z-index:55; display:flex; align-items:center; justify-content:center; border:2px dashed var(--green); border-radius:8px; background:rgba(15,23,42,0.72); color:#86EFAC; font-size:13px; font-weight:600; pointer-events:none; }
+#drop-hint[hidden] { display:none; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
@@ -223,8 +231,10 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb tb-green" data-term="new-sb" onclick="newDiagram()" title="空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる">新規</button>
     <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する(読み込んだ図は同じファイル名で)">.sb 保存</button>
-    <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
+    <button class="tb tb-green" data-term="open-sb" id="open-sb-btn" aria-haspopup="menu" onclick="openOpenMenu(this)" title=".sb を読み込む。ファイルを選ぶか、フォルダを選んで配下の .sb を全部読む(プレビューへファイル・フォルダをドロップしても読める)">.sb 読込 ▾</button>
+    <div id="open-menu" role="menu" hidden><div class="em-head">.sb 読込</div><button class="tb tb-green" role="menuitem" data-term="open-sb-files" onclick="openMenuPick('file-input')" title=".sb ファイルを選んで読み込む(本体と include 先を一緒に選べる)">ファイルを選ぶ</button><button class="tb tb-green" role="menuitem" data-term="open-sb-folder" onclick="openMenuPick('folder-input')" title="フォルダを選び、配下の .sb を全部読み込む。@include を相対パスで解き、ほかの図から取り込まれていない図を開く">フォルダを選ぶ</button></div>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
+    <input type="file" id="folder-input" webkitdirectory multiple style="display:none" onchange="importSB(this,true)">
     <div class="sep"></div>
     <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
 <span id="search-count" class="search-count" aria-live="polite"></span></span>
@@ -248,6 +258,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     </div>
     <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
+    <div id="drop-hint" hidden>ここに離すと読み込む(.sb・フォルダ)</div>
   </div>
   <div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="prop-panel" tabindex="0" title="ドラッグでプレビューとツール欄の幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="prop-panel">
@@ -980,11 +991,11 @@ function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasI
 function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();renderExportAll();}
 // エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
-function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
+function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 // 共通部を動かした影響(core/check の includeImpact。CLI の npm run check と同じ診断): 表示中の図を @include している一緒に読み込んだ図にも同じ診断を当て、
 // 読み込んだ時の本文から増えたエラー・警告を、エラー欄の下に「ほかの図: {図名} L{n}: ...」で並べる(押すとその図のその行へ)。見出しに取り込んでいる図の名前
 let impactBase={},impact={includers:[],added:[]},hitLine=null;const impactCache=new Map();
-function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
+function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
 function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
 // 一緒に読み込んだ図を開き、line があればその行の要素を選んで本文をその行へ送る(エラー欄に出る図名はどれもこれで開く)
 function openImpact(i){const d=impact.added[i];if(d)openLoadedAt(d.path,d.line);}
@@ -1037,22 +1048,59 @@ function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
 async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
-// .sb 読込: 本体と include 先を一緒に選べる(複数選択)。ほかの選んだファイルから include されていないものが本文になる
-async function importSB(input){const files=[...(input.files||[])];input.value='';if(!files.length)return;
-  const texts=await Promise.all(files.map(readFileText)),keys=files.map(f=>(f.webkitRelativePath||f.name).split('\\').join('/'));if(texts.every(t=>t===null))return;
-  pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
-  const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
-  let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
+// .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
+// どちらも @include を読込んだパスからの相対で解き、ほかの読んだ図から include されていない図が本文になる(core/check の pickMainDiagram)
+function openOpenMenu(btn){const m=document.getElementById('open-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
+  const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function openMenuPick(id){closeExportMenu();document.getElementById(id).click();}
+async function importSB(input,folder){const files=[...(input.files||[])];input.value='';if(!files.length)return;
+  const list=files.map(f=>({path:(f.webkitRelativePath||f.name).split('\\').join('/'),file:f}));
+  await loadSbEntries(folder?window.StableBlockCheck.trimCommonDir(window.StableBlockCheck.folderSbEntries(list)):list,folder);}
+async function loadSbEntries(list,folder){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
+  const texts=await Promise.all(list.map(d=>readFileText(d.file)));if(texts.every(t=>t===null))return;
+  const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
+  pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});
+  dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
+// プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
+// フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む
+function droppedEntries(dt){const C=window.StableBlockCheck,items=[...(dt.items||[])].filter(it=>it.kind==='file');
+  const entries=items.map(it=>it.webkitGetAsEntry?it.webkitGetAsEntry():null);
+  if(!entries.length||entries.some(e=>!e))return Promise.resolve([...(dt.files||[])].filter(f=>C.sbLoadable(f.name,false)).map(f=>({path:f.name,file:f})));
+  const direct=[],inFolder=[];
+  const fileOf=e=>new Promise(r=>e.file(r,()=>r(null)));
+  const readAll=dir=>new Promise(r=>{const rd=dir.createReader(),out=[];const step=()=>rd.readEntries(es=>{if(!es.length)r(out);else{out.push(...es);step();}},()=>r(out));step();});
+  const walk=async e=>{const path=e.fullPath.replace(/^\//,'');
+    if(e.isFile){if(C.sbLoadable(path,true)){const f=await fileOf(e);if(f)inFolder.push({path,file:f});}return;}
+    if(e.isDirectory&&!e.name.startsWith('.'))for(const c of await readAll(e))await walk(c);};
+  return (async()=>{for(const e of entries){if(e.isFile){if(C.sbLoadable(e.name,false)){const f=await fileOf(e);if(f)direct.push({path:e.name,file:f});}}else await walk(e);}
+    return direct.length?[...direct,...C.folderSbEntries(inFolder)]:C.trimCommonDir(C.folderSbEntries(inFolder));})();}
+let dropHintTimer=0;
+function showDropHint(on){const h=document.getElementById('drop-hint');clearTimeout(dropHintTimer);
+  if(!on){h.hidden=true;return;}const r=document.getElementById('preview-area').getBoundingClientRect();
+  Object.assign(h.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});h.hidden=false;dropHintTimer=setTimeout(()=>showDropHint(false),200);}
+{const area=document.getElementById('preview-area'),hasFiles=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files');
+  area.addEventListener('dragover',e=>{if(!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';showDropHint(true);});
+  area.addEventListener('drop',async e=>{if(!hasFiles(e))return;e.preventDefault();showDropHint(false);
+    const list=await droppedEntries(e.dataTransfer);if(!list.length){alert('落としたものに .sb が無い(読み込むのは .sb / .stableblock、フォルダはその配下)');return;}
+    await loadSbEntries(list,false);});}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};
 function renderExportAll(){const n=Object.keys(includeFiles).length;document.querySelectorAll('.tb-more').forEach(b=>{b.hidden=n<2;});if(n<2)closeExportMenu();}
-function closeExportMenu(){['export-menu','png-menu'].forEach(id=>{const m=document.getElementById(id);if(m)m.hidden=true;});}
+function closeExportMenu(){['export-menu','png-menu','open-menu'].forEach(id=>{const m=document.getElementById(id);if(m)m.hidden=true;});}
+// 「一括 ▾」は前回選んだ形式を印付きで先頭に出す(開くとそこにフォーカスがあり、Enter で同じ形式をもう一度)。
+// 利用者ごとの表示の便宜なので localStorage に持ち、本文には書かない。読めなければ元の並び
+const BULK_LAST_KEY='stableblock.bulkExportFormat';
+function bulkLastFormat(){try{return localStorage.getItem(BULK_LAST_KEY);}catch(e){return null;}}
+function orderExportMenu(m){const last=bulkLastFormat(),btns=[...m.querySelectorAll('button[data-fmt]')],by=new Map(btns.map(b=>[b.dataset.fmt,b]));
+  window.StableBlockCheck.bulkFormatOrder(Object.keys(BULK_FMT),last).forEach(k=>{const b=by.get(k);if(!b)return;
+    const mark=b.querySelector('.em-mark');if(k!==last&&mark)mark.remove();
+    if(k===last&&!mark){const s=document.createElement('span');s.className='em-mark';s.setAttribute('aria-hidden','true');s.textContent='前回';b.appendChild(s);}
+    b.classList.toggle('em-last',k===last);m.appendChild(b);});}
 function openExportAll(btn){const m=document.getElementById('export-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
-  syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);
+  syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);orderExportMenu(m);
   const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
-function exportAllFromMenu(item){closeExportMenu();exportAll(item.dataset.fmt);}
+function exportAllFromMenu(item){closeExportMenu();try{localStorage.setItem(BULK_LAST_KEY,item.dataset.fmt);}catch(e){}exportAll(item.dataset.fmt);}
 // PNG の ▾: 背景の透過・クリップボードへのコピーを選ぶ(「一括 ▾」と同じ出し方。PNG のボタンの下に開き、先頭にフォーカス、Esc・外を押すと閉じる)
 function openPngMenu(btn){const m=document.getElementById('png-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
   const r=(btn.previousElementSibling||btn).getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
@@ -1077,7 +1125,7 @@ function showBulkReport(label,zipName,per){const el=document.getElementById('exp
   el.innerHTML=`<b>${esc(label)}: ${per.length} 枚を ${esc(zipName)} に書き出した</b><div>${per.map(x=>esc(x.name)).join('、')}</div>`
     +(drops.length?`<b>${esc(label)} に書き出せなかったもの(${drops.length} 件)</b><ul>${drops.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`:'<div class="hint">クリックで閉じる</div>');
   el.hidden=false;}
-document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,.tb-more,#png-more'))closeExportMenu();});
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,#open-menu,.tb-more,#png-more,#open-sb-btn'))closeExportMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
 function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない

@@ -1,0 +1,34 @@
+# StableBlock v0.7
+@canvas width=960 height=520 grid=20
+@include "shared/common.sb"
+
+# Application
+
+
+# Middleware
+
+
+# Platform
+
+
+# Connections
+group SpiDataflow "SpiDataflow" at 3,3 size 20x18 color=#F1F5F9 border=#94A3B8
+block SpiIrq "SpiIrq" at 4,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block RxBuffer "RxBuffer" at 13,5 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block TxBuffer "TxBuffer" at 4,9 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block DmaCtrl "DmaCtrl" at 13,9 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block FrameParser "FrameParser" at 4,13 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block ChecksumCalc "ChecksumCalc" at 13,13 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block Rte "Rte" at 4,17 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block App "App" at 11,17 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+note DMA "DMA 転送はバッファ満杯時のみ発火" at 22,1 size 8x2 color=#FEF3C7 text=#92400E
+SpiIrq -> RxBuffer "irq_flag"
+SpiIrq -> TxBuffer
+RxBuffer -> DmaCtrl "raw_frame"
+TxBuffer -> DmaCtrl
+DmaCtrl -> FrameParser "dma_desc"
+FrameParser -> ChecksumCalc
+ChecksumCalc -> Rte "checksum"
+Rte -> App "app_data"
+DmaCtrl -> Rte
+FrameParser -> App

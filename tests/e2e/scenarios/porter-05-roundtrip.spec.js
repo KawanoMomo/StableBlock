@@ -40,7 +40,7 @@ test('porter-05: @include の図を include 先と一緒に読込むと描かれ
 
   // 選ぶ順が逆でも、ほかのファイルから include されていない方が本体になる
   await bootPlain(page);
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: '.sb 読込' }).click()]);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: '.sb 読込' }).click().then(() => page.getByRole('menuitem', { name: 'ファイルを選ぶ' }).click())]);
   await chooser.setFiles([INC_COMMON, INC_MAIN]);
   await expect(page.locator('#editor')).toHaveValue(original.toString('utf8'));
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
@@ -51,7 +51,7 @@ test('porter-05: include 先を選ばずに読込むと、@include の行と参�
   await importSb(page, INC_MAIN);
   const bar = page.locator('#error-bar');
   await expect(bar).toBeVisible();
-  await expect(bar).toContainText('L4: include 先「shared/common.sb」を読めない(「.sb 読込」で本体と一緒に選ぶ)');
+  await expect(bar).toContainText('L4: include 先「shared/common.sb」を読めない(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)');
   await expect(bar).toContainText('L3: 接続「ui -> shared_db」: 「shared_db」という ID の block / note が無い(読めていない include 先: L4「shared/common.sb」)');
   await expect(page.locator('#status')).toContainText('Err: 2');
 
