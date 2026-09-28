@@ -483,3 +483,71 @@ test('fitParents: 利用者が親の外へ出し切った要素では親を広�
   const parents = { A: 'P' };
   assert.deepEqual(fitParents([p, a], parents, [{ id: 'A', sides: ['r'] }]), []);
 });
+
+// 枠をまたいだ group(Adc_Stack が Ecu_Sw の右下にはみ出している。Adc_Stack は Ecu_Sw の子ではない)
+const STRADDLE = [
+  { type: 'group', id: 'Ecu_Sw', x: 1, y: 1, w: 20, h: 8 },
+  { type: 'group', id: 'Adc_Stack', x: 2, y: 3, w: 20, h: 15 },
+  { type: 'block', id: 'Adc_Hw', x: 3, y: 10, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_Drv', x: 12, y: 10, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_If', x: 3, y: 14, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_Filter', x: 12, y: 14, w: 8, h: 3 },
+];
+
+test('placeInGroupFit: 枠をまたぐ group がある図で外側に足しても、またいだ group の中身を 1 つずつ押し出さない(動くのは広がる group だけ)', () => {
+  const gr = STRADDLE[0];
+  const p = placeInGroupFit(STRADDLE, gr, 8, 3, null);
+  // 置いた block はまたいだ group と重ならない
+  assert.ok(!(p.x < 22 + 1 && 2 < p.x + 8 + 1 && p.y < 18 + 1 && 3 < p.y + 3 + 1), `at ${p.x},${p.y}`);
+  assert.deepEqual(p.changes.map(c => c.id), ['Ecu_Sw']);
+  const e = p.changes[0];
+  assert.ok(e.y + e.h <= p.y + 3 + 1, `Ecu_Sw は置いた block が収まる分だけ(${e.h})`);
+  // 2 回目も伸び続けない(足した block の高さ + 1 まで)
+  const after = STRADDLE.map(i => (i.id === 'Ecu_Sw' ? { ...i, ...e } : i)).concat([{ type: 'block', id: 'N1', x: p.x, y: p.y, w: 8, h: 3 }]);
+  const p2 = placeInGroupFit(after, { ...gr, ...e }, 8, 3, { x: p.x, y: p.y, w: 8, h: 3 });
+  for (const c of p2.changes) assert.ok(['Ecu_Sw'].includes(c.id), `動いたのは ${c.id}`);
+  const e2 = p2.changes.find(c => c.id === 'Ecu_Sw');
+  if (e2) assert.ok(e2.h - e.h <= 3 + 1, `2 回目の伸び ${e2.h - e.h}`);
+});
+
+test('fitParents: 押し出すのは兄弟(と祖先の兄弟)だけ。枠をまたぐ別の group の子は、その group ごとでなければ動かさない', () => {
+  const parents = parentMap(STRADDLE);
+  assert.equal(parents.Adc_Hw, 'Adc_Stack');
+  const grown = STRADDLE.map(i => (i.id === 'Ecu_Sw' ? { ...i, h: 20 } : i));
+  const ch = fitParents(grown, parents, [{ id: 'Ecu_Sw', sides: ['b'] }], 1, [{ id: 'Ecu_Sw', from: { x: 1, y: 1, w: 20, h: 8 } }]);
+  assert.deepEqual(ch.filter(c => c.type === 'block'), []);
+});
+
+test('fitParents(drop): group を別の group の中へ落として枠をまたげば、外側が(祖先まで)広がって中に収める', () => {
+  // Top > Ecu_Sw。Adc_Stack(外にあった)を Ecu_Sw の中へ落とした: 左上は Ecu_Sw の内側、右下ははみ出す
+  const items = [
+    { type: 'group', id: 'Top', x: 0, y: 0, w: 40, h: 12 },
+    { type: 'group', id: 'Ecu_Sw', x: 1, y: 1, w: 20, h: 8 },
+    { type: 'group', id: 'Adc_Stack', x: 2, y: 3, w: 20, h: 8 },
+    { type: 'block', id: 'Adc_Hw', x: 3, y: 5, w: 8, h: 3 },
+    { type: 'block', id: 'Other', x: 30, y: 2, w: 8, h: 3 },
+  ];
+  const before = { Ecu_Sw: 'Top', Other: 'Top', Adc_Hw: 'Adc_Stack' };   // 落とす前 Adc_Stack は Top の外
+  const ch = fitParents(items, before, [{ id: 'Adc_Stack', sides: ['l'], drop: true }, { id: 'Adc_Hw', sides: ['l'] }]);
+  const cur = items.map(i => ({ ...i, ...(ch.find(c => c.id === i.id) || {}) }));
+  const pm = parentMap(cur);
+  assert.equal(pm.Adc_Stack, 'Ecu_Sw');
+  assert.equal(pm.Ecu_Sw, 'Top');
+  assert.equal(pm.Adc_Hw, 'Adc_Stack');
+  const byId = Object.fromEntries(cur.map(i => [i.id, i]));
+  assert.deepEqual([byId.Adc_Stack.x, byId.Adc_Stack.y, byId.Adc_Stack.w, byId.Adc_Stack.h], [2, 3, 20, 8]);   // 落とした要素は動かさない
+  assert.deepEqual([byId.Adc_Hw.x, byId.Adc_Hw.y], [3, 5]);
+  // drop の無い移動(矢印・数値)では、またいだ group に取り込まない(従来どおり)
+  const ch0 = fitParents(items, before, [{ id: 'Adc_Stack', sides: ['l'] }]);
+  assert.deepEqual(ch0, []);
+});
+
+test('fitParents(drop): 落とした先の左上が group の外なら取り込まない。小さい group には取り込まない', () => {
+  const items = [
+    { type: 'group', id: 'A', x: 10, y: 10, w: 10, h: 6 },
+    { type: 'block', id: 'B', x: 5, y: 12, w: 8, h: 3 },    // 左上が A の外(左)で、右端だけ A に掛かる
+    { type: 'group', id: 'Big', x: 12, y: 11, w: 30, h: 20 }, // 左上は A の内側だが A より大きい
+  ];
+  assert.deepEqual(fitParents(items, {}, [{ id: 'B', sides: ['r'], drop: true }]), []);
+  assert.deepEqual(fitParents(items, {}, [{ id: 'Big', sides: ['r'], drop: true }]), []);
+});
