@@ -18,7 +18,7 @@ const SB_TERMS_TABLE = {
   'fit': { ja: ['全体表示', '図の全体を画面に収める(F キー)'], en: ['Fit', 'Fit the whole diagram (F key)'] },
   'undo': { ja: ['↩', '元に戻す(Ctrl+Z)'], en: ['↩', 'Undo (Ctrl+Z)'] },
   'redo': { ja: ['↪', 'やり直す(Ctrl+Y)'], en: ['↪', 'Redo (Ctrl+Y)'] },
-  'line-mode': { ja: ['⌇ 曲線', '線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)'] },
+  'line-mode': { ja: ['⌇ 曲線', '線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。何も選んでいないときの L キー)'] },
   'highlight': { ja: ['◎ 未接続', '接続の無いブロックを薄く表示する/戻す(H キー)'], en: ['◎ Dim unlinked', 'Dim blocks without connections / restore (H key)'] },
   'anno': { ja: ['◇ 注釈', '注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる'], en: ['◇ Show notes', 'Show / hide notes (N key). Click a shown note to select it'] },
   // 仮の ID(__new_)のまま残った要素に、ラベルから ID を一括で付ける(プロパティ欄の ID 欄は 1 つずつの改名)

@@ -795,6 +795,52 @@ test('junior-02: 「新規」で @canvas の 1 行だけの図から始まり、
 
 // ─── 名付け・複製をキャンバスの上で: ダブルクリック / F2 でその場でラベルを直し、貼り付けは間の接続も複製し、
 //     キャンバスを押すとフォーカスがボタンから離れる(BLK-owner-20260926-0451-4) ───
+// 1 つ選んで文字を打つとラベルの編集になり、単キーのショートカット(L・N・H・F)で本文や表示が変わらない(BLK-owner-20260927-0728-2)
+test('junior-02: 追加した直後にそのまま名前を打つとラベルになり、L・N・H・F を含む名前でも本文の @canvas 行や注釈の表示が変わらない', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const canvasLine = async () => (await getEditorText(page)).split('\n').find(l => l.startsWith('@canvas'));
+  const labels = async () => [...(await getEditorText(page)).matchAll(/^block \S+ "([^"]*)"/gm)].map(m => m[1]);
+  const c0 = await canvasLine();
+  const anno = page.locator('#anno-btn');
+  const annoClass = await anno.getAttribute('class');
+
+  // 追加 → そのまま打つ → Enter: ラベルが打った名前になる(F で全体表示・L で線の形・N で注釈・H で薄めが走らない)
+  for (const name of ['Filter Logic', 'Nvm Hal']) {
+    await props.getByRole('button', { name: '+ ブロック追加' }).click();
+    await page.keyboard.type(name);
+    await expect(page.locator('#inline-label')).toHaveValue(name);
+    await page.keyboard.press('Enter');
+    await expect.poll(labels).toContain(name);
+    await page.keyboard.press('Escape');                              // Enter の後に ID 欄へ移った場合も含めて選択を外す
+    await page.keyboard.press('Escape');
+  }
+  expect(await labels()).not.toContain('New Block');
+  expect(await canvasLine()).toBe(c0);
+  expect(await anno.getAttribute('class')).toBe(annoClass);
+  await expect(page.locator('#hl-btn')).not.toHaveClass(/tb-hl-active/);
+
+  // 選んだ block に打つと、そのラベルを打った文字で置き換える(Esc で取り消せば元のまま)
+  const first = svg.locator('g[data-type="block"]').first();
+  await first.click();
+  await page.keyboard.type('Logger');
+  await page.keyboard.press('Escape');
+  expect(await labels()).toContain('Filter Logic');
+  expect(await canvasLine()).toBe(c0);
+
+  // 2 つ選んでいるときの L は本文を書き換えない。何も選んでいないときの L は今どおり線の形を切り替える
+  await first.click();
+  await svg.locator('g[data-type="block"]').nth(1).click({ modifiers: ['Shift'] });
+  await page.keyboard.press('l');
+  expect(await canvasLine()).toBe(c0);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#prop-title')).toHaveText('ツール');
+  await page.keyboard.press('l');
+  await expect.poll(canvasLine).toMatch(/route=/);
+});
+
 test('junior-02: ラベルはキャンバス上でダブルクリック / F2 で直せ、コピーは間の接続も複製し、押したボタンに Enter が残らない', async ({ page }) => {
   await bootPlain(page);
   await importSb(page, SRC);

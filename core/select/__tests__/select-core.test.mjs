@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -120,4 +120,25 @@ test('fieldKeyAction: Enter で確定、Esc で取消、↑↓ は ▲▼、Tab 
   assert.equal(fieldKeyAction('Tab', true), 'prev');
   assert.equal(fieldKeyAction('1', false), null);
   assert.equal(fieldKeyAction('ArrowLeft', false), null);            // 欄の中の ←→ はカーソル移動
+});
+
+// 1 つ選んで文字を打つとラベルの編集になり、単キーのショートカットで本文や表示が変わらない(BLK-owner-20260927-0728-2)
+test('typedKeyAction: 1 つ選んでいるときの文字・IME はラベルの編集。L・N・H・F もラベルの文字になる', () => {
+  for (const k of ['F', 'i', 'l', 'L', 'N', 'h', '1', '_', 'あ', 'Process']) assert.equal(typedKeyAction(k, 1), 'label', k);
+  assert.equal(typedKeyAction(' ', 1), null);                         // 空白からは始めない
+  for (const k of ['Enter', 'Delete', 'ArrowUp', 'Shift', 'F2', 'Escape', 'Tab']) assert.equal(typedKeyAction(k, 1), null, k);
+  assert.equal(typedKeyAction('c', 1, { ctrl: true }), null);          // Ctrl+C などは図のショートカットに任せる
+  assert.equal(typedKeyAction('l', 1, { meta: true }), null);
+  assert.equal(typedKeyAction('f', 1, { alt: true }), null);
+});
+
+test('typedKeyAction: 本文を書き換える L は何も選んでいないときだけ。H・N・F は 1 つ選んでいなければ効く', () => {
+  assert.equal(typedKeyAction('l', 0), 'line-mode');
+  assert.equal(typedKeyAction('L', 0), 'line-mode');
+  assert.equal(typedKeyAction('l', 2), null);                         // 複数選択中も本文は変えない
+  assert.equal(typedKeyAction('h', 0), 'highlight');
+  assert.equal(typedKeyAction('N', 2), 'annotations');
+  assert.equal(typedKeyAction('f', 0), 'fit');
+  assert.equal(typedKeyAction('x', 0), null);
+  assert.equal(typedKeyAction('Process', 0), null);
 });

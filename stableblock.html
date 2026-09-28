@@ -215,7 +215,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="undo" onclick="undo()" title="元に戻す(Ctrl+Z)">↩</button>
     <button class="tb" data-term="redo" onclick="redo()" title="やり直す(Ctrl+Y)">↪</button>
     <div class="sep"></div>
-    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)">⌇ 曲線</button>
+    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。何も選んでいないときの L キー)">⌇ 曲線</button>
     <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続</button>
     <div class="sep"></div>
     <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
@@ -702,12 +702,12 @@ function renderPropsPanel(){
       ${includeSectionHtml()}
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
-        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
+        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
-          <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
+          選択なしで <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
           <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示</div>
       </details>`;
     }
@@ -1272,10 +1272,15 @@ document.addEventListener('keydown',e=>{
   // Arrow keys: move selected
   const an=window.StableBlockSelect.arrowNudge(e.key);if(sel.length&&an){e.preventDefault();if(sel.length>1)batchNudge(an.axis,an.d);else nudge(an.axis,an.d);return;}
   // H: toggle highlight
-  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
-  if(e.key==='l'||e.key==='L'){e.preventDefault();cycleLineMode();return;}
-  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitView();return;}
-  if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
+  // 1 キー(core/select typedKeyAction): 1 つ選んで文字を打つと、その文字からラベルのその場編集(Excel・draw.io と同じ)。
+  // フォーカスをその場編集の欄へ移すだけで既定の動作は止めない: 打った文字(IME の変換も)が全選択のラベルを置き換える。
+  // H・N・F(表示だけ)は 1 つ選んでいないとき、L(本文の @canvas 行を書く)は何も選んでいないときだけ
+  const ta=window.StableBlockSelect.typedKeyAction(e.key,sel.length,{ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});
+  if(ta==='label'){startInlineEdit(sel[0].type,sel[0].id);return;}
+  if(ta==='highlight'){e.preventDefault();toggleHighlight();return;}
+  if(ta==='line-mode'){e.preventDefault();cycleLineMode();return;}
+  if(ta==='fit'){e.preventDefault();fitView();return;}
+  if(ta==='annotations'){e.preventDefault();toggleAnnotations();return;}
 });
 
 // 欄の境界(DSL | プレビュー、プレビュー | ツール欄)をドラッグして幅を変える。幅の決め方は core/layout paneWidths(プレビューに最小幅を残す)。
