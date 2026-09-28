@@ -273,6 +273,7 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
 }
 
+
 // ── @include ──────────────────────────────────────────────
 // 本文と include 先はファイルのパス(区切りは /)で呼ぶ。HTML 版は「.sb 読込」で一緒に選んだファイル、VSCode 拡張は
 // 拡張ホストが読んだファイル、CLI は fs から読み、同じ expandIncludes / checkIncluded を通す(同じ診断になる)。

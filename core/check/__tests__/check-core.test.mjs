@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote } from '../check-core.mjs';
+import { findIdSpellingVariants } from '../check-cli.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -8,6 +9,24 @@ const check = (text, mode = 'curved') => {
   const p = parseDSL(text);
   return checkDiagram(p, text.split('\n'), connectionPaths(p, mode));
 };
+
+test('findIdSpellingVariants: 図をまたぐ大文字小文字・区切りの違いを両方の行付きで検出する', () => {
+  const diagram = (file, text) => ({ file, blocks: parseDSL(text).blocks });
+  const variants = findIdSpellingVariants([
+    diagram('uart_swc.sb', 'block UartDrv "UART" at 1,1 size 4x2'),
+    diagram('junior/uart_swc.sb', 'block uartdrv "UART" at 1,1 size 4x2'),
+    diagram('same.sb', 'block UartDrv "UART" at 1,1 size 4x2\nblock unrelated "Other" at 8,1 size 4x2'),
+  ]);
+  assert.deepEqual(variants.map(({ a, b }) => [a.id, a.file, a.line, b.id, b.file, b.line]), [
+    ['UartDrv', 'uart_swc.sb', 1, 'uartdrv', 'junior/uart_swc.sb', 1],
+    ['uartdrv', 'junior/uart_swc.sb', 1, 'UartDrv', 'same.sb', 1],
+  ]);
+  assert.deepEqual(findIdSpellingVariants([
+    diagram('a.sb', 'block Same_Id "A" at 1,1 size 4x2'),
+    diagram('b.sb', 'block Same_Id "B" at 1,1 size 4x2'),
+    diagram('c.sb', 'block unrelated "C" at 1,1 size 4x2'),
+  ]), []);
+});
 
 test('explainLine: キーワードの書き間違いを言い当てる', () => {
   assert.match(explainLine('blok b "B" at 8,1 size 4x2'), /「blok」.*block の書き間違い/);

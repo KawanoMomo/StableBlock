@@ -33,6 +33,20 @@ function collect(p) {
     .flatMap(n => collect(join(p, n))).filter(f => f.endsWith('.sb'));
 }
 
+// 複数図で大文字小文字・区切りだけが異なる部品 ID をまとめて報告する。
+export function findIdSpellingVariants(diagrams) {
+  const normalize = id => String(id).replace(/[_-]/g, '').toLowerCase();
+  const items = (diagrams || []).flatMap(({ file, blocks }) => (blocks || []).map(block => ({
+    id: block.id, file, line: block.line,
+  })));
+  const out = [];
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const a = items[i], b = items[j];
+    if (a.id !== b.id && normalize(a.id) === normalize(b.id)) out.push({ a, b });
+  }
+  return out;
+}
+
 // 指定したファイル・フォルダの .sb と、それらが @include している先(フォルダの外も)。重複なし、絶対パス
 export function collectWithIncludes(paths) {
   const out = [], seen = new Set();
@@ -97,11 +111,19 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   if (!args.length) { console.error(USAGE); process.exit(2); }
   let errors = 0, warns = 0;
-  for (const f of args.flatMap(collect)) {
+  const files = args.flatMap(collect);
+  for (const f of files) {
     for (const d of checkFile(f)) {
       console.log(`${relative(process.cwd(), d.file) || d.file}:${d.line}: ${d.level}: ${d.msg}${resolve(d.file) !== resolve(f) ? `(${relative(process.cwd(), f)} から include)` : ''}`);
       if (d.level === 'error') errors++; else warns++;
     }
+  }
+  const diagrams = files.map(file => ({ file, blocks: parseDSL(readFileSync(file, 'utf8')).blocks }));
+  for (const { a, b } of findIdSpellingVariants(diagrams)) {
+    const aFile = relative(process.cwd(), a.file) || a.file;
+    const bFile = relative(process.cwd(), b.file) || b.file;
+    console.log(`${aFile}:${a.line}: warn: block ID "${a.id}" は ${bFile}:${b.line} の "${b.id}" と表記揺れの可能性があります`);
+    warns++;
   }
   console.log(`error ${errors} / warn ${warns}`);
   process.exit(errors ? 1 : 0);
