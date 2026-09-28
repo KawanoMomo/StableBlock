@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-porter-20260929-0530: 取れない属性値(`style=dotted` など、style / route / grow / lpos)を書いた行に「style=dotted は使えない。実線で描く(使える値: …)」の警告がエラー欄・ステータスバー・`npm run check`・VSCode 拡張に出る(本文は書き換えない)
 - BLK-owner-20260928-2255-2: 同じ 2 つの block の間に向きの違う接続(行き A → B「req」と戻り B → A「notify」)を作図 UI だけで結べる。B → A の順に選ぶと既存の接続の上に「B → A」ボタンが出る(Enter・右ボタンのドラッグでも。同じ向きは今どおり足さない)。2 つを選んだ接続パネルは向きごとに行を並べ、ラベル・色・太さ・形・削除をその向きの線だけに効かせる。逆向きが別にあるときの「⇄ 反転」「↔ 双方向」は押せない。行きと戻りは「同じ組の 2 本目」の警告を出さず、同じ向きの 2 本目だけを警告する(HTML 版・VSCode 拡張、core/label の hasConnDir・connsBetween ほか、core/check)
 - BLK-owner-20260927-0728-5: 取り込んだ共通部(@include 先)の block・group・注釈を選ぶと、プロパティ欄は値(ラベル・ID・位置・サイズ・色)を見せるだけになり、打っても何も変わらない欄・色・削除と「Enter でほかの図の同じ表示名も揃う」を出さない。直す入口は「common.sb を開く」の 1 つ。選んだまま文字を打ってもその場編集は開かない(HTML 版・VSCode 拡張、core/check の includedItemRows)
 - BLK-owner-20260927-0728-4: group の中で「選択をグループ化」しても、触っていない親 group と兄弟の行が変わらない。新しい子 group の余白は親の内側 1 と兄弟との隙間に収まるよう辺ごとに 0 まで詰め、選んだ block が親の枠に接しているときだけ今どおり親が広がる(HTML 版・VSCode 拡張、core/layout の groupRectFor)

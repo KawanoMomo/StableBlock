@@ -8,6 +8,46 @@
 const KEYWORDS = ['block', 'group', 'note', '@canvas', '@include'];
 const BOX_FORM = { block: 'block ID "ラベル" at X,Y size WxH', group: 'group ID "ラベル" at X,Y size WxH', note: 'note ID "テキスト" at X,Y size WxH' };
 
+// 値を列挙から取る属性(core/dsl の ATTRS の style / route / grow / lpos)の取れる値と、知らない値のときに実際にどう描くか
+// (render / label / layout の既定と同じ)。知らない値は本文を書き換えずに読み、その行で警告する(黙って既定に落とさない)
+const ATTR_VALUES = {
+  block: { style: [['solid', 'dashed', 'bold'], '実線で描く'] },
+  note: { style: [['solid', 'dashed', 'bold'], '実線で描く'] },
+  conn: {
+    style: [['solid', 'dashed'], '実線で描く'],
+    route: [['curved', 'straight', 'ortho'], '曲線で描く'],
+    lpos: [['right', 'left', 'top', 'bottom', 'center'], 'ラベルを線の右に置く'],
+  },
+  canvas: {
+    route: [['curved', 'straight', 'ortho'], 'route を書いていない接続を曲線で描く'],
+    grow: [['on', 'off'], 'on と同じく操作ではみ出したら広げる'],
+  },
+};
+
+// 属性を書く部分(block / note は size の後、接続はラベルの後、@canvas は行全体)。parser と同じ切り方
+const REST_RE = {
+  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  conn: /^\S+\s+(?:-->|->)\s+\S+\s*(?:"(?:\\"|[^"])*")?\s*(.*)/,
+  canvas: /^@canvas(.*)/,
+};
+
+// kind(block / note / conn / canvas)の属性部分 rest に書かれた、取れない値の一覧 [{ attr, value, msg }]。parser と同じく属性ごとに最初の一致だけを見る
+export function badAttrValues(kind, rest) {
+  const out = [];
+  for (const [attr, [values, fallback]] of Object.entries(ATTR_VALUES[kind] || {})) {
+    const m = String(rest || '').match(new RegExp(`${attr}=(\\S+)`));
+    if (m && !values.includes(m[1])) out.push({ attr, value: m[1], msg: `${attr}=${m[1]} は使えない。${fallback}(使える値: ${values.join(' / ')})` });
+  }
+  return out;
+}
+
+// 本文の 1 行(前後の空白を除いたもの)が kind の行なら、その行の取れない値の一覧。kind の形でない行は []
+export function badAttrValuesInLine(kind, raw) {
+  const m = REST_RE[kind] && String(raw || '').trim().match(REST_RE[kind]);
+  return m ? badAttrValues(kind, m[1]) : [];
+}
+
 function editDistance(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -147,6 +187,12 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
   const canvasAt = (lines || []).map((l, i) => /^@canvas\b/.test(String(l).trim()) ? i + 1 : 0).filter(Boolean);
   for (const n of canvasAt.slice(0, -1)) {
     out.push({ line: n, level: 'warn', msg: `@canvas が ${canvasAt.length} 行ある。${ref(canvasAt[canvasAt.length - 1])} の値が効く` });
+  }
+  // style= / route= / grow= / lpos= に取れない値(style=dotted など): 本文はそのまま、既定の形で描くことをその行で知らせる
+  if (lines) {
+    const rows = canvasAt.map(n => ['canvas', n]);
+    for (const [kind, list] of [['block', parsed.blocks], ['note', parsed.notes], ['conn', parsed.connections]]) for (const it of list || []) rows.push([kind, it.line]);
+    for (const [kind, n] of rows) for (const b of badAttrValuesInLine(kind, lines[n - 1])) out.push({ line: n, level: 'warn', msg: b.msg });
   }
   const has = id => parsed.blockMap[id] || parsed.noteMap[id];
   const seen = {};

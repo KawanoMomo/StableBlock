@@ -1,0 +1,5 @@
+# porter の corpus 64 の最小形: 取れない style 値(dotted)の block と、取れる値だけの block
+@canvas width=480 height=200 grid=20
+block a "既定(solid)" at 2,1 size 8x3 color=#3B82F6 text=#FFFFFF
+block b "未対応(dotted)" at 14,1 size 8x3 color=#EF4444 text=#FFFFFF style=dotted
+a -> b

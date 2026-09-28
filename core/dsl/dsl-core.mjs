@@ -5,6 +5,7 @@
 // DOM API は使用禁止 — 純粋関数のみ。
 
 import { parseLpos, hasLpos, unquoteLabel } from '../label/label-core.mjs';
+import { badAttrValues } from '../check/check-core.mjs';
 
 // ラベルは "…"。中の \" は " を表す(core/label の quoteLabel / unquoteLabel)
 const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
@@ -81,9 +82,11 @@ function template(raw, m, keys, restGroup, attrs) {
 
 export function parseDSL(text) {
   const lines = text.split('\n'), canvas = { width: 960, height: 640, grid: 20 };
-  const blocks = [], groups = [], notes = [], connections = [], errors = [], warnings = [], blockMap = {}, groupMap = {}, noteMap = {}, allIds = {};
+  const blocks = [], groups = [], notes = [], connections = [], errors = [], canvasWarnings = [], valueWarnings = [], blockMap = {}, groupMap = {}, noteMap = {}, allIds = {};
   const canvasLines = [];
   const source = [];
+  // style=dotted などの取れない値(core/check の badAttrValues。画面・check と同じ文)
+  const valueWarn = (line, kind, rest) => { for (const b of badAttrValues(kind, rest)) valueWarnings.push({ line, msg: b.msg }); };
   for (let i = 0; i < lines.length; i++) {
     const full = lines[i], raw = full.trim(), lead = full.length - full.trimStart().length;
     const rec = { lead: full.slice(0, lead), raw, tail: full.slice(lead + raw.length), item: null, parts: null };
@@ -95,12 +98,13 @@ export function parseDSL(text) {
         const w = raw.match(/width=(\d+)/), h = raw.match(/height=(\d+)/), g = raw.match(/grid=(\d+)/), r = raw.match(/route=(\S+)/), gr = raw.match(/grow=(\S+)/);
         if (w) canvas.width = +w[1]; if (h) canvas.height = +h[1]; if (g) canvas.grid = +g[1]; if (r) canvas.route = r[1]; if (gr) canvas.grow = gr[1];
         const duplicateCanvas = canvasLines.length > 0;
-        if (duplicateCanvas) warnings.length = 0;
+        if (duplicateCanvas) canvasWarnings.length = 0;
         for (const previousLine of canvasLines) {
           source[previousLine - 1].parts = null;
-          warnings.push({ line: previousLine, msg: `@canvas が 2 行ある。L${ln} の値が効く` });
+          canvasWarnings.push({ line: previousLine, msg: `@canvas が 2 行ある。L${ln} の値が効く` });
         }
         canvasLines.push(ln);
+        valueWarn(ln, 'canvas', raw.match(RE_CANVAS)[1]);
         rec.item = canvas;
         rec.parts = duplicateCanvas ? null : template(raw, raw.match(RE_CANVAS), [], 1, ATTRS.canvas);
         continue;
@@ -118,6 +122,7 @@ export function parseDSL(text) {
         if (allIds[id]) errors.push({ line: ln, msg: `ID "${id}" が重複 (L${allIds[id]})` });
         allIds[id] = ln;
         const item = boxItem(type, m, ln);
+        valueWarn(ln, type, m[7]);
         list.push(item); map[id] = item;
         rec.item = item; rec.parts = template(raw, m, BOX_KEYS, 7, ATTRS[type]);
         done = true;
@@ -139,6 +144,7 @@ export function parseDSL(text) {
           line: ln,
         };
         connections.push(c);
+        valueWarn(ln, 'conn', rest);
         rec.item = c; rec.parts = template(raw, m, CONN_KEYS, 5, ATTRS.conn);
         continue;
       }
@@ -146,6 +152,7 @@ export function parseDSL(text) {
     } catch (e) { errors.push({ line: ln, msg: e.message }); }
   }
   const out = { canvas, blocks, groups, notes, connections, errors, blockMap, groupMap, noteMap };
+  const warnings = [...canvasWarnings, ...valueWarnings].sort((a, b) => a.line - b.line);
   Object.defineProperty(out, 'source', { value: source, enumerable: false });
   Object.defineProperty(out, 'warnings', { value: warnings, enumerable: false });
   return out;
