@@ -130,6 +130,8 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 .prop-id-box[open] > summary { margin-bottom:4px; }
 .prop-btn { padding:6px 12px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; width:100%; font-family:inherit; }
 .prop-btn:hover { background:#334155; }
+.prop-btn:disabled { opacity:.4; cursor:not-allowed; }
+.prop-btn:disabled:hover { background:var(--bg2); }
 .prop-btn-accent { border-color:var(--accent); color:#A5B4FC; }
 .prop-btn-red { border-color:var(--red); color:#FCA5A5; background:#1C1017; }
 .color-grid { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
@@ -1025,7 +1027,7 @@ let grewFrom=null;
 function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);if(nd!==dsl&&!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
 function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();renderExportAll();}
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
 function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 // 共通部を動かした影響(core/check の includeImpact。CLI の npm run check と同じ診断): 表示中の図を @include している一緒に読み込んだ図にも同じ診断を当て、

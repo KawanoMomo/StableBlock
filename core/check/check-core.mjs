@@ -158,9 +158,11 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     }
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
     if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
-    const key = [c.from, c.to].sort().join('\u0000');
-    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[key])} と同じ組の 2 本目`, refs: [seen[key]] });
-    else seen[key] = c.line;
+    // 同じ向きの 2 本目だけを警告する。行き(a -> b)と戻り(b -> a)は別の線(BLK-owner-20260928-2255-2)。双方向(-->)は両方の向きを持つ
+    const dirs = [c.from + '\u0000' + c.to].concat(c.bidir ? [c.to + '\u0000' + c.from] : []);
+    const dup = dirs.find(k => seen[k]);
+    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]] });
+    else dirs.forEach(k => { seen[k] = c.line; });
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];

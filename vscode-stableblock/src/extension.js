@@ -503,6 +503,7 @@ body.pane-resizing,body.pane-resizing *{cursor:col-resize!important;user-select:
 .cd.act{border-color:#fff;box-shadow:0 0 0 1px #6366F1}
 .pbtn{padding:4px 8px;font-size:10px;font-weight:600;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#ccc;width:100%;font-family:inherit;margin-bottom:4px}
 .pbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
+.pbtn:disabled{opacity:.4;cursor:not-allowed}
 .sbtn{padding:2px 8px;font-size:10px;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#999;font-family:inherit}
 .sbtn.act{background:#6366F1;color:#fff;border-color:#6366F1}
 .hl-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
@@ -909,7 +910,7 @@ function searchStep(dir){var t=window.StableBlockRender.nextMatch(searchNow(),se
 function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed),dr=incDrops().concat(r.dropped);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(dr.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:dr});}
 
 // Refresh
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check
 var lastDiag=[];
 function showErr(){var p={canvas:parsed.canvas,blocks:parsed.blocks,groups:parsed.groups,notes:parsed.notes,connections:parsed.connections,errors:parsed.errors,blockMap:parsed.blockMap,groupMap:parsed.groupMap,noteMap:parsed.nm};var SBL=window.StableBlockLabel,paths=SBL.connectionPaths(p);lastDiag=window.StableBlockCheck.checkIncluded(p,EXP,paths,{hint:'(ファイルが無い)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});var hasErr=lastDiag.some(function(d){return d.level==='error'});document.getElementById('err').innerHTML=lastDiag.length?'<div class="error'+(hasErr?'':' warn-only')+'">'+lastDiag.map(function(d){return '<div class="dg-'+d.level+'">L'+d.line+': '+esc(d.msg)+'</div>'}).join('')+'</div>':'';}
 function go(){parsed=parseDoc();render();props();

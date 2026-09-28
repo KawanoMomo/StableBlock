@@ -58,11 +58,18 @@ test('checkDiagram: 存在しない ID への接続はエラー、group への�
   assert.match(d[2].msg, /group への接続は描かれない/);
 });
 
-test('checkDiagram: 同じ組の接続 2 本目を警告', () => {
-  const d = check('block a "A" at 1,1 size 4x2\nblock b "B" at 8,1 size 4x2\na -> b\nb -> a "rev"\n');
+// 行きと戻り(a -> b と b -> a)は別の線なので警告しない。同じ向き・双方向と重なる向きの 2 本目を警告(BLK-owner-20260928-2255-2 で「向きを問わず同じ組」から変えた)
+test('checkDiagram: 同じ向きの接続 2 本目を警告し、逆向きの接続は警告しない', () => {
+  const AB = 'block a "A" at 1,1 size 4x2\nblock b "B" at 8,1 size 4x2\n';
+  assert.deepEqual(check(AB + 'a -> b "req"\nb -> a "notify"\n'), []);
+  const d = check(AB + 'a -> b\na -> b "dup"\n');
   assert.equal(d.length, 1);
   assert.equal(d[0].line, 4);
-  assert.match(d[0].msg, /L3 と同じ組の 2 本目/);
+  assert.match(d[0].msg, /L3 と同じ向きの 2 本目/);
+  const bi = check(AB + 'a --> b\nb -> a\n');
+  assert.equal(bi.length, 1);
+  assert.equal(bi[0].line, 4);
+  assert.match(check(AB + 'b -> a\na --> b\n')[0].msg, /L3 と同じ向きの 2 本目/);
 });
 
 test('findOverlaps / checkDiagram: 同じ座標・一部が重なる block を警告、接するだけは数えない', () => {
