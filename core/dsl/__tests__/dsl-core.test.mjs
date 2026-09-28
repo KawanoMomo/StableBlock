@@ -129,3 +129,40 @@ test('parseDSL: 重複した@canvasは最後の値を有効にし、先行行を
   assert.equal(serializeDSL(p), text);
   assert.deepEqual(p.warnings, [{ line: 1, msg: '@canvas が 2 行ある。L2 の値が効く' }]);
 });
+
+test('parseDSL: 取れない style / route / grow / lpos の値はその行で警告し、本文はそのまま往復する(BLK-porter-20260929-0530)', () => {
+  const text = [
+    '@canvas width=480 height=240 grid=20 route=zigzag grow=maybe',
+    'block a "A" at 1,1 size 6x3',
+    'block b "未対応" at 1,1 size 8x3 color=#EF4444 text=#FFFFFF style=dotted',
+    'note n "N" at 1,6 size 4x2 style=double',
+    'a -> b "style=dotted in label" style=bold route=spline lpos=middle',
+  ].join('\n');
+  const p = parseDSL(text);
+  // lpos は parser が読める値に寄せる(core/label の parseLpos)ので core/dsl の直列化では変わる。GUI の保存は本文をそのまま書く
+  assert.equal(serializeDSL(p), text.replace('lpos=middle', 'lpos=right'));
+  assert.equal(p.blockMap.b.style, 'dotted');   // 値は読んだまま(描画は既定の実線)
+  assert.deepEqual(p.warnings, [
+    { line: 1, msg: 'route=zigzag は使えない。route を書いていない接続を曲線で描く(使える値: curved / straight / ortho)' },
+    { line: 1, msg: 'grow=maybe は使えない。on と同じく操作ではみ出したら広げる(使える値: on / off)' },
+    { line: 3, msg: 'style=dotted は使えない。実線で描く(使える値: solid / dashed / bold)' },
+    { line: 4, msg: 'style=double は使えない。実線で描く(使える値: solid / dashed / bold)' },
+    { line: 5, msg: 'style=bold は使えない。実線で描く(使える値: solid / dashed)' },
+    { line: 5, msg: 'route=spline は使えない。曲線で描く(使える値: curved / straight / ortho)' },
+    { line: 5, msg: 'lpos=middle は使えない。ラベルを線の右に置く(使える値: right / left / top / bottom / center)' },
+  ]);
+});
+
+test('parseDSL: 取れる値だけなら値の警告は 0 件。@canvas の 2 行目で値の警告は消えない', () => {
+  const ok = [
+    '@canvas route=ortho grow=off',
+    'block a "A" at 1,1 size 6x3 style=bold',
+    'block b "B" at 9,1 size 6x3 style=dashed',
+    'note n "N" at 1,6 size 4x2 style=solid',
+    'a -> b style=dashed route=straight lpos=center',
+    'b -> a style=solid route=curved lpos=top',
+  ].join('\n');
+  assert.deepEqual(parseDSL(ok).warnings, []);
+  const two = 'block a "A" at 1,1 size 6x3 style=dotted\n@canvas width=480\n@canvas width=500\n';
+  assert.deepEqual(parseDSL(two).warnings.map(w => w.line), [1, 2]);
+});

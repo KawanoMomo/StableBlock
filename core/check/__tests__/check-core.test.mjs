@@ -606,3 +606,25 @@ test('includeImpact: 共通部の ID を取り込み側の ID と同じにする
   assert.deepEqual(r.added.map(d => `${d.path}:${d.line}:${d.level}`), ['adc_swc.sb:2:error']);
   assert.equal(r.added[0].msg, 'ID "adcdrv" が重複 (L2)(shared/common.sb L4)');
 });
+
+test('checkDiagram: 取れない style 値はその行で warn(画面・check と同じ文)。取れる値は出ない(BLK-porter-20260929-0530)', () => {
+  const d = check('block a "A" at 1,1 size 6x3\nblock b "未対応" at 9,1 size 8x3 color=#EF4444 text=#FFFFFF style=dotted\n');
+  assert.deepEqual(d, [{ line: 2, level: 'warn', msg: 'style=dotted は使えない。実線で描く(使える値: solid / dashed / bold)' }]);
+  assert.deepEqual(check('block a "A" at 1,1 size 6x3 style=bold\nblock b "B" at 9,1 size 6x3 style=dashed\na -> b style=dashed route=ortho lpos=top\n'), []);
+});
+
+test('checkDiagram: 接続・@canvas の取れない値も行ごとに出る。ラベルの中の文字は見ない', () => {
+  const d = check('@canvas grow=maybe\nblock a "A" at 1,1 size 6x3\nblock b "B" at 9,1 size 6x3\na -> b "route=bad" route=spline\n');
+  assert.deepEqual(d.map(x => [x.line, x.msg.split('。')[0]]), [[1, 'grow=maybe は使えない'], [4, 'route=spline は使えない']]);
+});
+
+test('checkIncluded: include 先の取れない値は include 先の場所で出る', () => {
+  const files = { 'main.sb': '@include "common.sb"\nblock a "A" at 1,1 size 6x3\n', 'common.sb': 'block c "C" at 9,1 size 6x3 style=dotted\n' };
+  const exp = expandIncludes(files['main.sb'], p => files[p] ?? null, 'main.sb');
+  const p = parseDSL(exp.text);
+  const d = checkIncluded(p, exp, connectionPaths(p, 'curved'));
+  assert.equal(d.length, 1);
+  assert.equal(d[0].file, 'common.sb');
+  assert.equal(d[0].fileLine, 1);
+  assert.match(d[0].msg, /^style=dotted は使えない。/);
+});
