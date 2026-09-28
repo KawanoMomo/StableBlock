@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260929-0405-4: note から出る接続(注釈の破線)が block の上を横切っても、block 同士の線と同じにエラー欄・`npm run check`・VSCode 拡張が「接続「…」の線が block「…」の上を横切る」と知らせる
 - BLK-owner-20260929-0405-3: Excel に書き出した接続ラベルの白地が画面と同じ位置・大きさ(文字の幅に合う。lpos= も画面と同じ所)になり、長いラベルが白地からはみ出して block の名前に掛からない
 - BLK-owner-20260929-0405-2: 「選択をグループ化」で選んだ block の間に選んでいない block があっても、選んだ block だけを空きへ寄せて囲み、選んでいない block は元の group の直下に残る(寄せる空きが無ければ囲まずに理由を出す)
 - BLK-owner-20260929-0405-1: group を別の group の中へドラッグで落とすと外側の group が(祖先まで)広がって中に収め、枠をまたいだ group がある図で外側に「+ 中にブロック」を押しても、またいだ group の中の block が飛ばない

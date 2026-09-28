@@ -112,6 +112,34 @@ test('findCrossings: owner 批評の 2 列 4 段・3 本で、既定(曲線)の�
   assert.ok(d.every(x => x.level === 'warn'));
 });
 
+test('findCrossings: note が端の接続(注釈線)も、block 同士の線と同じに横切りを数える', () => {
+  // note n(1,1) → block c(1,9) の真ん中に b(1,5) がある
+  const text = 'note n "N" at 1,1 size 4x2\nblock b "B" at 1,5 size 4x2\nblock c "C" at 1,9 size 4x2\nn -> c "trigger"\n';
+  for (const mode of ['curved', 'straight', 'ortho']) {
+    const d = check(text, mode);
+    assert.equal(d.length, 1, mode + JSON.stringify(d));
+    assert.equal(d[0].line, 4);
+    assert.match(d[0].msg, /接続「n -> c」の線が block「b」\(L2\)の上を横切る/);
+    assert.deepEqual(check(text.replace('at 1,5', 'at 8,5'), mode), [], mode);
+  }
+  // block → note の向きも同じ
+  assert.match(check(text.replace('n -> c', 'c -> n'), 'straight')[0].msg, /接続「c -> n」の線が block「b」/);
+});
+
+test('findCrossings: owner 批評の DFD で、note Cycle_10ms -> Adc_Drv の線が Tester と Sensor の上を横切ると言う', () => {
+  const text = [
+    '@canvas width=960 height=520 grid=20',
+    'block Adc_Drv "Adc_Drv" at 11,3 size 8x3',
+    'block Sensor "Sensor" at 22,1 size 8x3',
+    'block Tester "Tester" at 31,1 size 8x3',
+    'note Cycle_10ms "Cycle_10ms" at 40,1 size 8x2',
+    'Cycle_10ms -> Adc_Drv "trigger"',
+  ].join('\n') + '\n';
+  const d = check(text).filter(x => x.line === 6).map(x => x.msg);
+  assert.ok(d.some(m => /接続「Cycle_10ms -> Adc_Drv」の線が block「Tester」\(L4\)の上を横切る/.test(m)), JSON.stringify(d));
+  assert.ok(d.some(m => /接続「Cycle_10ms -> Adc_Drv」の線が block「Sensor」\(L3\)の上を横切る/.test(m)), JSON.stringify(d));
+});
+
 test('findCrossings: 隣り合う block を結ぶだけなら何も言わない', () => {
   const text = 'block a "A" at 1,1 size 8x3\nblock b "B" at 13,1 size 8x3\nblock c "C" at 1,6 size 8x3\na -> b\na -> c\n';
   for (const mode of ['curved', 'straight', 'ortho']) assert.deepEqual(check(text, mode), [], mode);

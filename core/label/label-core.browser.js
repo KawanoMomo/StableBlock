@@ -519,20 +519,27 @@ function nextCanvasRoute(route) {
   return order[(order.indexOf(canvasRoute({ route })) + 1) % order.length];
 }
 
-// block 同士の接続(note が端の注釈線を除く)の経路と、ラベルを置く中点(描画の connPathInfo と同じ)。線の形は connRoute(接続の route → `@canvas` の route)。
-// mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)
+// 接続の経路と、ラベルを置く中点(描画の connPathInfo と同じ)。線の形は connRoute(接続の route → `@canvas` の route)。
+// mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)。
+// block 同士の接続に続けて、note が端の注釈線(描画の注釈レイヤーと同じく、注釈線どうしでポートを分けた経路)を anno: true で返す。
+// 横切りの検査は両方を数え、ラベルの置き場所(placeLabels)は block 同士の接続だけを見る(注釈線のラベルは描画どおり中点に置く)
 function connectionPaths(parsed, mode) {
   const g = parsed.canvas.grid;
-  const conns = parsed.connections.filter(c => !(parsed.noteMap[c.from] || parsed.noteMap[c.to]));
-  const ports = computePorts(conns, parsed.blockMap, g);
+  const nm = parsed.noteMap || parsed.nm || {};
+  const isAnno = c => !!(nm[c.from] || nm[c.to]);
   const canvas = parsed.canvas.route ? parsed.canvas : { route: mode };
   const out = [];
-  conns.forEach((c, i) => {
-    const p = ports[i];
-    if (!p) return;
-    const m = connRoute(c, canvas);
-    out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, m), mid: connPathInfo(p.fp, p.tp, p.fs, p.ts, m).mid });
-  });
+  const add = (conns, items, anno) => {
+    const ports = computePorts(conns, items, g);
+    conns.forEach((c, i) => {
+      const p = ports[i];
+      if (!p) return;
+      const m = connRoute(c, canvas);
+      out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, m), mid: connPathInfo(p.fp, p.tp, p.fs, p.ts, m).mid, ...(anno ? { anno: true } : {}) });
+    });
+  };
+  add(parsed.connections.filter(c => !isAnno(c)), parsed.blockMap, false);
+  add(parsed.connections.filter(isAnno), Object.assign({}, parsed.blockMap, nm), true);
   return out;
 }
 
@@ -601,15 +608,15 @@ function isAutoLpos(c) {
   return c.lposAuto === true || (c.lposAuto === undefined && !c.lpos);
 }
 
-// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px) }](描画と同じ中点)。measure(text) は文字幅(px)
+// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は文字幅(px)
 // 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
 function placeLabels(items, parsed, measure) {
   const obstacles = labelObstacles(parsed);
   const bounds = { x: 0, y: 0, w: parsed.canvas.width, h: parsed.canvas.height };
   const width = measure || (t => estimateTextWidth(t, 10));
   const out = [];
-  for (const { conn, mid } of items) {
-    if (!conn.label || !mid) continue;
+  for (const { conn, mid, anno } of items) {
+    if (anno || !conn.label || !mid) continue;
     const L = placeLabel(mid, conn.lpos, width(conn.label), obstacles, isAutoLpos(conn), bounds);
     out.push({ conn, mid, tx: L.tx, ty: L.ty, anchor: L.anchor, bg: L.bg, lpos: L.lpos });
     obstacles.push({ ...L.bg, weight: 10, kind: 'label', item: conn });
