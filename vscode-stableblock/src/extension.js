@@ -19,6 +19,14 @@ const vscode = require("vscode");
 function activate(context) {
   let currentPanel = undefined;
   let isUpdatingFromWebview = false;
+  // プレビュー中の .sb のパス。書き出しの保存ダイアログの既定名はその図の名前(HTML 版・一括と同じ core/check の bulkFileName)で、置き場所はその隣
+  let previewDocPath = "";
+  const exportUri = async (ext) => {
+    const path = require("path");
+    if (!previewDocPath) return vscode.Uri.file("diagram." + ext);
+    const check = await loadCore("check");
+    return vscode.Uri.file(path.join(path.dirname(previewDocPath), check.bulkFileName(path.basename(previewDocPath), ext)));
+  };
 
   // Shortcut commands forwarded to webview (VSCode intercepts these before they reach the webview)
   const fwd = (action) => { if (currentPanel) currentPanel.webview.postMessage({ type: action }); };
@@ -53,14 +61,14 @@ function activate(context) {
           }
         }
         if (msg.type === "exportSVG") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "SVG": ["svg"] }, defaultUri: vscode.Uri.file("diagram.svg") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "SVG": ["svg"] }, defaultUri: await exportUri("svg") });
           if (uri) {
             await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.data, "utf-8"));
             vscode.window.showInformationMessage("SVG saved: " + uri.fsPath);
           }
         }
         if (msg.type === "exportPNG") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "PNG": ["png"] }, defaultUri: vscode.Uri.file("diagram.png") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "PNG": ["png"] }, defaultUri: await exportUri("png") });
           if (uri) {
             const buf = Buffer.from(msg.data.replace(/^data:image\/png;base64,/, ""), "base64");
             await vscode.workspace.fs.writeFile(uri, buf);
@@ -70,7 +78,7 @@ function activate(context) {
         if (msg.type === "exportXlsx") {
           const uri = await vscode.window.showSaveDialog({
             filters: { "Excel": ["xlsx"] },
-            defaultUri: vscode.Uri.file("diagram.xlsx")
+            defaultUri: await exportUri("xlsx")
           });
           if (uri) {
             const buf = Buffer.from(msg.data, 'base64');
@@ -79,7 +87,7 @@ function activate(context) {
           }
         }
         if (msg.type === "exportMmd") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "Mermaid": ["mmd", "md"] }, defaultUri: vscode.Uri.file("diagram.mmd") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "Mermaid": ["mmd", "md"] }, defaultUri: await exportUri("mmd") });
           if (uri) {
             await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.data, "utf-8"));
             vscode.window.showInformationMessage("Mermaid saved: " + uri.fsPath);
@@ -99,6 +107,7 @@ function activate(context) {
       if (isUpdatingFromWebview) return;
       const doc = vscode.window.activeTextEditor?.document;
       if (doc && (doc.languageId === "stableblock" || doc.fileName.match(/\.(sb|stableblock)$/))) {
+        previewDocPath = doc.uri.scheme === "file" ? doc.uri.fsPath : "";
         currentPanel.webview.html = getWebviewContent(doc.getText(), doc.uri.fsPath);
       }
     };

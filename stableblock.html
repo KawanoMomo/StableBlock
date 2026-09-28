@@ -1051,6 +1051,8 @@ function download(name,data){const a=document.createElement('a');a.href=data;a.d
 // 保存するファイル名: 読み込んだ図はその名前、新規・起動時の見本は diagram.sb。タブの題名にも出す
 let sbFileName='diagram.sb';
 function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbFileName} - StableBlock`;}
+// 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)の名前: .sb 保存と同じ図の名前から「一括」と同じ関数で付ける(新規の図は diagram.*)
+function exportName(ext,suffix){return window.StableBlockCheck.bulkFileName(sbFileName,ext,suffix);}
 // 一緒に読み込んだほかの図も、変わっていれば(図をまたぐ改名など)続けて同じファイル名で書き出す
 function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
   rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text)),200*(i+1));});
@@ -1061,12 +1063,12 @@ const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
-function exportSVG(){const svg=exportSvgText();if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
+function exportSVG(){const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
 function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(p.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
-function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
-function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram_transparent.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNG(){pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
-async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
+async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
 // .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
 // どちらも @include を読込んだパスからの相対で解き、ほかの読んだ図から include されていない図が本文になる(core/check の pickMainDiagram)
@@ -1147,7 +1149,7 @@ function showBulkReport(label,zipName,per){const el=document.getElementById('exp
   el.hidden=false;}
 document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,#open-menu,.tb-more,#png-more,#open-sb-btn'))closeExportMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
-function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
+function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download(exportName('mmd'),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
 function showExportReport(fmt,dropped){const el=document.getElementById('export-report');if(!dropped||!dropped.length){el.hidden=true;el.innerHTML='';return;}el.innerHTML=`<b>${esc(fmt)} に書き出せなかったもの(${dropped.length} 件)</b><ul>${dropped.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`;el.hidden=false;}
 function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}

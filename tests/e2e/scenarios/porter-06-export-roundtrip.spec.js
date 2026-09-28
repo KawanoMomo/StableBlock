@@ -34,13 +34,17 @@ test('porter-06: SVG / PNG は画面の選択・グリッド・表示倍率を�
   const take = async (tag) => {
     const d = path.join(dir, tag);
     fs.mkdirSync(d, { recursive: true });
+    const files = { svg: await download(page, 'SVG', d), png: await download(page, 'PNG', d), tpng: await download(page, '透過PNG', d) };
     return {
-      svg: fs.readFileSync(await download(page, 'SVG', d), 'utf8'),
-      png: pngSize(await download(page, 'PNG', d)),
-      tpng: pngSize(await download(page, '透過PNG', d)),
+      names: Object.values(files).map(f => path.basename(f)),
+      svg: fs.readFileSync(files.svg, 'utf8'),
+      png: pngSize(files.png),
+      tpng: pngSize(files.tpng),
     };
   };
   const plain = await take('plain');
+  // 1 枚の書き出しも「.sb 保存」「一括」と同じ図の名前で出る(BLK-owner-20260927-0728-3)
+  expect(plain.names).toEqual(['owner-critique-swc.svg', 'owner-critique-swc.png', 'owner-critique-swc_transparent.png']);
   expect(plain.svg).toMatch(/^<svg width="960" height="520" /);           // @canvas の寸法
   expect(plain.svg).not.toMatch(/data-resize|url\(#gd\)|<pattern/);      // ハンドル・グリッドの点が無い
   expect(plain.png).toEqual({ w: 1920, h: 1040 });                         // @canvas × 2
@@ -56,12 +60,17 @@ test('porter-06: SVG / PNG は画面の選択・グリッド・表示倍率を�
   expect(zoomed.svg).toBe(plain.svg);
   expect(zoomed.png).toEqual(plain.png);
   expect(zoomed.tpng).toEqual(plain.png);
+
+  // 「新規」の図は今どおり diagram.*
+  await page.getByRole('button', { name: '新規', exact: true }).click();
+  expect(path.basename(await download(page, 'SVG', dir))).toBe('diagram.svg');
 });
 
 test('porter-06: Mermaid に note・色・ラベルが残り、表せないものは画面に出る', async ({ page }, testInfo) => {
   await bootPlain(page);
   await importSb(page, SRC);
   const file = await download(page, 'Mermaid', saveDir(testInfo));
+  expect(path.basename(file)).toBe('owner-critique-swc.mmd');
   const mmd = fs.readFileSync(file, 'utf8');
 
   expect(mmd.startsWith('flowchart TD\n')).toBe(true);
@@ -88,6 +97,7 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
   await bootPlain(page);
   await importSb(page, SRC);
   const file = await download(page, 'Excel', saveDir(testInfo));
+  expect(path.basename(file)).toBe('owner-critique-swc.xlsx');
   const zip = await JSZip.loadAsync(fs.readFileSync(file));
   const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
 
