@@ -1,0 +1,5 @@
+# porter の corpus 76 の最小形と、数の属性の取れない値: 描く値は既定(または先頭の数字)、本文は書いたまま
+@canvas width=480 height=200 grid=20
+block a "A" at 1,1 size 6x3 color=#6366F1 text=#FFFFFF round=big
+block b "B" at 12,1 size 6x3 color=#F59E0B text=#FFFFFF
+a -> b "斜め置き" lpos=diagonal width=thick

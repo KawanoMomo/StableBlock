@@ -35,3 +35,28 @@ test('porter-03: style=dotted の block は描かれ、その行に「使えな�
   await page.locator('#editor').fill(original.toString('utf8').replace('style=dotted', 'style=dashed'));
   await expect(bar).toBeHidden();
 });
+
+// 接続の lpos=diagonal、block の round=big、接続の width=thick(取れない値): 描く位置・形だけ既定に倒し、その行に実際に描く値が出る。
+// 無変更で Export → バイト一致(本文の値は書き換えない)(BLK-porter-20260929-0511)
+test('porter-03: 取れない lpos / round / width は既定で描かれ、その行に理由が出て、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const SRC = path.join(FIXTURES, 'porter-unknown-values.sb');
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
+  await expect(svg.locator('g.conn-label')).toHaveText(['斜め置き']);
+  const bar = page.locator('#error-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('L3: round=big は使えない。角の丸みを既定の 4 で描く(使える値: 0 以上の整数)');
+  await expect(bar).toContainText('L5: lpos=diagonal は使えない。ラベルを線の右に置く(使える値: right / left / top / bottom / center)');
+  await expect(bar).toContainText('L5: width=thick は使えない。線の太さを既定の 1.5 で描く(使える値: 0 以上の数)');
+  await expect(page.locator('#status')).toContainText('Warn: 3');
+
+  const { bytes } = await exportSb(page, saveDir(testInfo));
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);   // 値は書き換えない
+
+  // 本文で取れる値に直すと警告が消える
+  await page.locator('#editor').fill(original.toString('utf8').replace('round=big', 'round=8').replace('lpos=diagonal', 'lpos=top').replace('width=thick', 'width=2'));
+  await expect(bar).toBeHidden();
+});

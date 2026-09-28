@@ -8,7 +8,7 @@
 const KEYWORDS = ['block', 'group', 'note', '@canvas', '@include'];
 const BOX_FORM = { block: 'block ID "ラベル" at X,Y size WxH', group: 'group ID "ラベル" at X,Y size WxH', note: 'note ID "テキスト" at X,Y size WxH' };
 
-// 値を列挙から取る属性(core/dsl の ATTRS の style / route / grow / lpos)の取れる値と、知らない値のときに実際にどう描くか
+// 値を列挙から取る属性(core/dsl の ATTRS の style / route / grow / lpos)の取れる値と、知らない値のときに実際にどう描くか。値が数の属性は下の NUM_VALUES
 // (render / label / layout の既定と同じ)。知らない値は本文を書き換えずに読み、その行で警告する(黙って既定に落とさない)
 const ATTR_VALUES = {
   block: { style: [['solid', 'dashed', 'bold'], '実線で描く'] },
@@ -32,12 +32,35 @@ const REST_RE = {
   canvas: /^@canvas(.*)/,
 };
 
-// kind(block / note / conn / canvas)の属性部分 rest に書かれた、取れない値の一覧 [{ attr, value, msg }]。parser と同じく属性ごとに最初の一致だけを見る
+// 値が数の属性(core/dsl の ATTRS の round / width / height / grid)。[整数だけか, 既定, 何の値か]。
+// parser は値の先頭の数字だけを読み(round=4px は 4)、数字で始まらなければ既定で描く。警告はそのとおりに言う
+const NUM_VALUES = {
+  block: { round: [true, 4, '角の丸み'] },
+  note: { round: [true, 4, '角の丸み'] },
+  conn: { width: [false, 1.5, '線の太さ'] },
+  canvas: { width: [true, 960, 'キャンバスの幅'], height: [true, 640, 'キャンバスの高さ'], grid: [true, 20, '方眼の間隔'] },
+};
+
+function badNumber(attr, v, [int, def, what]) {
+  if (int ? /^\d+$/.test(v) : /^[\d.]+$/.test(v) && Number.isFinite(+v)) return null;
+  const lead = v.match(int ? /^\d+/ : /^[\d.]+/)?.[0];
+  const drawn = lead === undefined ? `を既定の ${def} で描く` : Number.isFinite(+lead) ? `を ${+lead} で描く` : 'を数字として読めない';
+  return `${attr}=${v} は使えない。${what}${drawn}(使える値: ${int ? '0 以上の整数' : '0 以上の数'})`;
+}
+
+// kind(block / note / conn / canvas)の属性部分 rest に書かれた、取れない値の一覧 [{ attr, value, msg }]。parser と同じく属性ごとに最初の一致だけを見る。
+// 取れない値は警告だけにし、本文は書き換えない(core/dsl の serializeDSL も書いたまま戻す)
 export function badAttrValues(kind, rest) {
   const out = [];
+  const valueOf = attr => String(rest || '').match(new RegExp(`${attr}=(\\S+)`))?.[1];
   for (const [attr, [values, fallback]] of Object.entries(ATTR_VALUES[kind] || {})) {
-    const m = String(rest || '').match(new RegExp(`${attr}=(\\S+)`));
-    if (m && !values.includes(m[1])) out.push({ attr, value: m[1], msg: `${attr}=${m[1]} は使えない。${fallback}(使える値: ${values.join(' / ')})` });
+    const v = valueOf(attr);
+    if (v !== undefined && !values.includes(v)) out.push({ attr, value: v, msg: `${attr}=${v} は使えない。${fallback}(使える値: ${values.join(' / ')})` });
+  }
+  for (const [attr, spec] of Object.entries(NUM_VALUES[kind] || {})) {
+    const v = valueOf(attr);
+    const msg = v === undefined ? null : badNumber(attr, v, spec);
+    if (msg) out.push({ attr, value: v, msg });
   }
   return out;
 }
