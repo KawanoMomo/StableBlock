@@ -774,7 +774,7 @@ function renderPropsPanel(){
       });
       html+=`</div>`;
     }
-    if(hasBlocks&&sel.length>=2) html+=`<div style="margin-top:8px"><button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;width:100%" onclick="groupSelected()">選択をグループ化</button></div>`;
+    if(hasBlocks&&sel.length>=2) html+=`<div style="margin-top:8px"><button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;width:100%" onclick="groupSelected()">選択をグループ化</button><div id="group-sel-msg" class="prop-sub" role="status" hidden style="margin-top:4px;color:var(--amber);white-space:normal"></div></div>`;
     html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="batchDelete()">選択を全削除</button></div>`;
     el.innerHTML=html; return;
   }
@@ -952,11 +952,16 @@ function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
-// 選択をグループ化(core/layout groupRectFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる
-function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const L=window.StableBlockLayout;
-  const bx=Math.min(...items.map(b=>b.x)),by=Math.min(...items.map(b=>b.y)),box={type:'block',id:' sel',x:bx,y:by,w:Math.max(...items.map(b=>b.x+b.w))-bx,h:Math.max(...items.map(b=>b.y+b.h))-by};
-  const pid=L.parentMap([...parsed.groups,box])[box.id],parent=pid?parsed.groupMap[pid]:null;
-  const r=L.groupRectFor(items,boxItems().filter(x=>!items.includes(x)),parent);const gid=`__new_${addCounter++}`;
+// 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
+// 選んでいない要素が間に挟まっていれば、選んだ block だけを空きへ寄せて囲む(選んでいない要素の所属は変えない)。寄せられなければ囲まずに理由を出す
+function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;const L=window.StableBlockLayout;
+  const bx=Math.min(...items.map(b=>b.x)),by=Math.min(...items.map(b=>b.y)),box0={type:'block',id:' sel',x:bx,y:by,w:Math.max(...items.map(b=>b.x+b.w))-bx,h:Math.max(...items.map(b=>b.y+b.h))-by};
+  const pid=L.parentMap([...parsed.groups,box0])[box0.id],parent=pid?parsed.groupMap[pid]:null;
+  const plan=L.groupPlanFor(items,boxItems().filter(x=>!items.includes(x)),parent);
+  if(!plan.rect){const m=document.getElementById('group-sel-msg');if(m){m.textContent=plan.reason;m.hidden=false;}return;}
+  pushHistory();plan.moves.forEach(mv=>updatePos('block',mv.id,mv.x,mv.y));if(plan.moves.length){parsed=parseDoc();items=items.map(b=>parsed.blockMap[b.id]||b);}
+  const ex=Math.max(...items.map(b=>b.x+b.w)),ey=Math.max(...items.map(b=>b.y+b.h)),box={x:Math.min(...items.map(b=>b.x)),y:Math.min(...items.map(b=>b.y))};box.w=ex-box.x;box.h=ey-box.y;
+  const r=plan.rect;const gid=`__new_${addCounter++}`;
   dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${r.x},${r.y} size ${r.w}x${r.h} color=#F1F5F9 border=#94A3B8\n`;
   parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
