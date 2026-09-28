@@ -5,6 +5,8 @@ import {
   parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
   connLinesAmong, remapConnLine,
+  hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
+  setConnPropInDsl, removeConnPropInDsl, removeConnInDsl,
 } from '../label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 
@@ -404,13 +406,62 @@ test('remapConnLine: from / to だけを新しい ID に付け替え、片方が
   assert.equal(remapConnLine('block a "A" at 1,1 size 4x2', map), null);
 });
 
-test('chainConnectInDsl: 選んだ順に鎖状に結び、既にある組(向きを問わず)は足さない', () => {
+// 同じ向き(双方向を含む)は足さず、逆向きしか無ければ足す(行きと戻りを別の線に。BLK-owner-20260928-2255-2 で「向きを問わず足さない」から変えた)
+test('chainConnectInDsl: 選んだ順に鎖状に結び、同じ向きの接続は足さない・逆向きしか無ければ足す', () => {
   const dsl = 'block a "A" at 1,1 size 2x2\nblock b "B" at 5,1 size 2x2\nblock c "C" at 9,1 size 2x2\nblock d "D" at 13,1 size 2x2\nc -> b\n';
   const r = chainConnectInDsl(dsl, ['a', 'b', 'c', 'd'], [{ from: 'c', to: 'b' }]);
-  assert.deepEqual(r.added, [{ from: 'a', to: 'b' }, { from: 'c', to: 'd' }]);
-  assert.equal(r.dsl, dsl + 'a -> b\nc -> d\n');
-  assert.deepEqual(chainConnectInDsl(dsl, ['b', 'c'], [{ from: 'c', to: 'b' }]), { dsl, added: [] });
+  assert.deepEqual(r.added, [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }, { from: 'c', to: 'd' }]);
+  assert.equal(r.dsl, dsl + 'a -> b\nb -> c\nc -> d\n');
+  assert.deepEqual(chainConnectInDsl(dsl, ['c', 'b'], [{ from: 'c', to: 'b' }]), { dsl, added: [] });
+  assert.deepEqual(chainConnectInDsl(dsl, ['b', 'c'], [{ from: 'c', to: 'b' }]).added, [{ from: 'b', to: 'c' }]);
+  assert.deepEqual(chainConnectInDsl(dsl, ['b', 'c'], [{ from: 'c', to: 'b', bidir: true }]), { dsl, added: [] });
+  assert.deepEqual(chainConnectInDsl('', ['a', 'b', 'a', 'b'], []).added, [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]);
   assert.equal(chainConnectInDsl('x\n\n', ['a', 'b'], []).dsl, 'x\na -> b\n');
+});
+
+// ─── 同じ 2 つの間の向き違いの接続(BLK-owner-20260928-2255-2) ───
+const TWO_WAY = 'block Rte "RTE" at 1,1 size 4x2\nblock Spi "SPI" at 9,1 size 4x2\nRte -> Spi "Spi_Write" color=#6366F1\nSpi -> Rte "notify"\n';
+
+test('hasConnDir / connsBetween: 向きごとに見る。双方向は両方の向きを持つ', () => {
+  const conns = parseDSL(TWO_WAY).connections;
+  assert.equal(connsBetween(conns, 'Spi', 'Rte').length, 2);
+  assert.equal(hasConnDir(conns, 'Rte', 'Spi'), true);
+  assert.equal(hasConnDir(conns, 'Spi', 'Rte'), true);
+  const one = parseDSL('Rte -> Spi\n').connections;
+  assert.equal(hasConnDir(one, 'Spi', 'Rte'), false);
+  const bi = parseDSL('Rte --> Spi\n').connections;
+  assert.equal(hasConnDir(bi, 'Spi', 'Rte'), true);
+});
+
+test('connLineIndex: 向きの一致する行を先に、無ければ逆の書き順の行', () => {
+  const lines = TWO_WAY.split('\n');
+  assert.equal(connLineIndex(lines, 'Rte', 'Spi'), 2);
+  assert.equal(connLineIndex(lines, 'Spi', 'Rte'), 3);
+  assert.equal(connLineIndex(['a --> b'], 'b', 'a'), 0);
+  assert.equal(connLineIndex(['a -> b'], 'x', 'y'), -1);
+});
+
+test('向き違いの接続はそれぞれの行だけを直す(ラベル・色・形・削除)', () => {
+  assert.equal(setConnLabelInDsl(TWO_WAY, 'Spi', 'Rte', 'IRQ'), TWO_WAY.replace('"notify"', '"IRQ"'));
+  assert.equal(setConnLabelInDsl(TWO_WAY, 'Rte', 'Spi', 'W'), TWO_WAY.replace('"Spi_Write"', '"W"'));
+  assert.equal(setConnPropInDsl(TWO_WAY, 'Spi', 'Rte', 'color', '#EF4444'), TWO_WAY.replace('"notify"', '"notify" color=#EF4444'));
+  assert.equal(setConnPropInDsl(TWO_WAY, 'Rte', 'Spi', 'color', '#EF4444'), TWO_WAY.replace('color=#6366F1', 'color=#EF4444'));
+  assert.equal(removeConnPropInDsl(TWO_WAY, 'Rte', 'Spi', 'color'), TWO_WAY.replace(' color=#6366F1', ''));
+  assert.equal(removeConnInDsl(TWO_WAY, 'Spi', 'Rte'), TWO_WAY.replace('Spi -> Rte "notify"\n', ''));
+  assert.equal(removeConnInDsl(TWO_WAY, 'Rte', 'Spi'), TWO_WAY.replace('Rte -> Spi "Spi_Write" color=#6366F1\n', ''));
+  assert.equal(removeConnInDsl(TWO_WAY, 'x', 'y'), TWO_WAY);
+});
+
+test('反転・双方向: 逆向きの片方向が別にあれば押せない。無ければその行だけを直す', () => {
+  const conns = parseDSL(TWO_WAY).connections;
+  assert.equal(canFlipConn(conns, 'Rte', 'Spi'), false);
+  assert.equal(canFlipConn(conns, 'Spi', 'Rte'), false);
+  assert.equal(canFlipConn(parseDSL('a -> b\n').connections, 'a', 'b'), true);
+  assert.equal(canFlipConn(parseDSL('a --> b\nb -> a\n').connections, 'a', 'b'), true);
+  assert.equal(flipConnInDsl('  a -> b "x" color=#fff\n', 'a', 'b'), '  b -> a "x" color=#fff\n');
+  assert.equal(toggleBidirInDsl('a -> b "x"\nb -> c', 'b', 'c'), 'a -> b "x"\nb --> c');
+  assert.equal(toggleBidirInDsl('a --> b "x"', 'a', 'b'), 'a -> b "x"');
+  assert.equal(toggleBidirInDsl('a --> b', 'b', 'a'), 'a -> b');
 });
 
 // ─── 読み込んだ図をまたぐ検索(HTML 版のツールバーの検索が、表示中でない図の当たりを並べる) ───

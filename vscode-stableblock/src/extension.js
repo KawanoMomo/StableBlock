@@ -394,7 +394,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -503,6 +503,7 @@ body.pane-resizing,body.pane-resizing *{cursor:col-resize!important;user-select:
 .cd.act{border-color:#fff;box-shadow:0 0 0 1px #6366F1}
 .pbtn{padding:4px 8px;font-size:10px;font-weight:600;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#ccc;width:100%;font-family:inherit;margin-bottom:4px}
 .pbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
+.pbtn:disabled{opacity:.4;cursor:not-allowed}
 .sbtn{padding:2px 8px;font-size:10px;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#999;font-family:inherit}
 .sbtn.act{background:#6366F1;color:#fff;border-color:#6366F1}
 .hl-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
@@ -730,20 +731,24 @@ function propsPanel(){
       var sa=sel[0].id,sb=sel[1].id,cns=findCB(sa,sb);
       var CC=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       mh+='<div class="pl">Connection</div>';
-      if(cns.length===0){
+      // 結ぶ入口: クリックした順の向きがまだ無ければ出す(逆向きだけがあるなら戻りの線を足す)。2 つの間の接続は向きごとに全部並べる(HTML 版と同じ)
+      if(sa!==sb&&!window.StableBlockLabel.hasConnDir(parsed.connections,sa,sb)&&(cns.length===0||selClk)){
         mh+='<button class="pbtn" id="chain-btn" style="width:100%;background:#6366F1;color:#fff;border-color:#6366F1" title="Connect in the order you clicked" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button>';
-        mh+='<div class="pl" style="font-size:9px;margin-top:4px">In the order you clicked. Flip the direction, set color, width and label after connecting</div>';
-      }else{
-        var cn=cns[0],fa=cn.from,ta=cn.to;
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">'+(cns.length?'A separate line from the reverse one, with its own label':'In the order you clicked. Flip the direction, set color, width and label after connecting')+'</div>';
+      }
+      cns.forEach(function(cn,k){
+        var fa=cn.from,ta=cn.to,cf=window.StableBlockLabel.canFlipConn(parsed.connections,fa,ta),nf=cf?'':' disabled title="A reverse connection exists"';
+        mh+='<div class="conn-row"'+(k?' style="margin-top:8px;padding-top:6px;border-top:1px solid #444"':'')+'>';
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
-        mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1" onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1" onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
+        mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1"'+nf+' onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1"'+nf+' onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label</div><input class="pi" style="width:100%" value="'+esc(cn.label)+'" oninput="sCLb(\\''+fa+'\\',\\''+ta+'\\',this.value)" placeholder="(none)">';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label Pos</div><div style="display:flex;gap:3px">'+[["right","右"],["left","左"],["top","上"],["bottom","下"],["center","中"]].map(function(pv){return'<button class="sbtn'+(cn.lpos===pv[0]?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'lpos\\',\\''+pv[0]+'\\')">'+pv[1]+'</button>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Line Color</div><div class="cg">'+CC.map(function(c){return'<div class="cd'+(cn.color===c?' act':'')+'" style="background:'+c+'" onclick="setCC(\\''+fa+'\\',\\''+ta+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Width</div><div style="display:flex;gap:3px">'+[1,1.5,2,3,4].map(function(w){return'<button class="sbtn'+(cn.width===w?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'width\\',\\''+w+'\\')">'+w+'</button>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Style</div><div style="display:flex;gap:3px">'+["solid","dashed"].map(function(st){return'<button class="sbtn'+(cn.style===st?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'style\\',\\''+st+'\\')">'+window.StableBlockTerms.styleName(st,'en')+'</button>'}).join('')+'</div>';
         mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:4px;width:100%" onclick="rmConn(\\''+fa+'\\',\\''+ta+'\\')">Remove Connection</button>';
-      }
+        mh+='</div>';
+      });
     }
     mh+='<button class="pbtn" style="border-color:#8B5CF6;color:#C4B5FD;margin-top:8px" onclick="grpSel()">Group Selected</button>';
     mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:12px" onclick="bDel()">Delete All</button>';
@@ -848,15 +853,15 @@ function cutSel(){if(!sel.length)return;copySel();pushH();delItems(sel);sel=[];g
 function pasteSel(){if(!clipboard||!clipboard.length)return;var rects=clipboard.map(function(ci){var m=ci.line.match(/at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)/);return m?{x:+m[1],y:+m[2],w:+m[3],h:+m[4]}:null;}).filter(Boolean);if(!rects.length)return;var bx=Math.min.apply(null,rects.map(function(r){return r.x})),by=Math.min.apply(null,rects.map(function(r){return r.y}));var bw=Math.max.apply(null,rects.map(function(r){return r.x+r.w}))-bx,bh=Math.max.apply(null,rects.map(function(r){return r.y+r.h}))-by;pushH();var skip={};clipboard.forEach(function(ci){skip[ci.id]=1});var src={x:bx,y:by,w:bw,h:bh};var p=areaSlot(bw,bh,lastPaste||src,groupOf(src,skip));var dx=p.x-bx,dy=p.y-by;var ns=[],idMap={};clipboard.forEach(function(ci){var nid="__new_"+(addC++);idMap[ci.id]=nid;var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+dx)+","+(+y+dy)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});clipConns.forEach(function(l){var nl=window.StableBlockLabel.remapConnLine(l,idMap);if(nl)dsl=dsl.trimEnd()+"\\n"+nl+"\\n";});lastPaste={x:p.x,y:p.y,w:bw,h:bh};sel=ns;go();notify();}
 
 // Connection management (two-select)
-function findCB(a,b){return parsed.connections.filter(function(c){return(c.from===a&&c.to===b)||(c.from===b&&c.to===a)});}
+function findCB(a,b){return window.StableBlockLabel.connsBetween(parsed.connections,a,b);}
 function connTwo(a,b){pushH();dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+"\\n";go();notify();}
-// 鎖状に結ぶ: クリックした順に block / note を選んだとき。既にある組は足さない(core/label chainConnectInDsl。HTML 版と同じ)
+// 鎖状に結ぶ: クリックした順に block / note を選んだとき。同じ向きの接続は足さない・逆向きしか無ければ足す(core/label chainConnectInDsl。HTML 版と同じ)
 function chainIds(){if(!selClk||sel.length<2||sel.some(function(x){return x.type==='group'}))return null;var ids=sel.map(function(x){return x.id});return window.StableBlockLabel.chainConnectInDsl('',ids,parsed.connections).added.length?ids:null;}
 function connChain(){var ids=chainIds();if(!ids)return;var r=window.StableBlockLabel.chainConnectInDsl(dsl,ids,parsed.connections);pushH();dsl=r.dsl;go();notify();}
-function rmConn(a,b){pushH();var lines=dsl.split("\\n");dsl=lines.filter(function(l){var m=l.trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\\n");go();notify();}
-function flipC(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\\s*)(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)/,function(_,sp,f,s1,ar,s2,t){return sp+t+s1+ar+s2+f;});break;}}dsl=lines.join("\\n");go();notify();}
-function togBi(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\\n");go();notify();}
-function setCP(a,b,prop,val){pushH();var lines=dsl.split("\\n"),pr=new RegExp(prop+"=\\\\S+");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=pr.test(lines[i])?lines[i].replace(pr,prop+"="+val):lines[i].trimEnd()+" "+prop+"="+val;break;}}dsl=lines.join("\\n");go();notify();}
+function rmConn(a,b){pushH();dsl=window.StableBlockLabel.removeConnInDsl(dsl,a,b);go();notify();}
+function flipC(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushH();dsl=window.StableBlockLabel.flipConnInDsl(dsl,a,b);go();notify();}
+function togBi(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushH();dsl=window.StableBlockLabel.toggleBidirInDsl(dsl,a,b);go();notify();}
+function setCP(a,b,prop,val){pushH();dsl=window.StableBlockLabel.setConnPropInDsl(dsl,a,b,prop,val);go();notify();}
 function setCC(a,b,col){setCP(a,b,"color",col);}
 
 // Add
@@ -905,7 +910,7 @@ function searchStep(dir){var t=window.StableBlockRender.nextMatch(searchNow(),se
 function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed),dr=incDrops().concat(r.dropped);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(dr.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:dr});}
 
 // Refresh
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check
 var lastDiag=[];
 function showErr(){var p={canvas:parsed.canvas,blocks:parsed.blocks,groups:parsed.groups,notes:parsed.notes,connections:parsed.connections,errors:parsed.errors,blockMap:parsed.blockMap,groupMap:parsed.groupMap,noteMap:parsed.nm};var SBL=window.StableBlockLabel,paths=SBL.connectionPaths(p);lastDiag=window.StableBlockCheck.checkIncluded(p,EXP,paths,{hint:'(ファイルが無い)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});var hasErr=lastDiag.some(function(d){return d.level==='error'});document.getElementById('err').innerHTML=lastDiag.length?'<div class="error'+(hasErr?'':' warn-only')+'">'+lastDiag.map(function(d){return '<div class="dg-'+d.level+'">L'+d.line+': '+esc(d.msg)+'</div>'}).join('')+'</div>':'';}
 function go(){parsed=parseDoc();render();props();

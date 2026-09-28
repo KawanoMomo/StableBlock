@@ -130,6 +130,8 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 .prop-id-box[open] > summary { margin-bottom:4px; }
 .prop-btn { padding:6px 12px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; width:100%; font-family:inherit; }
 .prop-btn:hover { background:#334155; }
+.prop-btn:disabled { opacity:.4; cursor:not-allowed; }
+.prop-btn:disabled:hover { background:var(--bg2); }
 .prop-btn-accent { border-color:var(--accent); color:#A5B4FC; }
 .prop-btn-red { border-color:var(--red); color:#FCA5A5; background:#1C1017; }
 .color-grid { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
@@ -738,7 +740,7 @@ function renderPropsPanel(){
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
     if(sel.length>=3&&justLinked.length){
       html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
-      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to).find(x=>x.from===c.from&&x.to===c.to);html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
       html+=`</div>`;
     } else if(sel.length>=3&&chainIds()){
       const ids=chainIds();
@@ -748,24 +750,28 @@ function renderPropsPanel(){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
-      if(conns.length===0){
-        // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。向き違いのボタンは出さず、向きは結んだ後の「⇄ 反転」で変える
-        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える">${esc(a)} → ${esc(b)}</button>`;
-      } else {
-        const c=conns[0],fa=c.from,ta=c.to;
-        html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
+      // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。クリックした順の向きがまだ無ければ出す(逆向きだけがあるなら戻りの線を足す)
+      if(a!==b&&!window.StableBlockLabel.hasConnDir(parsed.connections,a,b)&&(conns.length===0||selClicked)){
+        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff;margin-bottom:8px" title="クリックした順に結ぶ(Enter でも)。${conns.length?'逆向きの接続とは別の線になり、別のラベルを付けられる':'向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える'}">${esc(a)} → ${esc(b)}</button>`;
+      }
+      // 2 つの間の接続を向きごとに全部並べ、各行でその向きの線だけを直す(core/label connsBetween ほか)。ラベル欄の #conn-label-input はクリックした順の向きの行
+      const focusK=Math.max(0,conns.findIndex(c=>c.from===a&&c.to===b));
+      conns.forEach((c,k)=>{const fa=c.from,ta=c.to,canFlip=window.StableBlockLabel.canFlipConn(parsed.connections,fa,ta),noFlip=canFlip?'':' disabled title="逆向きの接続が別にあるので使えない(同じ向きが 2 本になる)"';
+        html+=`<div class="conn-row" data-from="${esc(fa)}" data-to="${esc(ta)}"${k?' style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"':''}>`;
+        html+=`<div class="conn-dir" style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}${c.label&&conns.length>1?` <span style="color:var(--muted)">${esc(c.label)}</span>`:''}</div>`;
         html+=`<div style="display:flex;gap:4px;flex-wrap:wrap">`;
-        html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
-        html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
+        html+=`<button class="prop-btn conn-flip" onclick="flipConn('${fa}','${ta}')" style="flex:1"${noFlip||' title="方向を反転"'}>⇄ 反転</button>`;
+        html+=`<button class="prop-btn conn-bidir" onclick="toggleBidir('${fa}','${ta}')" style="flex:1"${noFlip||' title="双方向切替"'}>${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
         html+=`</div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input" id="conn-label-input" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input conn-label" id="${k===focusK?'conn-label-input':'conn-label-input-'+k}" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
         html+=`<div class="prop-sub" style="margin-top:6px">ラベル位置</div><div style="display:flex;gap:4px">${[['right','右'],['left','左'],['top','上'],['bottom','下'],['center','中央']].map(([v,l])=>`<button class="style-btn ${c.lpos===v?'active':''}" onclick="setConnProp('${fa}','${ta}','lpos','${v}')">${l}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線のスタイル</div><div style="display:flex;gap:4px">${["solid","dashed"].map(st=>`<button class="style-btn ${c.style===st?'active':''}" onclick="setConnProp('${fa}','${ta}','style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の形</div><div style="display:flex;gap:4px">${['','curved','straight','ortho'].map(v=>({v,l:window.StableBlockTerms.lineShapeName(v)})).map(r=>`<button class="style-btn ${(c.route||'')===(r.v)?'active':''}" onclick="${r.v?`setConnProp('${fa}','${ta}','route','${r.v}')`:`removeConnProp('${fa}','${ta}','route')`}">${r.l}</button>`).join('')}</div>`;
-        html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
-      }
+        html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red conn-remove" onclick="removeConn('${fa}','${ta}')" style="width:100%">${conns.length>1?`${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)} を削除`:'接続を削除'}</button></div>`;
+        html+=`</div>`;
+      });
       html+=`</div>`;
     }
     if(hasBlocks&&sel.length>=2) html+=`<div style="margin-top:8px"><button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;width:100%" onclick="groupSelected()">選択をグループ化</button></div>`;
@@ -891,14 +897,14 @@ function batchDelete(){
 // ═══════════════════════════════════════════════
 // Connection management (two-select) — find, create, remove, flip, bidir, color, width, style
 // ═══════════════════════════════════════════════
-function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
+function findConnsBetween(a,b){return window.StableBlockLabel.connsBetween(parsed.connections,a,b);}
 function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;justLinked=[];refresh();focusLinkLabel('conn-label-input');}
 // 鎖状に結ぶ: クリックした順(selClicked)で、block / note だけを 3 個以上選んだとき。既にある組は足さない(core/label chainConnectInDsl)
 function chainIds(){if(!selClicked||sel.length<2||sel.some(s=>s.type==='group'))return null;const ids=sel.map(s=>s.id);return window.StableBlockLabel.chainConnectInDsl('',ids,parsed.connections).added.length?ids:null;}
 function connectChain(){const ids=chainIds();if(!ids)return;const r=window.StableBlockLabel.chainConnectInDsl(dsl,ids,parsed.connections);pushHistory();dsl=r.dsl;justLinked=r.added;refresh();focusLinkLabel(null);}
 function focusLinkLabel(id){const el=id?document.getElementById(id):document.querySelector('.link-label[data-i="0"]');if(el){el.focus();el.select&&el.select();}}
 // 右ボタンのドラッグで結ぶ: 始点の block / note から終点の block / note の上で離すと「始点 → 終点」を 1 本足し、そのラベル欄へ。
-// 既に結ばれている組は足さずに 2 つを選ぶだけ。ドラッグ中は点線で行き先を示す
+// 同じ向きの接続が既にあれば足さずに 2 つを選ぶだけ(逆向きしか無ければ戻りの線を 1 本足す)。ドラッグ中は点線で行き先を示す
 function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;
   const pt=ev=>{const m=svg.getScreenCTM();if(!m)return{x:0,y:0};const p=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());return{x:p.x,y:p.y};};
   const g=document.createElementNS('http://www.w3.org/2000/svg','line'),p0=pt(e);g.id='link-ghost';
@@ -908,17 +914,17 @@ function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap 
     const t=document.elementFromPoint(ev.clientX,ev.clientY),hit=t&&t.closest?t.closest('#svg-wrap g[data-id]'):null;
     if(!hit||!/^(block|note)$/.test(hit.dataset.type)||hit.dataset.id===from)return;
     const to=hit.dataset.id;sel=[{type,id:from},{type:hit.dataset.type,id:to}];selClicked=true;justLinked=[];
-    if(findConnsBetween(from,to).length){renderProps();renderSVG();return;}
+    if(window.StableBlockLabel.hasConnDir(parsed.connections,from,to)){renderProps();renderSVG();return;}
     connectTwo(from,to);}
   window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);}
 function leaveToCanvas(){if(document.activeElement)document.activeElement.blur();const w=document.getElementById('svg-wrap');if(w){w.setAttribute('tabindex','-1');w.focus({preventScroll:true});}}
 function linkLabelKey(e,i){if(e.key!=='Enter')return;e.preventDefault();const next=document.querySelector(`.link-label[data-i="${i+1}"]`);if(next){next.focus();next.select();}else leaveToCanvas();}
-function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
-function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
-function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
+function removeConn(a,b){pushHistory();dsl=window.StableBlockLabel.removeConnInDsl(dsl,a,b);refresh();}
+function flipConn(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.flipConnInDsl(dsl,a,b);refresh();}
+function toggleBidir(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.toggleBidirInDsl(dsl,a,b);refresh();}
 function setConnColor(a,b,col){setConnProp(a,b,'color',col);}
-function setConnProp(a,b,prop,val){pushHistory();const lines=dsl.split("\n");const re=new RegExp(prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=re.test(lines[i])?lines[i].replace(re,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}}dsl=lines.join("\n");refresh();}
-function removeConnProp(a,b,prop){pushHistory();const lines=dsl.split("\n");const re=new RegExp('\\s*'+prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=lines[i].replace(re,'');break;}}dsl=lines.join("\n");refresh();}
+function setConnProp(a,b,prop,val){pushHistory();dsl=window.StableBlockLabel.setConnPropInDsl(dsl,a,b,prop,val);refresh();}
+function removeConnProp(a,b,prop){pushHistory();dsl=window.StableBlockLabel.removeConnPropInDsl(dsl,a,b,prop);refresh();}
 
 // ═══════════════════════════════════════════════
 // Add items — all new elements get __new_N placeholder IDs
@@ -1021,7 +1027,7 @@ let grewFrom=null;
 function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);if(nd!==dsl&&!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
 function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();renderExportAll();}
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
 function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 // 共通部を動かした影響(core/check の includeImpact。CLI の npm run check と同じ診断): 表示中の図を @include している一緒に読み込んだ図にも同じ診断を当て、

@@ -131,13 +131,13 @@ test('junior-02: 3 個以上をクリックした順に選ぶと鎖状に結べ�
   await expect(page.locator('.link-label')).toHaveCount(3);
   await expect(page.locator('#prop-content input:focus')).toHaveCount(0);
 
-  // 既にある組は二重に足さない(b4 → b3 は b3 -> b4 があるので足さない)。キャンバスで Enter でも結べる
+  // 同じ向きの接続は二重に足さない(b3 → b4 は b3 -> b4 があるので足さない。逆向きなら足す: 次の test)。キャンバスで Enter でも結べる
   await block(page, 'b8').click();
-  for (const id of ['b4', 'b3']) await block(page, id).click({ modifiers: ['Shift'] });
-  await expect(props.getByRole('button', { name: 'b8 → b4 → b3', exact: true })).toBeVisible();
+  for (const id of ['b3', 'b4']) await block(page, id).click({ modifiers: ['Shift'] });
+  await expect(props.getByRole('button', { name: 'b8 → b3 → b4', exact: true })).toBeVisible();
   await page.keyboard.press('Enter');
   await expect(status(page)).toContainText('Conn: 4');
-  expect(await getEditorText(page)).toMatch(/b3 -> b4 "done"\nb8 -> b4\n$/);
+  expect(await getEditorText(page)).toMatch(/b3 -> b4 "done"\nb8 -> b3\n$/);
 
   // 2 個の「a → b」も結んだ直後にラベル欄へ。打って Enter で確定
   await block(page, 'b5').click();
@@ -167,6 +167,78 @@ test('junior-02: 3 個以上をクリックした順に選ぶと鎖状に結べ�
   await page.keyboard.type('seq');
   expect(await getEditorText(page)).toMatch(/b6 -> b7 "seq"\n$/);
   await expect(status(page)).toContainText('Selected: 2');
+});
+
+// ─── 同じ 2 つの間に行きと戻りを別の線で結び、それぞれのラベル・色・削除を作図 UI で直す(BLK-owner-20260928-2255-2) ───
+test('junior-02: 同じ 2 つの間に向きの違う接続(行き「req」と戻り「notify」)を作図 UI だけで結べ、接続パネルで向きごとに直せる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const props = page.locator('#prop-content');
+  const rows = props.locator('.conn-row');
+  const before = await getEditorText(page);
+
+  // 行き: b1 → b2 を結んでラベル「req」
+  await block(page, 'b1').click();
+  await block(page, 'b2').click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: 'b1 → b2', exact: true }).click();
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('req');
+  await page.keyboard.press('Enter');
+
+  // 同じ順で選び直しても入口は出ない(同じ向きは二重に足さない)。Enter でも足さない
+  await block(page, 'b1').click();
+  await block(page, 'b2').click({ modifiers: ['Shift'] });
+  await expect(rows).toHaveCount(1);
+  await expect(props.locator('#chain-btn')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(status(page)).toContainText('Conn: 1');
+
+  // 戻り: b2 → b1 の順で選ぶと、既存の「b1 → b2」の編集欄の上に同じ場所の「b2 → b1」ボタンが出る
+  await block(page, 'b2').click();
+  await block(page, 'b1').click({ modifiers: ['Shift'] });
+  await expect(props.locator('#chain-btn')).toHaveText('b2 → b1');
+  await props.locator('#chain-btn').click();
+  await expect(status(page)).toContainText('Conn: 2');
+  await expect(page.locator('#conn-label-input')).toBeFocused();       // 結んだ戻りの線のラベル欄
+  await page.keyboard.type('notify');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toBe(before.trimEnd() + '\nb1 -> b2 "req"\nb2 -> b1 "notify"\n');
+
+  // 接続パネルは向きごとに 2 行。反転・双方向は同じ向きが 2 本になるので押せない
+  await expect(rows).toHaveCount(2);
+  await expect(props.locator('#chain-btn')).toHaveCount(0);
+  await expect(rows.nth(0).locator('.conn-dir')).toContainText('b1 → b2');
+  await expect(rows.nth(1).locator('.conn-dir')).toContainText('b2 → b1');
+  await expect(rows.nth(0).locator('.conn-flip')).toBeDisabled();
+  await expect(rows.nth(1).locator('.conn-bidir')).toBeDisabled();
+
+  // 戻りの線だけ色・ラベルを変える(行きの行は変わらない)
+  await rows.nth(1).locator('.prop-sub', { hasText: '線の色' }).locator('xpath=following-sibling::div[1]').locator('.color-dot').nth(4).click();   // #EF4444
+  await expect.poll(() => getEditorText(page)).toMatch(/^b2 -> b1 "notify" color=#EF4444$/m);
+  await rows.nth(1).locator('.conn-label').fill('IRQ');
+  await expect.poll(() => getEditorText(page)).toMatch(/^b2 -> b1 "IRQ" color=#EF4444$/m);
+  expect(await getEditorText(page)).toMatch(/^b1 -> b2 "req"$/m);
+  await expect(page.locator('#svg-wrap svg')).toContainText('req');
+  await expect(page.locator('#svg-wrap svg')).toContainText('IRQ');
+
+  // 戻りの線だけを消す(行きは残る)
+  await rows.nth(1).locator('.conn-remove').click();
+  await expect(status(page)).toContainText('Conn: 1');
+  expect(await getEditorText(page)).toBe(before.trimEnd() + '\nb1 -> b2 "req"\n');
+
+  // 右ボタンのドラッグ: 逆向きが無ければ戻りを 1 本足し、同じ向きがあれば足さない
+  await page.keyboard.press('Escape');
+  const center = async id => { const bb = await block(page, id).locator('rect').first().boundingBox(); return { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 }; };
+  const rdrag = async (a, b) => { const p = await center(a), q = await center(b); await page.mouse.move(p.x, p.y); await page.mouse.down({ button: 'right' }); await page.mouse.move(q.x, q.y, { steps: 5 }); await page.mouse.up({ button: 'right' }); };
+  await rdrag('b2', 'b1');
+  await expect(status(page)).toContainText('Conn: 2');
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('ack');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toMatch(/b1 -> b2 "req"\nb2 -> b1 "ack"\n$/);
+  await rdrag('b1', 'b2');
+  await expect(status(page)).toContainText('Selected: 2');
+  await expect(status(page)).toContainText('Conn: 2');
 });
 
 test('junior-02: Esc とプレビューの余白クリックで選択が外れる', async ({ page }) => {
