@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260927-0728-5: 取り込んだ共通部(@include 先)の block・group・注釈を選ぶと、プロパティ欄は値(ラベル・ID・位置・サイズ・色)を見せるだけになり、打っても何も変わらない欄・色・削除と「Enter でほかの図の同じ表示名も揃う」を出さない。直す入口は「common.sb を開く」の 1 つ。選んだまま文字を打ってもその場編集は開かない(HTML 版・VSCode 拡張、core/check の includedItemRows)
 - BLK-owner-20260927-0728-4: group の中で「選択をグループ化」しても、触っていない親 group と兄弟の行が変わらない。新しい子 group の余白は親の内側 1 と兄弟との隙間に収まるよう辺ごとに 0 まで詰め、選んだ block が親の枠に接しているときだけ今どおり親が広がる(HTML 版・VSCode 拡張、core/layout の groupRectFor)
 - BLK-owner-20260927-0728-3: 読み込んだ図の 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)が「.sb 保存」「一括」と同じ図の名前で出る(critique3-swc.svg、透過は critique3-swc_transparent.png。新規の図は今どおり diagram.*)。VSCode 拡張の保存ダイアログの既定名も .sb の隣のその図の名前(core/check の bulkFileName)
 - BLK-owner-20260927-0728-2: block・group・注釈を 1 つ選んだまま文字(IME を含む)を打つと、その文字からラベルのその場編集になる(追加した直後に名前を打てる)。単キーの L(線の形。本文の @canvas 行を書く)は何も選んでいないときだけ、H・N・F は 1 つ選んでいないときだけ効き、Filter・Logger・Nvm のような名前を打っても本文や表示が変わらない(HTML 版・VSCode 拡張、core/select の typedKeyAction)

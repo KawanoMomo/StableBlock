@@ -295,6 +295,24 @@ export function includedItemNote(exp, line, name, lang) {
     : `include 先 ${f} の L${o.line} で定義(本文 L${o.at} の @include)。この図からは動かせない・変えられないので ${f} で直す`;
 }
 
+// include 先の要素のプロパティ欄は値を見せるだけにする(打てる欄・色・削除・「ほかの図の同じ表示名も揃う」を出さない)。
+// この図の本文にはその行が無く、打っても何も変わらないため。直す入口は案内(includedItemNote)の「{ファイル} を開く」の 1 つ。
+// 返り値: 見せる行 [{ key, label, value }]。include 先の要素でなければ null(打てるプロパティ欄を出す)
+export function includedItemRows(exp, item, lang) {
+  if (!item || !includeOrigin(exp, item.line)) return null;
+  const en = lang === 'en', isNote = item.type === 'note', isGroup = item.type === 'group';
+  const rows = [
+    { key: 'label', label: isNote ? (en ? 'Text' : 'テキスト') : (en ? 'Label' : 'ラベル'), value: String(item.label == null ? '' : item.label).split('\\n').join(' / ') },   // 本文の \n(改行)は「 / 」で 1 行に
+    { key: 'id', label: 'ID', value: item.id },
+    { key: 'pos', label: en ? 'Position (grid)' : '位置 (grid)', value: `${item.x}, ${item.y}` },
+    { key: 'size', label: en ? 'Size (grid)' : 'サイズ (grid)', value: `${item.w} x ${item.h}` },
+    { key: 'color', label: en ? 'Color' : '背景色', value: item.color || '' },
+  ];
+  if (isGroup) rows.push({ key: 'border', label: en ? 'Border' : '枠線色', value: item.borderColor || '' });
+  else rows.push({ key: 'text', label: en ? 'Text Color' : 'テキスト色', value: item.textColor || '' });
+  return rows;
+}
+
 // 書き出しの知らせに足す行: 読めない include 先の要素は書き出しにも入っていない
 export function includeDrops(exp) {
   return ((exp && exp.missing) || []).map(m => `include 先「${m.path}」(L${m.at})を読めず、その中の要素は入っていない`);

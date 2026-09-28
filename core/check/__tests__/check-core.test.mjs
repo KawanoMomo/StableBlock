@@ -322,6 +322,26 @@ test('includedItemNote: include 先の要素には定義の場所と直す先を
   assert.equal(includedItemNote(exp, p.blockMap.swc.line, base), '');
 });
 
+// プロパティ欄の出し分け(BLK-owner-20260927-0728-5): include 先の要素は値を見せる行だけ、本文の要素は null(打てる欄を出す)
+import { includedItemRows } from '../check-core.mjs';
+test('includedItemRows: include 先の要素は値を見せるだけの行、本文の要素は null(打てる欄)', () => {
+  const common = 'block rte "RTE" at 20,2 size 6x3 color=#3B82F6 text=#FFFFFF\ngroup os_grp "OS" at 18,0 size 12x8 color=#F1F5F9 border=#94A3B8\nnote memo "a\\nb" at 1,9 size 8x2\n';
+  const exp = expandIncludes('block swc "SWC" at 1,1 size 6x3\n@include "shared/common.sb"\n', p => (p === 'shared/common.sb' ? common : null), 'spi_swc.sb');
+  const p = parseDSL(exp.text);
+  assert.equal(includedItemRows(exp, p.blockMap.swc), null);
+  assert.equal(includedItemRows(exp, null), null);
+  const rows = includedItemRows(exp, p.blockMap.rte);
+  assert.deepEqual(rows.map(r => r.key), ['label', 'id', 'pos', 'size', 'color', 'text']);
+  assert.deepEqual(Object.fromEntries(rows.map(r => [r.key, r.value])), { label: 'RTE', id: 'rte', pos: '20, 2', size: '6 x 3', color: '#3B82F6', text: '#FFFFFF' });
+  assert.equal(rows[0].label, 'ラベル');
+  const g = includedItemRows(exp, p.groupMap.os_grp);
+  assert.deepEqual(g.map(r => r.key), ['label', 'id', 'pos', 'size', 'color', 'border']);
+  assert.equal(g.find(r => r.key === 'border').value, '#94A3B8');
+  const n = includedItemRows(exp, p.noteMap.memo, 'en');
+  assert.equal(n[0].label, 'Text');
+  assert.equal(n[0].value, 'a / b');                                   // 本文の \n は 1 行に
+});
+
 // 一括書き出し(BLK-primary-20260926-1205): 一緒に読み込んだ図を 1 枚ずつ、表示中の図と同じ探し方で include を解決する
 import { loadedReader, expandLoaded, bulkFileName, bulkDrops } from '../check-core.mjs';
 
