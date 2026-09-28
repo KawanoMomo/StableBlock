@@ -1,0 +1,19 @@
+# StableBlock v0.6
+@canvas width=960 height=520 grid=20
+
+# Application
+
+
+# Middleware
+
+
+# Platform
+
+
+# Connections
+block candrv "CanDrv" at 4,4 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+
+@include "shared/common.sb"
+candrv -> rte
+rte -> os
+rte -> hal

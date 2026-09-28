@@ -130,13 +130,17 @@ export function findCrossings(paths, blocks, g, inset = 2) {
 const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 
 // 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)。
-// where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)
+// where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)。
+// 相手のある診断(重なり・またぎ・横切り・2 本目・ラベル・キャンバスの外)は refs に相手の行(本文の行番号)を持つ(どの図とどの図の間の診断かを includeImpact が見る)
 export function checkDiagram(parsed, lines, paths, labelIssues, where) {
   const ref = where || (n => `L${n}`);
   const out = [];
   for (const e of parsed.errors || []) {
     const raw = lines && lines[e.line - 1] !== undefined ? lines[e.line - 1].trim() : null;
     const unread = raw !== null ? raw.substring(0, 40) === e.msg : !/^ID "|^@include /.test(e.msg);
+    // ID の重複は先に定義した行が相手(parser は展開後の行番号で書くので、元の場所で書き直す)
+    const dup = !unread && /^(ID ".*" が重複 )\(L(\d+)\)$/.exec(e.msg);
+    if (dup) { out.push({ line: e.line, level: 'error', msg: `${dup[1]}(${ref(+dup[2])})`, refs: [+dup[2]] }); continue; }
     out.push({ line: e.line, level: 'error', msg: unread ? explainLine(raw !== null ? raw : e.msg) : e.msg });
   }
   // @canvas が 2 行以上: 効くのは最後の行(属性ごとに後の行が上書き)。前の行は読んだまま残すが、効いていないことを前の行に知らせる
@@ -155,15 +159,15 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
     if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
     const key = [c.from, c.to].sort().join('\u0000');
-    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[key])} と同じ組の 2 本目` });
+    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[key])} と同じ組の 2 本目`, refs: [seen[key]] });
     else seen[key] = c.line;
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
-    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている` });
+    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line] });
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
-    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる` });
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line] });
   }
   // 追加した要素の仮の ID(`__new_N`)が残っている: ラベルが日本語だけだと ID は自動で付かない。保存・レビューの前に名前を付ける
   for (const [kind, list] of [['block', parsed.blocks], ['group', parsed.groups], ['note', parsed.notes]]) {
@@ -177,13 +181,13 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
       const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
-      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる` });
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
     }
   }
   if (paths) {
     const g = parsed.canvas.grid;
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
-      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る` });
+      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line] });
     }
   }
   for (const { conn, kind, item } of labelIssues || []) {
@@ -192,7 +196,7 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
       : kind === 'title' ? `${head}が group「${item.id}」(${ref(item.line)})の見出しに重なる`
       : kind === 'note' ? `${head}が note「${item.id}」(${ref(item.line)})の下に隠れる`
       : `${head}が接続「${connText(item)}」(${ref(item.line)})のラベルに重なる`;
-    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)` });
+    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line] });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -268,7 +272,7 @@ export function checkIncluded(parsed, exp, paths, opts = {}) {
     let msg = d.msg;
     if (unread && /という ID の block \/ note が無い$/.test(msg)) msg += unread;
     if (r.file !== exp.file && opts.inline !== false) msg += `(${name(r.file)} L${r.line})`;
-    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line });
+    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -345,7 +349,9 @@ function loadedFileKey(files, from, p) {
 }
 
 // 図 self の本文を base(読み込んだ時)から今の files[self] に変えた影響。check(files, key) は図 key の診断(checkIncluded の返り値。
-// parse と線の経路は呼び出し側が渡す)。self の中だけで起きた診断(共通部の block 同士の重なり等)は self 自身の欄に出るので数えない。
+// parse と線の経路は呼び出し側が渡す)。self の中だけで起きた診断(発生源も相手(refs)も self の行。共通部の block 同士の重なり等)は
+// self だけを開いても出て self 自身の欄に出るので数えない。発生源が self の行でも相手が取り込み側の行なら(@include が本文の後ろにある図で
+// 共通部の block を取り込み側の block に重ねた等)、取り込み側の図の診断として相手の行で出す。
 // cache(Map、省略可)に編集前の診断を持つ(本文を打つたびに編集前を測り直さない)。
 // 返り値: { includers: [key], added: [{ path, line, level, msg }] }(includers の順、1 枚の中は check の順。line は path の本文の行)
 export function includeImpact(files, self, base, check, cache) {
@@ -358,8 +364,11 @@ export function includeImpact(files, self, base, check, cache) {
     let before = cache && cache.get(ck);
     if (!before) { before = check(was, k); if (cache) cache.set(ck, before); }
     for (const d of addedDiagnostics(before, check(files, k))) {
-      if (loadedFileKey(files, k, d.file === undefined ? k : d.file) === self) continue;
-      added.push({ path: k, line: d.line, level: d.level, msg: d.msg });
+      const inSelf = f => loadedFileKey(files, k, f === undefined ? k : f) === self;
+      if (!inSelf(d.file)) { added.push({ path: k, line: d.line, level: d.level, msg: d.msg }); continue; }
+      const other = (d.refs || []).find(r => !inSelf(r.file));
+      if (!other) continue;
+      added.push({ path: k, line: other.file === k ? other.line : other.at, level: d.level, msg: d.msg });
     }
   }
   return { includers, added };
