@@ -1091,7 +1091,7 @@ function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)re
 function exportPNG(){pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
-async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
+async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
 // .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
 // どちらも @include を読込んだパスからの相対で解き、ほかの読んだ図から include されていない図が本文になる(core/check の pickMainDiagram)
@@ -1159,7 +1159,7 @@ async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
       const p=parseDSL(d.exp.text),name=C.bulkFileName(d.path,f.ext),dropped=C.includeDrops(d.exp);
       if(fmt==='svg')zip.file(name,exportSvgText(p));
       else if(fmt==='png'||fmt==='png-transparent'){const c=await pngCanvas(fmt==='png-transparent',p);zip.file(name,await new Promise(r=>c.toBlob(r,'image/png')));}
-      else if(fmt==='xlsx'){zip.file(name,await window.StableBlockExcel.renderXlsx(p,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}));dropped.push(...window.StableBlockExcel.listXlsxDrops(p));}
+      else if(fmt==='xlsx'){zip.file(name,await window.StableBlockExcel.renderXlsx(p,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel}));dropped.push(...window.StableBlockExcel.listXlsxDrops(p));}
       else{const r=window.StableBlockMermaid.toMermaid(p);zip.file(name,r.text);dropped.push(...r.dropped);}
       per.push({path:d.path,name,dropped});
     }
