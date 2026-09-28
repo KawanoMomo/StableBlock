@@ -481,3 +481,59 @@ test('checkDiagram: __new_ の仮の ID が残る block / group / note を、ラ
   assert.match(d[1].msg, /英数字と _/);
   assert.deepEqual(check('block app "App" at 1,1 size 4x2\nblock new_1 "N" at 6,1 size 4x2\n'), []);
 });
+
+// 「.sb 読込 ▾」のフォルダ選択・ドロップと「一括 ▾」の前回の形式(BLK-junior-20260926-1705-wish)
+import { sbLoadable, folderSbEntries, pickMainDiagram, bulkFormatOrder, trimCommonDir } from '../check-core.mjs';
+
+test('sbLoadable: フォルダの中は .sb / .stableblock だけ、隠しフォルダの下は読まない。じかに選んだファイルは .txt も', () => {
+  assert.equal(sbLoadable('junior/spi_swc.sb', true), true);
+  assert.equal(sbLoadable('junior/shared/common.SB', true), true);
+  assert.equal(sbLoadable('junior/x.stableblock', true), true);
+  assert.equal(sbLoadable('junior/spi_swc.xlsx', true), false);
+  assert.equal(sbLoadable('junior/README.txt', true), false);
+  assert.equal(sbLoadable('primary/.git/x.sb', true), false);
+  assert.equal(sbLoadable('.hidden.sb', true), true);                 // 隠しなのはフォルダだけ見る
+  assert.equal(sbLoadable('notes.txt', false), true);
+  assert.equal(sbLoadable('a\\.git\\b.sb', true), false);
+  assert.equal(sbLoadable('a\\b.sb', true), true);
+});
+
+test('folderSbEntries: 読み込める図だけをパスの順に並べる(ほかの項目はそのまま持つ)', () => {
+  const got = folderSbEntries([
+    { path: 'j/spi_swc.sb', n: 1 }, { path: 'j/spi_swc.png', n: 2 }, { path: 'j/shared/common.sb', n: 3 }, { path: 'j/spi_dataflow.sb', n: 4 },
+  ]);
+  assert.deepEqual(got.map(d => d.n), [3, 4, 1]);
+  assert.deepEqual(folderSbEntries([]), []);
+});
+
+test('pickMainDiagram: ほかの図から @include されていない最初の図を本文にする', () => {
+  const inc = '@canvas width=100 height=100\n@include "shared/common.sb"\n';
+  assert.equal(pickMainDiagram([
+    { path: 'j/shared/common.sb', text: 'block os "OS" at 1,1 size 2x2' },
+    { path: 'j/spi_dataflow.sb', text: inc },
+    { path: 'j/spi_swc.sb', text: inc },
+  ]), 1);
+  // フォルダの無い名前だけでも当てる(「ファイルを選ぶ」で選んだ図)
+  assert.equal(pickMainDiagram([{ path: 'common.sb', text: '' }, { path: 'spi_swc.sb', text: inc }]), 1);
+  // 読めなかった図は選ばない、全部が取り込まれていれば読めた最初の図、読めた図が無ければ -1
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: null }, { path: 'b.sb', text: 'x' }]), 1);
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: '@include "b.sb"' }, { path: 'b.sb', text: '@include "a.sb"' }]), 0);
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: null }]), -1);
+});
+
+test('bulkFormatOrder: 前回の形式を先頭に、残りは元の順', () => {
+  const f = ['svg', 'png', 'png-transparent', 'xlsx', 'mermaid'];
+  assert.deepEqual(bulkFormatOrder(f, 'xlsx'), ['xlsx', 'svg', 'png', 'png-transparent', 'mermaid']);
+  assert.deepEqual(bulkFormatOrder(f, null), f);
+  assert.deepEqual(bulkFormatOrder(f, 'pdf'), f);
+});
+
+test('trimCommonDir: 選んだフォルダの名前を外し、フォルダの中のパスにする(相対パスは変わらない)', () => {
+  const t = l => trimCommonDir(l.map(path => ({ path, x: 1 }))).map(d => d.path);
+  assert.deepEqual(t(['junior/spi_swc.sb', 'junior/shared/common.sb']), ['spi_swc.sb', 'shared/common.sb']);
+  assert.deepEqual(t(['a/b/x.sb', 'a/b/c/y.sb']), ['x.sb', 'c/y.sb']);
+  assert.deepEqual(t(['a/x.sb', 'b/y.sb']), ['a/x.sb', 'b/y.sb']);
+  assert.deepEqual(t(['x.sb', 'junior/y.sb']), ['x.sb', 'junior/y.sb']);
+  assert.deepEqual(t([]), []);
+  assert.equal(trimCommonDir([{ path: 'j/x.sb', x: 1 }])[0].x, 1);
+});

@@ -1,0 +1,16 @@
+# StableBlock v0.6
+@canvas width=960 height=520 grid=20
+
+# Application
+
+
+# Middleware
+
+
+# Platform
+
+
+# Connections
+block rte "RTE" at 20,2 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block os "OS" at 36,8 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block hal "HAL" at 20,14 size 8x3 color=#3B82F6 text=#FFFFFF round=4

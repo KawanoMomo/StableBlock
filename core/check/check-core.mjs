@@ -478,3 +478,41 @@ export function bulkFileName(path, ext) {
 export function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
 }
+
+// ─── 「.sb 読込 ▾」: ファイルを選ぶ・フォルダを選ぶ・ドロップ ───
+// 読み込める図か: .sb / .stableblock(じかに選んだ・落としたファイルは .txt も)。フォルダの中は隠しフォルダ(.git など)の下を読まない
+export function sbLoadable(path, inFolder) {
+  const p = String(path).split('\\').join('/');
+  if (inFolder && p.split('/').slice(0, -1).some(s => s.startsWith('.'))) return false;
+  return inFolder ? /\.(sb|stableblock)$/i.test(p) : /\.(sb|stableblock|txt)$/i.test(p);
+}
+
+// フォルダから読む図 [{ path, ... }] を、読み込める図だけにしてパスの順に並べる(選んだ・落とした順に左右されない)
+export function folderSbEntries(list) {
+  return (list || []).filter(d => sbLoadable(d.path, true)).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+// 選んだ・落としたフォルダの名前(全部の図に共通するフォルダ)をパスから外す。図どうしの相対パスは変わらず、画面・一括書き出しの名前は
+// フォルダの中のパス(shared/common.sb)になる。共通するフォルダが無ければそのまま
+export function trimCommonDir(list) {
+  const dirs = (list || []).map(d => String(d.path).split('/').slice(0, -1));
+  if (!dirs.length) return [];
+  let n = 0;
+  while (dirs.every(d => d.length > n && d[n] === dirs[0][n])) n++;
+  return n ? list.map(d => ({ ...d, path: String(d.path).split('/').slice(n).join('/') })) : [...list];
+}
+
+// 一緒に読んだ図 [{ path, text }](読めなかった図は text が null)のうち本文に出す図の添字: ほかの図から @include されていない最初の図。
+// 全部が取り込まれている(循環)なら読めた最初の図、読めた図が無ければ -1。include 先はパスでも名前(最後の / の後)でも当てる(loadedReader と同じ)
+export function pickMainDiagram(list) {
+  const ok = d => d.text !== null && d.text !== undefined;
+  const refs = new Set();
+  (list || []).forEach(d => { if (ok(d)) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  const i = list.findIndex(d => ok(d) && !refs.has(d.path) && !refs.has(String(d.path).split('/').pop()));
+  return i >= 0 ? i : list.findIndex(ok);
+}
+
+// 「一括 ▾」の形式の並び: 前回選んだ形式 last を先頭に、残りは元の順(last が無い・知らない形式なら元のまま)
+export function bulkFormatOrder(fmts, last) {
+  return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
+}

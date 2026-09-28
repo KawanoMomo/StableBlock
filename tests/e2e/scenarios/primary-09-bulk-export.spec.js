@@ -69,9 +69,17 @@ test('primary-09: 12 枚 + 共通部を読み込むと、SVG と Excel を「一
   await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
   await expect(report).toContainText('uart_dataflow.sb: 接続 uartdata -> rte の lpos=top');
 
-  // 選択は Esc と外側のクリックで閉じ、何も書き出さない
+  // 次に開くと前回の形式(Excel)が印付きで先頭に出てフォーカスがあり、残りは元の順(BLK-junior-20260926-1705-wish)
   await page.locator('[data-term="export-all"]').click();
   await expect(page.locator('#export-menu')).toBeVisible();
+  const items = page.locator('#export-menu [role="menuitem"]');
+  await expect(items.first()).toHaveAttribute('data-term', 'export-xlsx-all');
+  await expect(items.first()).toBeFocused();
+  await expect(items.first().locator('.em-mark')).toHaveText('前回');
+  await expect(page.locator('#export-menu .em-mark')).toHaveCount(1);
+  expect(await items.evaluateAll(bs => bs.map(b => b.dataset.fmt))).toEqual(['xlsx', 'svg', 'png', 'png-transparent', 'mermaid']);
+
+  // 選択は Esc と外側のクリックで閉じ、何も書き出さない
   await page.keyboard.press('Escape');
   await expect(page.locator('#export-menu')).toBeHidden();
   await page.locator('[data-term="export-all"]').click();

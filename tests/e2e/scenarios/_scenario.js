@@ -29,16 +29,29 @@ async function bootPlain(page) {
   await expect(page.locator('#svg-wrap svg')).toBeVisible();
 }
 
-// Import(ツールバーの「.sb 読込」)の filechooser で .sb を開き、読込が終わるまで待つ。
+// Import(ツールバーの「.sb 読込 ▾」→「ファイルを選ぶ」)の filechooser で .sb を開き、読込が終わるまで待つ。
 // file に配列を渡すと一緒に選ぶ(先頭が本体、残りは @include 先)
 async function importSb(page, file) {
   const files = [].concat(file);
   const expected = fs.readFileSync(files[0], 'utf8').replace(/^﻿/, '');   // FileReader.readAsText は BOM を落とす
+  await page.getByRole('button', { name: '.sb 読込' }).click();
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
-    page.getByRole('button', { name: '.sb 読込' }).click(),
+    page.getByRole('menuitem', { name: 'ファイルを選ぶ' }).click(),
   ]);
   await chooser.setFiles(files);
+  await page.waitForFunction(e => typeof dsl === 'string' && dsl === e, expected);   // eslint-disable-line no-undef
+}
+
+// Import の「.sb 読込 ▾」→「フォルダを選ぶ」でフォルダ dir を 1 回選ぶ(配下の .sb を全部読む)。本文に出る図 main の本文になるまで待つ
+async function importFolder(page, dir, main) {
+  const expected = fs.readFileSync(main, 'utf8').replace(/^﻿/, '');
+  await page.getByRole('button', { name: '.sb 読込' }).click();
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('menuitem', { name: 'フォルダを選ぶ' }).click(),
+  ]);
+  await chooser.setFiles(dir);
   await page.waitForFunction(e => typeof dsl === 'string' && dsl === e, expected);   // eslint-disable-line no-undef
 }
 
@@ -67,4 +80,4 @@ async function exportSb(page, dir) {
 
 const FIXTURES = path.join(REPO, 'tests', 'e2e', 'fixtures');
 
-module.exports = { test, expect, bootPlain, importSb, getEditorText, exportSb, saveDir, FIXTURES, REPO };
+module.exports = { test, expect, bootPlain, importSb, importFolder, getEditorText, exportSb, saveDir, FIXTURES, REPO };
