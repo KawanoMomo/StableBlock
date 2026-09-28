@@ -321,18 +321,35 @@ export function buildConnectionShape(conn, connIndex, endpoints, shapeId, glue, 
   `</xdr:absoluteAnchor>`;
 }
 
-export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
-  const { x1, y1, x2, y2 } = endpoints;
-  const midX = Math.round((x1 + x2) / 2);
-  const midY = Math.round((y1 + y2) / 2);
-  const tbW = 500000;
-  const tbH = 200000;
-  const posX = midX - tbW / 2;
-  const posY = midY - tbH / 2;
+// 接続ラベルの白地と文字。box は画面のラベル矩形(core/label の placeLabels / labelLayout の bg と anchor。px)。
+// 文字は画面と同じ 10px(7.5pt)。box が無ければ線の中点に、文字の幅の見積もり(core/label の estimateTextWidth と同じ)で置く。
+// 白地は文字の幅に合わせる(固定幅にしない。長いラベルが白地からはみ出して block の名前に掛からない)
+const LABEL_PAD_X = 4, LABEL_PAD_Y = 2, LABEL_FONT_PX = 10, LABEL_LINE_PX = 12;
+function labelTextWidth(text, fontPx = LABEL_FONT_PX) {
+  let w = 0;
+  for (const ch of String(text)) w += ch.charCodeAt(0) < 0x80 ? fontPx * 0.6 : fontPx;
+  return w;
+}
 
+export function buildConnectionLabel(conn, connIndex, endpoints, shapeId, box) {
   const labelLines = String(conn.label || '').split(/\\n|\r?\n/);
+  let bx, by, bw, bh, anchor;
+  if (box) ({ x: bx, y: by, w: bw, h: bh, anchor } = box);
+  else {
+    const { x1, y1, x2, y2 } = endpoints;
+    bw = Math.max(...labelLines.map(l => labelTextWidth(l))) + LABEL_PAD_X * 2;
+    bh = LABEL_FONT_PX + LABEL_PAD_Y * 2;
+    bx = (x1 + x2) / 2 / 9525 - bw / 2;
+    by = (y1 + y2) / 2 / 9525 - bh / 2;
+    anchor = 'middle';
+  }
+  if (labelLines.length > 1) { const cy = by + bh / 2; bh += (labelLines.length - 1) * LABEL_LINE_PX; by = cy - bh / 2; }   // 複数行は行の分だけ伸ばす(中心は同じ)
+  const posX = pxToEmu(bx), posY = pxToEmu(by), tbW = pxToEmu(bw), tbH = pxToEmu(bh);
+  const algn = anchor === 'start' ? 'l' : anchor === 'end' ? 'r' : 'ctr';
+  const pad = pxToEmu(LABEL_PAD_X);
+  const ins = `lIns="${algn === 'l' ? pad : 0}" tIns="0" rIns="${algn === 'r' ? pad : 0}" bIns="0"`;
   const paragraphs = labelLines.map(line =>
-    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
+    `<a:p><a:pPr algn="${algn}"/><a:r><a:rPr lang="ja-JP" sz="750"><a:solidFill><a:srgbClr val="64748B"/></a:solidFill><a:latin typeface="Calibri"/><a:ea typeface="Yu Gothic UI"/></a:rPr><a:t>${escapeXml(line)}</a:t></a:r></a:p>`
   ).join('');
 
   return `<xdr:absoluteAnchor>` +
@@ -350,7 +367,7 @@ export function buildConnectionLabel(conn, connIndex, endpoints, shapeId) {
         `<a:ln><a:noFill/></a:ln>` +
       `</xdr:spPr>` +
       `<xdr:txBody>` +
-        `<a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/>` +
+        `<a:bodyPr wrap="none" ${ins} anchor="ctr"/>` +
         `<a:lstStyle/>` +
         paragraphs +
       `</xdr:txBody>` +
@@ -371,7 +388,9 @@ export function sortByZOrder(items) {
   });
 }
 
-export function buildDrawingXml(ast) {
+// opts.L: core/label(browser は window.StableBlockLabel)、opts.measure: ラベルの文字幅(px)。渡すと接続ラベルを画面と同じ所に置く
+// (lpos= が無ければ block の名前・他のラベルを避けた位置)。渡さなければ線の中点に置く
+export function buildDrawingXml(ast, opts = {}) {
   const gridPx = ast.canvas?.grid || 20;
   const items = [];
 
@@ -402,6 +421,21 @@ export function buildDrawingXml(ast) {
       items.push({ kind: 'connlabel', data: c, srcIndex: i, endpoints: ep, connIndex: i });
     }
   });
+  // 接続ラベルの置き場所: 画面(core/render)と同じく、block 同士の線は placeLabels(本文の順に避けて置く)、注釈線は labelLayout
+  const labelBox = {};
+  const L = opts.L;
+  if (L) {
+    const measure = opts.measure || (t => L.estimateTextWidth(t, LABEL_FONT_PX));
+    const midOf = i => { const p = allPorts[i]; return L.connPathInfo(p.fp, p.tp, p.fs, p.ts, xlsxRoute(conns[i], ast.canvas)).mid; };
+    const normal = conns.map((c, i) => i).filter(i => conns[i].label && allPorts[i] && !isAnno(conns[i]));
+    const placed = L.placeLabels(normal.map(i => ({ conn: conns[i], mid: midOf(i) })), ast, measure);
+    placed.forEach((LL, k) => { labelBox[normal[k]] = { ...LL.bg, anchor: LL.anchor }; });
+    for (const i of annoIdx) {
+      if (!conns[i].label || !allPorts[i]) continue;
+      const LL = L.labelLayout(midOf(i), conns[i].lpos, measure(conns[i].label));
+      labelBox[i] = { ...LL.bg, anchor: LL.anchor };
+    }
+  }
 
   (ast.blocks || []).forEach((b, i) => items.push({ kind: 'block', data: b, srcIndex: i }));
   (ast.notes || []).forEach((n, i) => items.push({ kind: 'note', data: n, srcIndex: i }));
@@ -426,7 +460,7 @@ export function buildDrawingXml(ast) {
     switch (item.kind) {
       case 'group': return buildGroupShape(item.data, shapeId++, gridPx);
       case 'connection': return buildConnectionShape(item.data, item.connIndex, item.endpoints, shapeId++, glueOf(item), { route: xlsxRoute(item.data, ast.canvas), fs: item.sides.fs });
-      case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++);
+      case 'connlabel': return buildConnectionLabel(item.data, item.connIndex, item.endpoints, shapeId++, labelBox[item.connIndex]);
       case 'block': return buildBlockShape(item.data, shapeId++, gridPx);
       case 'note': return buildNoteShape(item.data, shapeId++, gridPx);
       default: return '';
@@ -445,18 +479,16 @@ export function buildDrawingXml(ast) {
 // 当て方は属性ごとに決める: 載せる(色・枠・太線/破線・角丸・線の色/太さ/破線・双方向・線の形)か、ここで知らせるか。
 // どちらでもない属性は core/dsl/__tests__/export-fidelity.test.mjs が赤にする(parser の属性を足したら当て方も決める)。
 // - 端が図に無い接続は描かない
-// - 接続ラベルの位置 lpos=: Excel では線の中点に置く(lpos=center と同じ)。接続ごとに要素 ID と書いた値で知らせる
+// - 接続ラベルの位置 lpos= は載せる(renderXlsx に opts.L を渡すと画面と同じ所に置く)ので知らせない
 export function listXlsxDrops(ast) {
   const known = { ...(ast.blockMap || {}), ...(ast.noteMap || {}) };
   const dropped = [];
-  const placed = [];
   for (const c of ast.connections || []) {
     const name = `接続 ${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
     const miss = [c.from, c.to].filter(x => !known[x]);
     if (miss.length) { dropped.push(`${name}(${miss.join(', ')} が図に無い)`); continue; }
-    if (c.label && c.lposAuto === false && c.lpos !== 'center') placed.push(`${name} の lpos=${c.lpos}(Excel ではラベルを線の中点に置く)`);
   }
-  return dropped.concat(placed);
+  return dropped;
 }
 
 function resolveJSZip(opts) {
@@ -477,7 +509,7 @@ export async function packageXlsx(templateFiles, drawingXml, opts = {}) {
 
 export async function renderXlsx(ast, opts = {}) {
   const templateFiles = opts.templateFiles || (await loadTemplateFilesAsync());
-  const drawingXml = buildDrawingXml(ast);
+  const drawingXml = buildDrawingXml(ast, opts);
   return await packageXlsx(templateFiles, drawingXml, opts);
 }
 

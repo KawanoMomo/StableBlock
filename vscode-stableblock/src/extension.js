@@ -936,7 +936,7 @@ function exportXlsx(){
   try{
     if(!parsed){vscodeApi.postMessage({type:'info',text:'図がパースされていません'});return;}
     if(!window.StableBlockExcel||!window.JSZip){vscodeApi.postMessage({type:'info',text:'Excel エクスポート用モジュール未ロード'});return;}
-    window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}).then(function(bytes){
+    window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel}).then(function(bytes){
       var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
       var b64=btoa(binary);
       vscodeApi.postMessage({type:'exportXlsx',data:b64});
