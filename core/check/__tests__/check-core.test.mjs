@@ -356,6 +356,17 @@ test('bulkFileName / bulkDrops: zip の中の名前は図のパスの拡張子�
     ['a.sb: x', 'a.sb: y', 'c.sb: z']);
 });
 
+test('bulkFileName: 1 枚の書き出しも .sb 保存と同じ図の名前から付ける(新規の図は diagram、透過 PNG は _transparent を挟む)', () => {
+  assert.equal(bulkFileName('critique3-swc.sb', 'svg'), 'critique3-swc.svg');
+  assert.equal(bulkFileName('critique3-swc.sb', 'png'), 'critique3-swc.png');
+  assert.equal(bulkFileName('critique3-swc.sb', 'png', '_transparent'), 'critique3-swc_transparent.png');
+  assert.equal(bulkFileName('critique3-swc.sb', 'xlsx'), 'critique3-swc.xlsx');
+  assert.equal(bulkFileName('critique3-swc.sb', 'mmd'), 'critique3-swc.mmd');
+  assert.equal(bulkFileName('Adc.Stack.stableblock', 'svg'), 'Adc.Stack.svg');
+  assert.equal(bulkFileName('diagram.sb', 'svg'), 'diagram.svg');
+  assert.equal(bulkFileName('diagram.sb', 'png', '_transparent'), 'diagram_transparent.png');
+});
+
 // 作図 UI から @include を足す・外す(BLK-primary-20260926-1205-friction)
 import { includeLines, includeCandidates, addIncludeInDsl, removeIncludeInDsl, relativeIncludePath, loadedKeyOf } from '../check-core.mjs';
 

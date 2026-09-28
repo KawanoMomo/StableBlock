@@ -478,9 +478,10 @@ export function removeIncludeInDsl(dsl, line) {
   return lines.join('\n');
 }
 
-// 一括書き出しの zip の中のファイル名: 読み込んだ図のパスから .sb / .stableblock / .txt を除いて拡張子 ext を付ける
-export function bulkFileName(path, ext) {
-  return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + '.' + ext;
+// 書き出しのファイル名: 図のパス(または .sb 保存の名前)から .sb / .stableblock / .txt を除き、suffix(透過 PNG の _transparent など)と拡張子 ext を付ける。
+// 一括の zip の中身も 1 枚の書き出し(HTML 版のツールバー・VSCode 拡張の保存ダイアログの既定名)もこれで名付ける。新規の図は diagram.sb なので diagram.{ext}
+export function bulkFileName(path, ext, suffix = '') {
+  return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + (suffix || '') + '.' + ext;
 }
 
 // 一括書き出しの知らせ: 図ごとの知らせ([{ path, dropped }])を、どの図の知らせかを頭に付けて 1 つに並べる
