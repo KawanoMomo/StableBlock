@@ -1497,6 +1497,77 @@ test('junior-02: block を選んで Tab で線でつないだ次の block を右
   await expect(page.locator('#link-add-hint')).toContainText('Ctrl+Enter');
 });
 
+// 足した block の名前を打っている間の Tab は確定して同じ向きに次の block を足す(Tab → 名前 → Tab → 名前 → Enter で鎖 3 個)。既存の block の編集の Tab は
+// 読み順の次へ移り、移った先は見える所までスクロールされ、移る先が無ければ今の編集を続ける(既存のラベルを黙って書き換えない)(BLK-owner-20260929-2209-1)
+test('junior-02: 足した block の名前を打って Tab で次の block を足し、離れた既存 block のラベルを書き換えない', async ({ page }, testInfo) => {
+  const fs = require('node:fs');
+  const file = testInfo.outputPath('tab_chain.sb');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [
+    '@canvas width=960 height=520 grid=20',
+    'block Spi_Drv "Spi_Drv" at 1,1 size 8x3',
+    'block Can_Drv "Can_Drv" at 1,9 size 8x3',
+    'block Far_Drv "Far_Drv" at 1,80 size 8x3',
+  ].join('\n') + '\n');
+  await bootPlain(page);
+  await importSb(page, file);
+  const svg = page.locator('#svg-wrap svg');
+  const inline = page.locator('#inline-label');
+  const b = id => svg.locator(`g[data-type="block"][data-id="${id}"]`).first();
+  const t0 = await getEditorText(page);
+
+  // Tab → 名前 → Tab → 名前 → Enter で鎖 3 個。Can_Drv・Far_Drv のラベルは変わらない
+  await b('Spi_Drv').click();
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('Spi_Hal');
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('Spi_Rte');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  let t = await getEditorText(page);
+  expect(t).toMatch(/^Spi_Drv -> Spi_Hal$/m);
+  expect(t).toMatch(/^Spi_Hal -> Spi_Rte$/m);
+  expect(t).toMatch(/^block Spi_Hal "Spi_Hal" at 11,1 /m);
+  expect(t).toMatch(/^block Spi_Rte "Spi_Rte" at 21,1 /m);
+  expect(t).toMatch(/^block Can_Drv "Can_Drv" at 1,9 /m);
+  expect(t).toMatch(/^block Far_Drv "Far_Drv" at 1,80 /m);
+  expect(t.split('\n').filter(l => l && !l.startsWith('@canvas') && !t0.split('\n').includes(l))).toHaveLength(4);   // 足した定義行 2 と接続行 2 だけ
+
+  // Ctrl+Enter で足した block の名前を打っている間の Tab は同じ向き(兄弟を下)に足す
+  await b('Spi_Hal').click();
+  await page.keyboard.press('Control+Enter');
+  await page.keyboard.type('Spi_A');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Spi_B');
+  await page.keyboard.press('Enter');
+  t = await getEditorText(page);
+  expect(t).toMatch(/^Spi_Drv -> Spi_A$/m);
+  expect(t).toMatch(/^Spi_Drv -> Spi_B$/m);
+  expect(t).toMatch(/^block Can_Drv "Can_Drv" at 1,9 /m);
+
+  // 既存の block の編集(F2)の Tab は読み順の次へ移り、移った先は見える所までスクロールされる。次々に Far_Drv(y=80 は表示欄の外)へ
+  await b('Can_Drv').click();
+  await page.keyboard.press('F2');
+  await expect(inline).toBeFocused();
+  for (let i = 0; i < 6 && (await inline.inputValue()) !== 'Far_Drv'; i++) {   // 読み順で間にある足した block を通って Far_Drv へ
+    await page.keyboard.press('Tab');
+    await expect(inline).toBeFocused();
+  }
+  await expect(inline).toHaveValue('Far_Drv');
+  const box = await inline.boundingBox(), vp = page.viewportSize();
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+  // 読み順の最後(Far_Drv)で Tab しても編集は続き、次の打鍵は今の編集の中に入る(確定して選んだだけの状態にしない)
+  const before = await getEditorText(page);
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(inline).toHaveCount(0);
+  expect(await getEditorText(page)).toBe(before);
+});
+
 test('junior-02: group の中の block から Tab で足した block は同じ group に入り、足りなければ group が広がる', async ({ page }) => {
   await bootPlain(page);
   await importSb(page, BLANK);

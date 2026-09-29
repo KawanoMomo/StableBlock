@@ -390,7 +390,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';

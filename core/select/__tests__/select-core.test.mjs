@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -154,4 +154,13 @@ test('linkAddKey: block を 1 つ選んで Tab は線の先(child)、Ctrl / ⌘+
   assert.equal(linkAddKey('Tab', [G]), null);
   assert.equal(linkAddKey('Tab', [{ type: 'note', id: 'n' }]), null);
   assert.equal(linkAddKey('Tab', []), null);
+});
+
+test('inlineTabAction: 足したばかりの block の名前を打っている間の Tab は同じ向きに次の block を足し、既存の block の編集では読み順の次へ移る', () => {
+  assert.equal(inlineTabAction('child', false), 'child');
+  assert.equal(inlineTabAction('sibling', false), 'sibling');
+  assert.equal(inlineTabAction(null, false), 'next');
+  assert.equal(inlineTabAction(undefined, false), 'next');
+  assert.equal(inlineTabAction('child', true), 'prev');   // Shift+Tab は前の要素へ(足さない)
+  assert.equal(inlineTabAction(null, true), 'prev');
 });
