@@ -69,6 +69,18 @@ function rdLabelBox(c, LL) {
     `<text x="${LL.tx}" y="${LL.ty}" font-size="10" fill="${c.color}" text-anchor="${LL.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${rdEsc(c.label)}</text>`;
 }
 
+// 「◎ 未接続」(H キー)の判定: 接続(注釈の破線も)の from / to に現れる ID の集合と、それに入らない block(接続が 1 本も無い)。
+// 画面の薄め(renderSvg の highlight)と図の検査(`npm run check` の info)が同じ関数を使う
+function linkedIds(parsed) {
+  const ids = new Set();
+  (parsed.connections || []).forEach(c => { ids.add(c.from); ids.add(c.to); });
+  return ids;
+}
+function unlinkedBlocks(parsed) {
+  const ids = linkedIds(parsed);
+  return (parsed.blocks || []).filter(b => !ids.has(b.id));
+}
+
 // 図を SVG 文字列にする。描画順: group → 通常の接続 → block → 接続ラベル → 注釈レイヤー → リサイズハンドル → スナップガイド
 function renderSvg(parsed, view, L, measure) {
   const v = view || {};
@@ -84,8 +96,7 @@ function renderSvg(parsed, view, L, measure) {
 
   let hlIds = null, hlGroups = null;
   if (v.highlight) {
-    hlIds = new Set();
-    connections.forEach(c => { hlIds.add(c.from); hlIds.add(c.to); });
+    hlIds = linkedIds(parsed);
     hlGroups = new Set();
     blocks.forEach(b => { if (hlIds.has(b.id)) groups.forEach(gr => { if (rdInside(b, gr)) hlGroups.add(gr.id); }); });
   }
@@ -201,4 +212,4 @@ function exportSvg(parsed, L, measure, font) {
   return renderSvg(parsed, { zoom: 1, grid: false, interactive: false, showAnnotations: true, font }, L, measure);
 }
 
-;window.StableBlockRender = { matchesSearchItem, searchMatches, nextMatch, isAnnotationConnOf, exportPngSize, renderSvg, exportSvg };
+;window.StableBlockRender = { matchesSearchItem, searchMatches, nextMatch, isAnnotationConnOf, exportPngSize, linkedIds, unlinkedBlocks, renderSvg, exportSvg };
