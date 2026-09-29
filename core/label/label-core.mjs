@@ -76,14 +76,35 @@ export function quoteLabel(label) {
   return '"' + String(label == null ? '' : label).replace(/"/g, '\\"') + '"';
 }
 
+// 接続行で to の直後にラベルが無いとき、属性の後ろ・間に書いたラベル(`a -> b style=dashed "後ろ"`)を探す(BLK-porter-20260929-2029)。
+// rest: to(と先頭のラベル)の後ろの部分。空白で区切られた最初の "..." をラベルと読む(行末コメント `# ...` の中の引用は読まない)。
+// 返す: { label(引用の中身。\" は未解除), s, e(rest の中の引用符を含む位置), rest(ラベルを空白で潰した属性部分。属性はこれから読む) }。無ければ null。
+// HTML 版・VSCode 拡張・core の parseDSL が同じ規則で読む(本文の並びは書き換えない)
+export function connTrailingLabel(rest) {
+  const r = String(rest == null ? '' : rest);
+  const m = /(^|\s)"((?:\\"|[^"])*)"(?=\s|$)/.exec(r);
+  if (!m) return null;
+  const s = m.index + m[1].length, e = s + m[2].length + 2;
+  const cm = /(?:^|\s)#/.exec(r);
+  if (cm && cm.index + cm[0].length - 1 < s) return null;
+  return { label: m[2], s, e, rest: r.slice(0, s) + ' '.repeat(e - s) + r.slice(e) };
+}
+
 // 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。ラベル中の " は \" で書く
-// 同じ 2 つの間に向き違いの接続があれば from → to の行を直す(無ければ逆の書き順の行。connLineIndex)
+// 同じ 2 つの間に向き違いの接続があれば from → to の行を直す(無ければ逆の書き順の行。connLineIndex)。
+// 属性の後ろに書いたラベル(connTrailingLabel)はその場所のまま直す・消す(先頭に 2 つ目を足さない)
 export function setConnLabelInDsl(dsl, from, to, label) {
   const clean = String(label);
   return editConnLine(dsl, from, to, line => {
     const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/.test(line);
     if (hasLabel && clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/, (_, head) => head + quoteLabel(clean));
     if (hasLabel) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"(?:\\"|[^"])*"/, (_, head) => head);
+    const hm = line.match(/^\s*\S+\s+(?:-->|->)\s+\S+/), t = hm && connTrailingLabel(line.slice(hm[0].length));
+    if (t) {
+      const s = hm[0].length + t.s, e = hm[0].length + t.e;
+      if (clean) return line.slice(0, s) + quoteLabel(clean) + line.slice(e);
+      return line.slice(0, s).replace(/\s+$/, '') + line.slice(e);
+    }
     if (clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' ' + quoteLabel(clean));
     return line;
   });

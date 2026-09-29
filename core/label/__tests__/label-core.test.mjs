@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
-  parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl,
+  parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl, connTrailingLabel,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
   connLinesAmong, remapConnLine,
   hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
@@ -646,4 +646,18 @@ test('linkSources: id へ入る接続の元(本文の順・重複なし)。双�
   assert.deepEqual(linkSources(conns, 'can'), ['ecu', 'gw', 'y']);
   assert.deepEqual(linkSources(conns, 'ecu'), []);
   assert.deepEqual(linkSources([], 'a'), []);
+});
+
+test('connTrailingLabel / setConnLabelInDsl: 属性の後ろ・間に書いたラベルを読み、その場所のまま直す・消す(BLK-porter-20260929-2029)', () => {
+  const t = connTrailingLabel(' style=dashed "後ろ"');
+  assert.deepEqual([t.label, t.s, t.e, t.rest], ['後ろ', 14, 18, ' style=dashed     ']);
+  assert.equal(connTrailingLabel('width=2 "間 \\"q\\"" color=#EF4444').label, '間 \\"q\\"');
+  assert.equal(connTrailingLabel('lpos=top # "コメント"'), null);             // 行末コメントの中の引用はラベルではない
+  assert.equal(connTrailingLabel('color=#f00 "Step #1" # c').label, 'Step #1');   // ラベルの中の # はコメントではない
+  assert.equal(connTrailingLabel('color=#f00'), null);
+  assert.equal(connTrailingLabel('x"y"'), null);                              // 語の途中の引用は読まない
+  const dsl = 'block a "A" at 1,1 size 2x2\nblock b "B" at 5,1 size 2x2\na -> b style=dashed "後ろ" color=#f00';
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', '新'), dsl.replace('"後ろ"', '"新"'));
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', ''), dsl.replace(' "後ろ"', ''));
+  assert.equal(setConnLabelInDsl('a -> b lpos=top # "c"', 'a', 'b', 'L'), 'a -> b "L" lpos=top # "c"');
 });
