@@ -92,7 +92,7 @@ test('porter-03: 属性の後ろに書いた接続のラベルも描かれ、無
   // x と y を選び、接続パネルのラベル欄で直す: 属性の後ろのラベルがその場所で変わる
   await svg.locator('g[data-type="block"][data-id="x"]').click();
   await svg.locator('g[data-type="block"][data-id="y"]').click({ modifiers: ['Shift'] });
-  const label = page.locator('#prop-content input.conn-label');
+  const label = page.locator('#prop-content .conn-label');
   await expect(label).toHaveValue('先');
   await label.fill('先頭');
   await expect.poll(() => page.locator('#editor').inputValue()).toContain('x -> y width=2 style=dashed color=#EF4444 "先頭"\n');

@@ -368,7 +368,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, labelLines, labelTextWidth, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, linkSources, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, labelLines, labelTextWidth, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, labelFieldText, labelFromField, getSide, portPos, computePorts, chainConnectInDsl, linkSources, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -390,7 +390,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink, labelEnterKey };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -451,6 +451,8 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 #preview{flex:1;overflow:auto;padding:8px}
 .inline-label{position:fixed;z-index:40;box-sizing:border-box;margin:0;padding:2px 6px;border:2px solid #6366F1;border-radius:4px;background:#fff;color:#0F172A;font:600 12px sans-serif;text-align:center;outline:none;box-shadow:0 4px 12px rgba(0,0,0,.35);resize:none}
 textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
+textarea.inline-label.il1{text-align:center;font-weight:600;overflow:hidden;white-space:pre}
+textarea.pi.lf{display:block;resize:none;overflow:hidden;white-space:pre;line-height:1.4}
 #wrap{background:#fff;border-radius:6px;display:inline-block;line-height:0}
 #wrap svg{overflow:visible}
 #propPanel{width:200px;min-width:160px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
@@ -658,15 +660,17 @@ function startInl(tp,id){var lk=window.StableBlockSelect.inlineEditLink(pendLk,t
   if(window.StableBlockCheck.includeOrigin(EXP,it.line))return;
   var gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}if(!g)return;
   var r=g.querySelector('rect').getBoundingClientRect(),isN=tp==='note',isG=tp==='group';
-  var el=document.createElement(isN?'textarea':'input');el.className='inline-label';el.id='inline-label';el.spellcheck=false;
-  el.value=isN?it.label.split("\\\\n").join("\\n"):it.label;
-  var h=isG?Math.max(22,Math.min(r.height,28)):isN?Math.max(r.height,44):Math.max(r.height,24);
-  el.style.left=r.left+'px';el.style.top=r.top+'px';el.style.width=Math.max(r.width,isG?140:80)+'px';el.style.height=h+'px';if(isG)el.style.textAlign='left';
+  // Every item edits in a textarea: Shift+Enter shows the line break in the field where the picture breaks it (the text keeps one line-break mark: core/label labelFieldText / labelFromField)
+  var el=document.createElement('textarea');el.className=isN?'inline-label':'inline-label il1';el.id='inline-label';el.spellcheck=false;if(!isN)el.setAttribute('wrap','off');
+  el.value=window.StableBlockLabel.labelFieldText(it.label);
+  var h0=isG?Math.max(22,Math.min(r.height,28)):isN?Math.max(r.height,44):Math.max(r.height,24);
+  el.style.left=r.left+'px';el.style.top=r.top+'px';el.style.width=Math.max(r.width,isG?140:80)+'px';el.style.height=h0+'px';if(isG)el.style.textAlign='left';
+  var fit=function(){if(isN)return;var n=Math.max(1,el.value.split("\\n").length),lh=17,h=Math.max(h0,n*lh+8);el.style.height=h+'px';el.style.paddingTop=el.style.paddingBottom=Math.max(2,(h-n*lh)/2-2)+'px';};fit();
   document.body.appendChild(el);
   var ed={el:el,type:tp,id:id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds),link:lk};inl=ed;
-  el.addEventListener('input',function(){if(inl!==ed)return;if(!ed.pushed){pushH();ed.pushed=true;}var v=isN?el.value.replace(/\\n/g,"\\\\n"):el.value;sel=[{type:ed.type,id:ed.id}];
-    upLb(ed.type,ed.id,v);fLbId(isN?el.value:v);ed.id=sel[0].id;parsed=parseDSL(dsl);render();showErr();});
-  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finInl(true);if(!askId())linkAdd('sibling');}else if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);var act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey,{type:ed.type,hasNext:!!nx,hasPrev:!!nx});if(act==='child'||act==='sibling'){finInl(true);if(!askId())linkAdd(act);return;}var to=act==='first'||act==='last'?endRead(ed.type,act):nx;if(!to||to.id===ed.id){el.select();return;}finInl(true);revealEdit(to.type,to.id);}});
+  el.addEventListener('input',function(){if(inl!==ed)return;if(!ed.pushed){pushH();ed.pushed=true;}fit();var v=window.StableBlockLabel.labelFromField(el.value);sel=[{type:ed.type,id:ed.id}];
+    upLb(ed.type,ed.id,v);fLbId(el.value);ed.id=sel[0].id;parsed=parseDSL(dsl);render();showErr();});
+  el.addEventListener('keydown',function(e){var ek=window.StableBlockSelect.labelEnterKey(e.key,{shift:e.shiftKey,ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});if(ek==='newline'){e.stopPropagation();}else if(ek==='ctrl'&&ed.type==='block'){e.preventDefault();e.stopPropagation();finInl(true);if(!askId())linkAdd('sibling');}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);var act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey,{type:ed.type,hasNext:!!nx,hasPrev:!!nx});if(act==='child'||act==='sibling'){finInl(true);if(!askId())linkAdd(act);return;}var to=act==='first'||act==='last'?endRead(ed.type,act):nx;if(!to||to.id===ed.id){el.select();return;}finInl(true);revealEdit(to.type,to.id);}});
   el.addEventListener('blur',function(){if(inl===ed)finInl(true);});
   el.focus();el.select();}
 // Tab / Shift+Tab: commit and edit the next / previous item of the same kind in reading order (rows top to bottom, left to right). While naming a block added by Tab / Ctrl+Enter
@@ -718,7 +722,7 @@ function propsPanel(){
         mh+='<div class="conn-row"'+(k?' style="margin-top:8px;padding-top:6px;border-top:1px solid #444"':'')+'>';
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
         mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1"'+nf+' onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1"'+nf+' onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
-        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label</div><input class="pi" style="width:100%" value="'+esc(cn.label)+'" oninput="sCLb(\\''+fa+'\\',\\''+ta+'\\',this.value)" placeholder="(none)">';
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label</div><textarea class="pi lf" rows="'+lbRows(cn.label)+'" wrap="off" spellcheck="false" style="width:100%" oninput="fitLf(this);sCLb(\\''+fa+'\\',\\''+ta+'\\',this.value)" onkeydown="if(lfEnter(event))this.blur();" title="Shift+Enter: line break. Enter: done" placeholder="(none)">'+esc(window.StableBlockLabel.labelFieldText(cn.label))+'</textarea>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label Pos</div><div style="display:flex;gap:3px">'+[["right","右"],["left","左"],["top","上"],["bottom","下"],["center","中"]].map(function(pv){return'<button class="sbtn'+(cn.lpos===pv[0]?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'lpos\\',\\''+pv[0]+'\\')">'+pv[1]+'</button>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Line Color</div><div class="cg">'+CC.map(function(c){return'<div class="cd'+(cn.color===c?' act':'')+'" style="background:'+c+'" onclick="setCC(\\''+fa+'\\',\\''+ta+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Width</div><div style="display:flex;gap:3px">'+[1,1.5,2,3,4].map(function(w){return'<button class="sbtn'+(cn.width===w?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'width\\',\\''+w+'\\')">'+w+'</button>'}).join('')+'</div>';
@@ -746,7 +750,7 @@ function propsPanel(){
   // include 先の要素(core/check includedItemRows): 打っても本文は変わらないので値を見せるだけ(直すのは include 先のファイル)
   var roR=window.StableBlockCheck.includedItemRows(EXP,it,'en');
   if(roR){h+=roR.map(function(r){return '<div class="pl">'+esc(r.label)+'</div><div class="pi prop-ro" id="prop-ro-'+r.key+'" style="border-style:dashed;color:#999;user-select:text">'+esc(String(r.value))+'</div>';}).join('');el.innerHTML=h;return;}
-  h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)" onkeydown="if(event.key===\\'Enter\\'){this.blur();askId();}">');
+  h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<textarea class="pi lf" id="prop-label" rows="'+lbRows(it.label)+'" wrap="off" spellcheck="false" oninput="fitLf(this);sLb(this.value)" onkeydown="if(lfEnter(event)){this.blur();askId();}" title="Shift+Enter: line break. Enter: done">'+esc(window.StableBlockLabel.labelFieldText(it.label))+'</textarea>');
   h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="idKey(event,this)" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div id="prop-id-help" style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
   h+=stepperRow("W","stepF(\\'w\\',\\'dn\\')","stepF(\\'w\\',\\'up\\')",it.w)+stepperRow("H","stepF(\\'h\\',\\'dn\\')","stepF(\\'h\\',\\'up\\')",it.h);
@@ -776,12 +780,16 @@ function stepper2(label,xd,xi,yd,yi){
 
 // Single-item actions
 function sPr(p,v,t){if(!t&&!sel.length)return;var s=t||sel[0];pushH();upPr(s.type,s.id,p,v);go();notify();}
-function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);fLbId(v);parsed=parseDoc();render();
+function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,window.StableBlockLabel.labelFromField(v));fLbId(v);parsed=parseDoc();render();
   showErr();
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
-function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();render();notify();}
-function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v.replace(/\\n/g,"\\\\n"));fLbId(v);parsed=parseDoc();render();notify();}
+function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,window.StableBlockLabel.labelFromField(v));parsed=parseDoc();render();notify();}
+function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,window.StableBlockLabel.labelFromField(v));fLbId(v);parsed=parseDoc();render();notify();}
+// Label fields are textareas sized to their lines. Shift+Enter keeps the line break; any other Enter is stopped and returns true (the caller commits) (core/select labelEnterKey)
+function lbRows(label){return Math.max(1,String(label||'').split("\\\\n").length);}
+function fitLf(el){el.rows=Math.max(1,el.value.split("\\n").length);}
+function lfEnter(e){if(e.key!=='Enter')return false;if(window.StableBlockSelect.labelEnterKey(e.key,{shift:e.shiftKey,ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey})==='newline')return false;e.preventDefault();return true;}
 function sField(f,v,t){if(!t&&!sel.length)return;var s=t||sel[0],n=parseInt(v);if(isNaN(n))return;var it=getIt(s);if(!it)return;pushH();
   if(f==='x'||f==='y')upP(s.type,s.id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
   else if(f==='w'||f==='h')upS(s.type,s.id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);

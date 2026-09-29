@@ -105,6 +105,16 @@ function linkAddKey(key, sel, mods = {}) {
   return null;
 }
 
+// ── ラベルの欄(その場編集・プロパティ欄・接続パネル)で押した Enter ──
+// Shift+Enter は改行(本文は改行の印 1 つ。block・group・note・接続で同じ。draw.io と同じ)、Enter は確定、Ctrl+Enter(⌘+Enter)は確定して次の兄弟へ。
+// Alt 付き・Shift と Ctrl の同時押しは取らない。返り値: 'newline' | 'commit' | 'ctrl' | null
+function labelEnterKey(key, mods = {}) {
+  if (key !== 'Enter' || mods.alt) return null;
+  const ctrl = !!(mods.ctrl || mods.meta);
+  if (mods.shift) return ctrl ? null : 'newline';
+  return ctrl ? 'ctrl' : 'commit';
+}
+
 // ── ラベルのその場編集中の Tab ──
 // Tab / Ctrl+Enter で足したばかりの block、「+ ブロック追加」・group の「+ 中にブロック」で足してまだ名前の無い block の名前を打っている間
 // (link = 'child' | 'sibling')は、確定して同じ向きに次の block を足す(Tab → 名前 → Tab → 名前 → Enter で鎖。XMind・MindManager と同じ)。
@@ -140,4 +150,4 @@ function typedKeyAction(key, selCount, mods = {}) {
   return c === 'h' ? 'highlight' : c === 'n' ? 'annotations' : c === 'f' ? 'fit' : null;
 }
 
-;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, linkAddKey, inlineTabAction, inlineEditLink, typedKeyAction };
+;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, linkAddKey, labelEnterKey, inlineTabAction, inlineEditLink, typedKeyAction };
