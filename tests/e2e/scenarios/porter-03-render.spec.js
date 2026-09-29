@@ -60,3 +60,41 @@ test('porter-03: 取れない lpos / round / width は既定で描かれ、そ�
   await page.locator('#editor').fill(original.toString('utf8').replace('round=big', 'round=8').replace('lpos=diagonal', 'lpos=top').replace('width=thick', 'width=2'));
   await expect(bar).toBeHidden();
 });
+
+// 接続のラベルを style= / lpos= / color= / width= の後ろ・間に書いた図(既存の設計書の書き方): 警告無しでラベルが描かれ、無変更で Export → バイト一致。
+// 接続パネルでラベルを直すと、書いた場所のまま変わる(先頭に 2 つ目を足さない)(BLK-porter-20260929-2029)
+test('porter-03: 属性の後ろに書いた接続のラベルも描かれ、無変更で Export → バイト一致、直すとその場所で変わる', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'trailing-label.sb');
+  const text = [
+    '@canvas grid=10 width=500 height=240',
+    'block x "X" at 2,2 size 6x3',
+    'block y "Y" at 12,2 size 6x3',
+    'block z "Z" at 2,12 size 6x3',
+    'x -> y width=2 style=dashed color=#EF4444 "先"',
+    'y -> z "後" color=#10B981 width=3',
+    'z -> x route=ortho lpos=bottom "戻り"  # 注 "memo"',
+  ].join('\n') + '\n';
+  fs.writeFileSync(SRC, text);
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
+  for (const l of ['先', '後', '戻り']) await expect(svg.locator('text', { hasText: new RegExp(`^${l}$`) })).toHaveCount(1);
+  await expect(svg.locator('text', { hasText: 'memo' })).toHaveCount(0);   // 行末コメントの中の引用はラベルではない
+  await expect(page.locator('#error-bar')).toBeHidden();
+  await expect(page.locator('#status')).not.toContainText('Warn:');
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+
+  // x と y を選び、接続パネルのラベル欄で直す: 属性の後ろのラベルがその場所で変わる
+  await svg.locator('g[data-type="block"][data-id="x"]').click();
+  await svg.locator('g[data-type="block"][data-id="y"]').click({ modifiers: ['Shift'] });
+  const label = page.locator('#prop-content input.conn-label');
+  await expect(label).toHaveValue('先');
+  await label.fill('先頭');
+  await expect.poll(() => page.locator('#editor').inputValue()).toContain('x -> y width=2 style=dashed color=#EF4444 "先頭"\n');
+  await expect(svg.locator('text', { hasText: /^先頭$/ })).toHaveCount(1);
+});

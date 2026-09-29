@@ -4,14 +4,14 @@
 // parser が黙って捨てる記法(未知の属性・値の正規化)は往復でバイトが変わるので、コーパス往復テストで見つかる。
 // DOM API は使用禁止 — 純粋関数のみ。
 
-import { parseLpos, hasLpos, unquoteLabel } from '../label/label-core.mjs';
+import { parseLpos, hasLpos, unquoteLabel, connTrailingLabel } from '../label/label-core.mjs';
 import { badAttrValues } from '../check/check-core.mjs';
 
 // ラベルは "…"。中の \" は " を表す(core/label の quoteLabel / unquoteLabel)
 const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_GROUP = /^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_NOTE = /^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*?)(?:\s+"((?:\\"|[^"])*)")?\s*$/d;
+const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/d;
 const RE_CANVAS = /^@canvas(.*)/d;
 
 const BOX_KEYS = ['id', 'label', 'x', 'y', 'w', 'h'];
@@ -51,11 +51,13 @@ function boxItem(type, m, ln) {
 // restGroup 以降のうち parser が読まなかったトークンは落とす(往復で差分として現れる)。
 // 取れない値(bad = core/check の badAttrValues。lpos=diagonal・round=abc など)は警告したうえで本文の値を書いたまま残す:
 // その参照は { key, raw, val } を持ち、item[key] が読んだ時の val のままなら raw を書き戻す(値を変えたときだけ新しい値になる)
-function template(raw, m, keys, restGroup, attrs, item, bad = [], keyGroups = {}) {
+// inRest: rest の中にあるフィールド(属性の後ろに書いた接続のラベル。{ key, s, e, rest } の s・e は rest の中の位置、rest はそこを空白で潰したもの)
+function template(raw, m, keys, restGroup, attrs, item, bad = [], inRest = null) {
   const spans = [];
-  keys.forEach((key, i) => { const ix = m.indices[keyGroups[key] ?? i + 1]; if (ix) spans.push({ s: ix[0], e: ix[1], key }); });
+  keys.forEach((key, i) => { const ix = m.indices[i + 1]; if (ix) spans.push({ s: ix[0], e: ix[1], key }); });
   const restStart = m.indices[restGroup][0];
-  const rest = m[restGroup];
+  const rest = inRest ? inRest.rest : m[restGroup];
+  if (inRest) spans.push({ s: restStart + inRest.s, e: restStart + inRest.e, key: inRest.key });
   for (const [key, re] of attrs) {
     const name = re.source.slice(0, re.source.indexOf('='));
     const b = bad.find(x => x.attr === name);
@@ -140,9 +142,10 @@ export function parseDSL(text) {
       if (done) continue;
       const m = raw.match(RE_CONN);
       if (m) {
-        const [, from, arrow, to, leadingLabel, middle, trailingLabel] = m;
-        const label = leadingLabel ?? trailingLabel;
-        const rest = middle;
+        // ラベルは to の直後にも、属性の後ろ・間にも書ける(`a -> b style=dashed "後ろ"`。connTrailingLabel。書いた場所のまま往復する)
+        const [, from, arrow, to, head, restAll] = m;
+        const t = head === undefined ? connTrailingLabel(restAll) : null;
+        const label = t ? t.label : head, rest = t ? t.rest : restAll;
         const c = {
           from, to, label: unquoteLabel(label || ''),
           color: rest?.match(/color=(\S+)/)?.[1] || '#64748B',
@@ -156,7 +159,7 @@ export function parseDSL(text) {
         };
         connections.push(c);
         const bad = valueWarn(ln, 'conn', rest);
-        rec.parts = template(raw, m, CONN_KEYS, 5, ATTRS.conn, c, bad, trailingLabel !== undefined ? { label: 6 } : {});
+        rec.item = c; rec.parts = template(raw, m, CONN_KEYS, 5, ATTRS.conn, c, bad, t ? { key: 'label', s: t.s + 1, e: t.e - 1, rest: t.rest } : null);
         continue;
       }
       errors.push({ line: ln, msg: raw.substring(0, 40) });

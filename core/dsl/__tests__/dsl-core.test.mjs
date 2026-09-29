@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseDSL, serializeDSL } from '../dsl-core.mjs';
-import { parseLpos, hasLpos, unquoteLabel } from '../../label/label-core.mjs';
+import { parseLpos, hasLpos, unquoteLabel, connTrailingLabel } from '../../label/label-core.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML = readFileSync(join(__dirname, '..', '..', '..', 'stableblock.html'), 'utf8');
@@ -15,7 +15,7 @@ function htmlParseDSL() {
   assert.ok(start >= 0, 'stableblock.html に parseDSL が見つからない');
   const end = HTML.indexOf('\n}\n', start);
   const src = HTML.slice(start, end + 2);
-  return new Function('window', `${src}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos, hasLpos, unquoteLabel } });
+  return new Function('window', `${src}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos, hasLpos, unquoteLabel, connTrailingLabel } });
 }
 const DEFAULT_DSL = HTML.match(/let dsl = `([\s\S]*?)`;/)[1];
 
@@ -28,6 +28,8 @@ const SAMPLES = {
   mixed: '  block a "A\\nB" at 1.5,2 size 4x2 style=dashed border=#000\n\tnote n "メモ" at 0,0 size 3x1\na --> n "l" color=#f00 width=2 route=ortho lpos=top\nb -> c\nゴミ行\nblock a "dup" at 0,0 size 1x1\n@include "x.sb"\n',
   // ラベル中の \" は " を表す(BLK-porter-20260926-0617)。末尾が \ のラベルは閉じ引用符の前の \ として読む
   quoted: 'block id_2a "Block \\"quoted\\" label" at 1,1 size 8x3 color=#6366F1\r\nblock p "C:\\" at 1,5 size 4x2\r\nnote n "say \\"hi\\"\\nok" at 5,5 size 4x2\r\ngroup g "\\"G\\"" at 0,0 size 20x10\r\nid_2a -> p "a \\"b\\"" color=#f00\r\np -> id_2a "x\\\\" lpos=top\r\n',
+  // ラベルを属性の後ろ・間に書いた接続(BLK-porter-20260929-2029)。行末コメントの中の引用はラベルではない
+  trailing: 'block a "A" at 1,2 size 6x3\nblock b "B" at 12,2 size 6x3\na -> b style=dashed "後ろ"\nb -> a width=2 "間 \\"q\\"" color=#EF4444\na --> b lpos=top # "コメント"\nb -> a color=#f00 "x" # c\n',
 };
 
 function strip(p) { return JSON.parse(JSON.stringify(p)); }
@@ -138,7 +140,7 @@ function vscodeParseDSL() {
   const start = html.indexOf('function parseDSL(t){\n  var ls=t.split("\\n"),cv={width:960,height:640,grid:20},bl=[],gr=[],nt=[]');
   assert.ok(start >= 0, 'Webview に parseDSL が見つからない');
   const end = html.indexOf('\n}\n', start);
-  return new Function('window', `${html.slice(start, end + 2)}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos, hasLpos, unquoteLabel } });
+  return new Function('window', `${html.slice(start, end + 2)}\nreturn parseDSL;`)({ StableBlockLabel: { parseLpos, hasLpos, unquoteLabel, connTrailingLabel } });
 }
 import { createRequire } from 'node:module';
 const require_ = createRequire(import.meta.url);
@@ -226,4 +228,30 @@ test('serializeDSL: 取れない値(lpos / round / width / @canvas の数)は警
     'a -> b "斜め置き" lpos=top width=thick',
     'b -> a width=1.2.3 lpos=top',
   ]);
+});
+
+test('parseDSL / serializeDSL: 属性の後ろ・間に書いた接続のラベルを読み、書いた場所のまま往復する(BLK-porter-20260929-2029)', () => {
+  const text = [
+    '@canvas grid=10 width=500 height=240',
+    'block x "X" at 2,2 size 6x3', 'block y "Y" at 12,2 size 6x3', 'block z "Z" at 22,2 size 6x3',
+    'x -> y width=2 style=dashed color=#EF4444 "先"',
+    'y -> z "後" color=#10B981 width=3',
+    'z -> x route=ortho lpos=bottom "戻り"',
+    'x --> z style=dashed "a b" lpos=top  # 注 "c"',
+  ].join('\n') + '\n';
+  const p = parseDSL(text);
+  assert.deepEqual(p.connections.map(c => [c.label, c.style, c.color, c.width, c.route, c.lpos, c.lposAuto]), [
+    ['先', 'dashed', '#EF4444', 2, null, 'right', true],
+    ['後', 'solid', '#10B981', 3, null, 'right', true],
+    ['戻り', 'solid', '#64748B', 1.5, 'ortho', 'bottom', false],
+    ['a b', 'dashed', '#64748B', 1.5, null, 'top', false],
+  ]);
+  assert.equal(serializeDSL(p), text);   // ラベルが落ちず、並びも変わらない
+  // 値を変えるとその場所で変わる
+  p.connections[0].label = '先2'; p.connections[0].color = '#000000'; p.connections[3].label = 'c"d';
+  const out = serializeDSL(p).split('\n');
+  assert.equal(out[4], 'x -> y width=2 style=dashed color=#000000 "先2"');
+  assert.equal(out[7], 'x --> z style=dashed "c\\"d" lpos=top  # 注 "c"');
+  // 行末コメントの中の引用はラベルにしない
+  assert.equal(parseDSL('a -> b lpos=top # "memo"\n').connections[0].label, '');
 });
