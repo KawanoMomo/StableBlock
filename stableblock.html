@@ -390,11 +390,11 @@ function parseDSL(text){
     try{
       if(raw.startsWith("@canvas")){const w=raw.match(/width=(\d+)/),h=raw.match(/height=(\d+)/),g=raw.match(/grid=(\d+)/),r=raw.match(/route=(\S+)/),gr=raw.match(/grow=(\S+)/);if(w)canvas.width=+w[1];if(h)canvas.height=+h[1];if(g)canvas.grid=+g[1];if(r)canvas.route=r[1];if(gr)canvas.grow=gr[1];continue;}
       if(raw.startsWith("@include")){const inc=raw.match(/@include\s+"([^"]+)"/);if(inc)errors.push({line:ln,msg:`@include "${inc[1]}" — use preprocessInclude() to resolve`});continue;}
-      let m=raw.match(/^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      let m=raw.match(/^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const b={type:"block",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#3B82F6",textColor:rest.match(/text=(\S+)/)?.[1]||"#FFFFFF",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||"solid",line:ln};blocks.push(b);blockMap[id]=b;continue;}
-      m=raw.match(/^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      m=raw.match(/^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const g={type:"group",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#F3F4F6",borderColor:rest.match(/border=(\S+)/)?.[1]||"#9CA3AF",line:ln};groups.push(g);groupMap[id]=g;continue;}
-      m=raw.match(/^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
+      m=raw.match(/^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/);
       if(m){const[,id,rawLabel,x,y,w,h,rest]=m;const label=window.StableBlockLabel.unquoteLabel(rawLabel);if(allIds[id])errors.push({line:ln,msg:`ID "${id}" が重複 (L${allIds[id]})`});allIds[id]=ln;const n={type:"note",id,label,x:+x,y:+y,w:+w,h:+h,color:rest.match(/color=(\S+)/)?.[1]||"#FEF3C7",textColor:rest.match(/text=(\S+)/)?.[1]||"#92400E",borderColor:rest.match(/border=(\S+)/)?.[1]||null,round:+(rest.match(/round=(\d+)/)?.[1]||"4"),style:rest.match(/style=(\S+)/)?.[1]||null,line:ln};notes.push(n);noteMap[id]=n;continue;}
       m=raw.match(/^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/);
       if(m){const[,from,arrow,to,head,restAll]=m,tl=head===undefined&&window.StableBlockLabel.connTrailingLabel(restAll),label=tl?tl.label:head,rest=tl?tl.rest:restAll;connections.push({from,to,label:window.StableBlockLabel.unquoteLabel(label||""),color:rest?.match(/color=(\S+)/)?.[1]||"#64748B",style:rest?.match(/style=(\S+)/)?.[1]||"solid",width:+(rest?.match(/width=([\d.]+)/)?.[1]||"1.5"),route:rest?.match(/route=(\S+)/)?.[1]||null,lpos:window.StableBlockLabel.parseLpos(rest),lposAuto:!window.StableBlockLabel.hasLpos(rest),bidir:arrow==="-->",line:ln});continue;}
@@ -408,8 +408,8 @@ function parseDSL(text){
 // DSL Updaters — modify DSL text in-place via regex
 // These find the matching line by type+id and replace the target value
 // ═══════════════════════════════════════════════
-function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"(?:\\\\"|[^"])*"\\s+at\\s+)[\\d.]+,[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
-function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"(?:\\\\"|[^"])*?"\\s+at\\s+[\\d.]+,[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
+function updatePos(type,id,nx,ny){const re=new RegExp(`^(\\s*${type}\\s+)(${id})(\\s+"(?:\\\\"|[^"])*"\\s+at\\s+)-?[\\d.]+,-?[\\d.]+(\\s+size\\s+.*)$`,"m");dsl=dsl.replace(re,`$1$2$3${nx},${ny}$4`);}
+function updateSize(type,id,nw,nh){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+"(?:\\\\"|[^"])*?"\\s+at\\s+-?[\\d.]+,-?[\\d.]+\\s+size\\s+)[\\d.]+x[\\d.]+`,"m");dsl=dsl.replace(re,`$1${nw}x${nh}`);}
 function updateProp(type,id,prop,val){const lines=dsl.split("\n"),lr=new RegExp(`^\\s*${type}\\s+${id}\\s+`),pr=new RegExp(`${prop}=\\S+`);for(let i=0;i<lines.length;i++){if(!lr.test(lines[i]))continue;lines[i]=pr.test(lines[i])?lines[i].replace(pr,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}dsl=lines.join("\n");}
 // ラベル中の " は \" で書く(core/label の quoteLabel。パーサは unquoteLabel で戻す)
 function updateLabel(type,id,label){const re=new RegExp(`^(\\s*${type}\\s+${id}\\s+)"(?:\\\\"|[^"])*"(\\s+at\\s+.*)$`,"m");dsl=dsl.replace(re,(_,a,b)=>a+window.StableBlockLabel.quoteLabel(label)+b);}
@@ -553,7 +553,7 @@ function getSvgScale(){
   const svg=document.querySelector('#svg-wrap svg');
   if(!svg)return{sx:1,sy:1};
   const r=svg.getBoundingClientRect();
-  return{sx:parsed.canvas.width/r.width, sy:parsed.canvas.height/r.height};
+  const vb=svg.viewBox.baseVal;return{sx:vb.width/r.width, sy:vb.height/r.height};
 }
 
 function setupInteractions(){
@@ -578,7 +578,7 @@ function setupInteractions(){
         if(edge.includes('w')){nw=Math.max(1,ow-dxg);nx=ox+ow-nw;}
         if(edge.includes('s')){nh=Math.max(1,oh+dyg);}
         if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
-        updatePos(type,id,Math.max(0,nx),Math.max(0,ny));
+        updatePos(type,id,window.StableBlockLayout.keepPos(nx,ox),window.StableBlockLayout.keepPos(ny,oy));
         updateSize(type,id,nw,nh);growCanvas();
         parsed=parseDoc(); renderSVG(); syncEditor();
       }
@@ -623,7 +623,7 @@ function setupInteractions(){
         if(!moved&&!dx&&!dy)return;   // a click with hand jitter below one grid is not a drag
         if(!histPushed){pushHistory();histPushed=true;}
         moved=true;lastDx=dx;lastDy=dy;
-        items.forEach(it=>updatePos(it.type,it.id,Math.max(0,it.sx+dx),Math.max(0,it.sy+dy)));growCanvas();
+        items.forEach(it=>updatePos(it.type,it.id,window.StableBlockLayout.keepPos(it.sx+dx,it.sx),window.StableBlockLayout.keepPos(it.sy+dy,it.sy)));growCanvas();
         parsed=parseDoc(); renderSVG(); syncEditor();
       }
       function onUp(ev){
@@ -960,7 +960,7 @@ function setPos(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN
 function setSz(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();
   if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
-  updatePos(s.type,s.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
+  updatePos(s.type,s.id,window.StableBlockLayout.keepPos(it.x+(axis==='x'?delta:0),it.x),window.StableBlockLayout.keepPos(it.y+(axis==='y'?delta:0),it.y));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
 function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',delta)}]);refresh();}
 // プロパティ欄の X / Y / W / H の ▲▼(core/select stepDelta): ▲ は値を増やす。1 つ選択と複数選択で同じ向き
 function stepField(field,button){const d=window.StableBlockSelect.stepDelta(button);if(!sel.length||!d)return;
@@ -976,8 +976,8 @@ function batchNudge(axis,delta){
   pushHistory();const before=parentsNow();
   sel.forEach(si=>{
     const it=getItem(si);if(!it)return;
-    if(si.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,Math.max(0,b.x+(axis==='x'?delta:0)),Math.max(0,b.y+(axis==='y'?delta:0))));ch.childGroups.forEach(g=>updatePos('group',g.id,Math.max(0,g.x+(axis==='x'?delta:0)),Math.max(0,g.y+(axis==='y'?delta:0))));}
-    updatePos(si.type,si.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));
+    if(si.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,window.StableBlockLayout.keepPos(b.x+(axis==='x'?delta:0),b.x),window.StableBlockLayout.keepPos(b.y+(axis==='y'?delta:0),b.y)));ch.childGroups.forEach(g=>updatePos('group',g.id,window.StableBlockLayout.keepPos(g.x+(axis==='x'?delta:0),g.x),window.StableBlockLayout.keepPos(g.y+(axis==='y'?delta:0),g.y)));}
+    updatePos(si.type,si.id,window.StableBlockLayout.keepPos(it.x+(axis==='x'?delta:0),it.x),window.StableBlockLayout.keepPos(it.y+(axis==='y'?delta:0),it.y));
   }); growParents(before,sel.map(si=>({id:si.id,sides:axisSides(axis,delta)}))); refresh();
 }
 function batchNudgeSz(axis,delta){
@@ -1253,7 +1253,7 @@ function newDiagram(){syncLoaded();const others=Object.keys(includeFiles).length
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
 function exportSVG(){if(nameGate(exportSVG))return;const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した');showExportReport('SVG',includeDrops());}
-function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(p.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
+function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(window.StableBlockLabel.drawArea(p));return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
 function exportPNG(){if(nameGate(exportPNG))return;pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));savedNote(exportName('png'),'書き出した');showExportReport('PNG',includeDrops());}});}
 function exportPNGTransparent(){if(nameGate(exportPNGTransparent))return;pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));savedNote(exportName('png','_transparent'),'書き出した');showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
@@ -1348,7 +1348,7 @@ function showExportReport(fmt,dropped){const el=document.getElementById('export-
 function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
 function setZoom(dir){applyZoom(window.StableBlockLayout.stepZoom(zoom,dir));}
 // 全体表示: キャンバス全体がプレビュー欄に収まる倍率にする(100% より大きくはしない)。図を開いたときもこの倍率で見せる
-function fitView(){if(!parsed)return;const a=document.getElementById('preview-area'),cs=getComputedStyle(a);const aw=a.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,ah=a.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom)-2;applyZoom(window.StableBlockLayout.fitZoom(parsed.canvas.width,parsed.canvas.height,aw,ah));}
+function fitView(){if(!parsed)return;const a=document.getElementById('preview-area'),cs=getComputedStyle(a);const aw=a.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight)-2,ah=a.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom)-2;const da=window.StableBlockLabel.drawArea(parsed);applyZoom(window.StableBlockLayout.fitZoom(da.width,da.height,aw,ah));}
 // キャンバス寸法(px)。自動で広げる図では要素より小さくはしない。寸法を固定した図(grow=off)は打った値のまま(はみ出しはエラー欄に出る)
 function setCanvasSize(axis,v){if(!parsed)return;const n=parseInt(v);if(isNaN(n)||n<1)return;const c=parsed.canvas,L=window.StableBlockLayout,grows=L.canvasGrows(c),e=L.contentExtent([...parsed.blocks,...parsed.groups,...parsed.notes]);const w=axis==='w'?(grows?Math.max(n,e.right*c.grid):n):c.width,h=axis==='h'?(grows?Math.max(n,e.bottom*c.grid):n):c.height;if(w===c.width&&h===c.height){renderProps();return;}pushHistory();grewFrom=null;dsl=L.setCanvasInDsl(dsl,w,h);refresh();}
 // 「はみ出したら自動で広げる」の切替。外すと本文の @canvas 行に grow=off を書く(資料の寸法に合わせた図を崩さない)
@@ -1385,7 +1385,7 @@ function cutSelection(){
 // (right of the copied items, then right of the previous paste — Ctrl+V repeatedly lines copies up)
 function pasteClipboard(){
   if(!clipboard||!clipboard.length)return;
-  const pos=ci=>{const m=ci.line.match(/at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)/);return m?{x:+m[1],y:+m[2],w:+m[3],h:+m[4]}:null;};
+  const pos=ci=>{const m=ci.line.match(/at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)/);return m?{x:+m[1],y:+m[2],w:+m[3],h:+m[4]}:null;};
   const rects=clipboard.map(pos).filter(Boolean);if(!rects.length)return;
   const bx=Math.min(...rects.map(r=>r.x)),by=Math.min(...rects.map(r=>r.y)),bw=Math.max(...rects.map(r=>r.x+r.w))-bx,bh=Math.max(...rects.map(r=>r.y+r.h))-by;
   pushHistory();
@@ -1397,7 +1397,7 @@ function pasteClipboard(){
     // Generate unique ID for paste
     const newId=`__new_${addCounter++}`;idMap[ci.id]=newId;
     let line=ci.line.replace(new RegExp(`^(${ci.type}\\s+)${ci.id}`),`$1${newId}`);
-    line=line.replace(/at\s+([\d.]+),([\d.]+)/,(m,x,y)=>`at ${+x+dx},${+y+dy}`);
+    line=line.replace(/at\s+(-?[\d.]+),(-?[\d.]+)/,(m,x,y)=>`at ${+x+dx},${+y+dy}`);
     dsl=dsl.trimEnd()+"\n"+line+"\n";
     newSel.push({type:ci.type,id:newId});
   });

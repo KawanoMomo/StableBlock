@@ -30,6 +30,8 @@ const SAMPLES = {
   quoted: 'block id_2a "Block \\"quoted\\" label" at 1,1 size 8x3 color=#6366F1\r\nblock p "C:\\" at 1,5 size 4x2\r\nnote n "say \\"hi\\"\\nok" at 5,5 size 4x2\r\ngroup g "\\"G\\"" at 0,0 size 20x10\r\nid_2a -> p "a \\"b\\"" color=#f00\r\np -> id_2a "x\\\\" lpos=top\r\n',
   // ラベルを属性の後ろ・間に書いた接続(BLK-porter-20260929-2029)。行末コメントの中の引用はラベルではない
   trailing: 'block a "A" at 1,2 size 6x3\nblock b "B" at 12,2 size 6x3\na -> b style=dashed "後ろ"\nb -> a width=2 "間 \\"q\\"" color=#EF4444\na --> b lpos=top # "コメント"\nb -> a color=#f00 "x" # c\n',
+  // 原点より左上(座標が負)の配置(BLK-porter-20260930-0509)
+  negative: '@canvas width=320 height=200 grid=20\ngroup g "G" at -6,-2 size 8x5\nblock a "A" at -2,1 size 5x3\nblock b "B" at 6,-1.5 size 5x3\nnote n "N" at -4,-3 size 3x1\na -> b\n',
 };
 
 function strip(p) { return JSON.parse(JSON.stringify(p)); }

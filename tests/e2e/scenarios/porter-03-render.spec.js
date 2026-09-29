@@ -134,3 +134,61 @@ test('porter-03: 接続ラベルの \\n は改行して描かれ、白地が 2 �
   const { bytes } = await exportSb(page, dir);
   expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
 });
+
+// 原点より左上(座標が負)の group / block / note(部署の旧図にある配置): エラー行にせず描き、接続も描く。その行は警告欄に
+// 「原点より左・上に出ている」と出る。無変更で Export → バイト一致。ドラッグで動かすと座標 1 行だけが変わり、0 へ飛ばない(BLK-porter-20260930-0509)
+test('porter-03: 負の座標の group / block / note が描かれ、接続も描かれ、警告欄に行番号付きで出て、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'negative-coordinates.sb');
+  fs.writeFileSync(SRC, [
+    '@canvas width=320 height=200 grid=20',
+    'group g "旧系統" at -6,-2 size 3x2',
+    'block a "A" at -2,1 size 5x3',
+    'block b "B" at 6,1 size 5x3',
+    'note n "移設予定" at 12,-1 size 3x1',
+    'a -> b "req"',
+  ].join('\n') + '\n');
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="group"][data-id="g"]')).toHaveCount(1);
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
+  await expect(svg.locator('g[data-type="note"][data-id="n"]')).toHaveCount(1);
+  await expect(svg.locator('path[marker-end]')).toHaveCount(1);
+  await expect(svg.locator('g.conn-label')).toHaveText(['req']);
+  // 描く範囲が原点より左・上へ広がり、要素が画面の中にある(切れていない)
+  await expect(svg).toHaveAttribute('viewBox', '-120 -40 440 240');
+  const box = await svg.boundingBox();
+  for (const id of ['g', 'a', 'n']) {
+    const r = await svg.locator(`g[data-id="${id}"] rect`).first().boundingBox();
+    expect(r.x, id).toBeGreaterThanOrEqual(box.x - 1);
+    expect(r.y, id).toBeGreaterThanOrEqual(box.y - 1);
+  }
+  const bar = page.locator('#error-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('L2: group「g」は原点より左へ 6・上へ 2 グリッド出ている(座標が負)');
+  await expect(bar).toContainText('L3: block「a」は原点より左へ 2 グリッド出ている');
+  await expect(bar).toContainText('L5: note「n」は原点より上へ 1 グリッド出ている');
+  await expect(bar).not.toContainText('読めない');
+  await expect(bar).not.toContainText('ID の block / note が無い');
+  await expect(page.locator('#status')).not.toContainText('Error');
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+
+  // block a を右へ 1 グリッド強ドラッグ: a の行の座標だけが変わる(0 へ飛ばない)
+  const a = svg.locator('g[data-type="block"][data-id="a"] rect');
+  const ra = await a.boundingBox();
+  const zoom = ra.width / 100;   // 5 グリッド × 20px
+  await page.mouse.move(ra.x + ra.width / 2, ra.y + ra.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(ra.x + ra.width / 2 + 10 * zoom, ra.y + ra.height / 2, { steps: 3 });
+  await page.mouse.move(ra.x + ra.width / 2 + 22 * zoom, ra.y + ra.height / 2, { steps: 3 });
+  await page.mouse.up();
+  const after = (await page.locator('#editor').inputValue()).split('\n');
+  const before = original.toString('utf8').split('\n');
+  const changed = before.map((l, i) => (l !== after[i] ? i : -1)).filter(i => i >= 0);
+  expect(changed).toEqual([2]);
+  expect(after[2]).toBe('block a "A" at -1,1 size 5x3');
+});

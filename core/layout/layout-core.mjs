@@ -15,6 +15,12 @@ export function contentExtent(items) {
   return { right, bottom };
 }
 
+// GUI で動かした後の座標(グリッド)。原点より左・上(負)へは出さない。ただし元から原点より左・上にある要素
+// (既存の図から持ち込んだ配置)は元の位置までは置ける(動かしただけで 0 へ飛ばさない)
+export function keepPos(v, from) {
+  return Math.max(Math.min(0, from === undefined ? 0 : from), v);
+}
+
 // 要素が全部収まるキャンバス寸法(px)。広げるだけで縮めない。広げるときは右・下に margin グリッドの余白を残す。
 export function grownCanvasSize(canvas, items, margin = 1) {
   const g = canvas.grid || 20;

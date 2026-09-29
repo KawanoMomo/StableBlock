@@ -28,8 +28,8 @@ const ATTR_VALUES = {
 
 // 属性を書く部分(block / note は size の後、接続はラベルの後、@canvas は行全体)。parser と同じ切り方
 const REST_RE = {
-  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
-  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+-?[\d.]+,-?[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+-?[\d.]+,-?[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
   conn: /^\S+\s+(?:-->|->)\s+\S+\s*(?:"(?:\\"|[^"])*")?\s*(.*)/,
   canvas: /^@canvas(.*)/,
 };
@@ -92,7 +92,7 @@ function explainLine(raw) {
     const rest = s.slice(head.length).trim();
     if (!/^\S+/.test(rest) || /^"/.test(rest)) missing.push('ID');
     if (!/"[^"]*"/.test(s)) missing.push(kw === 'note' ? '"テキスト"(二重引用符で囲む)' : '"ラベル"(二重引用符で囲む)');
-    if (!/\bat\s+[\d.]+,[\d.]+/.test(s)) missing.push('at X,Y(座標は半角数字をカンマで区切る)');
+    if (!/\bat\s+-?[\d.]+,-?[\d.]+/.test(s)) missing.push('at X,Y(座標は半角数字をカンマで区切る)');
     if (!/\bsize\s+[\d.]+x[\d.]+/.test(s)) missing.push('size WxH(幅と高さを小文字の x で区切る)');
     if (head !== kw) return `「${head}」は小文字で ${kw} と書く。書式: ${BOX_FORM[kw]}`;
     if (missing.length) return `${kw} の ${missing.join('・')} が読めない。書式: ${BOX_FORM[kw]}`;
@@ -153,6 +153,18 @@ function findOutside(canvas, items) {
     const right = Math.max(0, Math.ceil(it.x + it.w - canvas.width / g));
     const bottom = Math.max(0, Math.ceil(it.y + it.h - canvas.height / g));
     if (right || bottom) out.push({ item: it, right, bottom });
+  }
+  return out;
+}
+
+// 原点より左・上(座標が負)にある block / group / note と、出ている量(グリッド)。読んで描く(描く範囲を左・上へ広げる。
+// core/label の drawArea)が、既存の図から持ち込んだ配置であることをその行で知らせる
+function findNegative(items) {
+  const out = [];
+  for (const it of items || []) {
+    if (!it) continue;
+    const left = it.x < 0 ? -it.x : 0, top = it.y < 0 ? -it.y : 0;
+    if (left || top) out.push({ item: it, left, top });
   }
   return out;
 }
@@ -256,6 +268,10 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
       const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
       out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, pick: [item.id], ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
+    }
+    for (const { item, left, top } of findNegative([...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
+      const by = [left ? `左へ ${left}` : '', top ? `上へ ${top}` : ''].filter(Boolean).join('・');
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」は原点より${by} グリッド出ている(座標が負)。本文はそのまま、画面と書き出しの範囲をその分広げて描く`, pick: [item.id] });
     }
   }
   if (paths) {
@@ -850,4 +866,4 @@ function bulkFormatOrder(fmts, last) {
   return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
 }
 
-;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, includeSwapCandidates, planIncludeSwap, includeAddTargets, addIncludeInDsl, removeIncludeInDsl, planFileRename, newLoadedKey, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, replacedDiagram, decodeSbBytes, sbSaveText, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
+;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, findNegative, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, includeSwapCandidates, planIncludeSwap, includeAddTargets, addIncludeInDsl, removeIncludeInDsl, planFileRename, newLoadedKey, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, replacedDiagram, decodeSbBytes, sbSaveText, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
