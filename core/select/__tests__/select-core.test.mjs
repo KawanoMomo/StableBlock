@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -141,4 +141,17 @@ test('typedKeyAction: 本文を書き換える L は何も選んでいないと�
   assert.equal(typedKeyAction('f', 0), 'fit');
   assert.equal(typedKeyAction('x', 0), null);
   assert.equal(typedKeyAction('Process', 0), null);
+});
+
+test('linkAddKey: block を 1 つ選んで Tab は線の先(child)、Ctrl / ⌘+Enter は同じ元からの兄弟(sibling)', () => {
+  assert.equal(linkAddKey('Tab', [A]), 'child');
+  assert.equal(linkAddKey('Enter', [A], { ctrl: true }), 'sibling');
+  assert.equal(linkAddKey('Enter', [A], { meta: true }), 'sibling');
+  assert.equal(linkAddKey('Enter', [A]), null);                 // Enter はラベルのその場編集のまま
+  assert.equal(linkAddKey('Tab', [A], { shift: true }), null);  // Shift+Tab はブラウザのまま
+  assert.equal(linkAddKey('Tab', [A], { ctrl: true }), null);
+  assert.equal(linkAddKey('Tab', [A, B]), null);
+  assert.equal(linkAddKey('Tab', [G]), null);
+  assert.equal(linkAddKey('Tab', [{ type: 'note', id: 'n' }]), null);
+  assert.equal(linkAddKey('Tab', []), null);
 });

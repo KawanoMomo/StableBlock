@@ -100,6 +100,16 @@ function hasConnDir(connections, from, to) {
   return (connections || []).some(c => (c.from === from && c.to === to) || (c.bidir && c.from === to && c.to === from));
 }
 
+// id へ入る接続の元(本文の順、重複なし)。双方向は逆の書き順でも元に数える。「つないで追加」の兄弟(Ctrl+Enter)が同じ元から結ぶ相手
+function linkSources(connections, id) {
+  const out = [];
+  for (const c of connections || []) {
+    const from = c.to === id ? c.from : (c.bidir && c.from === id ? c.to : null);
+    if (from && from !== id && !out.includes(from)) out.push(from);
+  }
+  return out;
+}
+
 // 2 つの間の接続を向きを問わず全部(本文の順)
 function connsBetween(connections, a, b) {
   return (connections || []).filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
@@ -676,4 +686,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

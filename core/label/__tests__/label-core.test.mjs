@@ -5,7 +5,7 @@ import {
   parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
   connLinesAmong, remapConnLine,
-  hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
+  hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
   setConnPropInDsl, removeConnPropInDsl, removeConnInDsl,
 } from '../label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
@@ -639,4 +639,11 @@ test('renameIdInDsl defaultLabel: 仮の ID の要素のラベルが既定(New B
   assert.equal(renameIdInDsl(dsl, '__new_4', 'UartDrv', undefined, { defaultLabel: true }).split('\n')[3], 'block UartDrv "UART ドライバ" at 1,5 size 8x3');
   assert.equal(renameIdInDsl(dsl, 'Old', 'Renamed', undefined, { defaultLabel: true }).split('\n')[4], 'block Renamed "New Block" at 1,9 size 8x3');
   assert.equal(renameIdInDsl(dsl, '__new_1', 'I2c_Hw').split('\n')[0], 'block I2c_Hw "New Block" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4');
+});
+
+test('linkSources: id へ入る接続の元(本文の順・重複なし)。双方向は逆の書き順でも元', () => {
+  const conns = [{ from: 'ecu', to: 'can' }, { from: 'gw', to: 'can' }, { from: 'ecu', to: 'can' }, { from: 'can', to: 'x' }, { from: 'can', to: 'y', bidir: true }];
+  assert.deepEqual(linkSources(conns, 'can'), ['ecu', 'gw', 'y']);
+  assert.deepEqual(linkSources(conns, 'ecu'), []);
+  assert.deepEqual(linkSources([], 'a'), []);
 });

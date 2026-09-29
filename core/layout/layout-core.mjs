@@ -173,6 +173,40 @@ export function placeNext(items, w, h, opts = {}) {
   return { x: x0, y: lastY };
 }
 
+// 「つないで追加」(block を 1 つ選んで Tab / Ctrl+Enter)の置き場所。1 つの規則で決める:
+// side 'right'(Tab: ref から出る線の先): ref の右に lane グリッド空けた列で、ref の上端から下へ。同じ元から続けて足すと右の列に縦に並ぶ。
+// side 'below'(Ctrl+Enter: ref と同じ元から出る兄弟): ref と同じ列で、ref の下から下へ。
+// その列で w x h を既存の要素と gap 以上離して置ける最初の位置({ x, y })。列は横へずらさない(並びが崩れない)。
+// ref を囲む group(祖先)は避けない: 新しい block はその中に入り、はみ出す分は呼び出し側が group を広げる(fitParents)。
+export function placeBeside(items, ref, w, h, side, opts = {}) {
+  const gap = opts.gap ?? 1, lane = opts.lane ?? 2;
+  const list = (items || []).filter(it => it && !(it.type === 'group' && it.id !== ref.id && inside(ref, it)));
+  const x = side === 'right' ? ref.x + ref.w + lane : ref.x;
+  const y0 = side === 'right' ? ref.y : ref.y + ref.h + gap;
+  const { bottom } = contentExtent(list);
+  const last = Math.max(bottom + gap, y0);
+  for (let y = y0; y <= last; y++) {
+    const r = { x, y, w, h };
+    if (!list.some(it => overlaps(r, it, gap))) return { x, y };
+  }
+  return { x, y: last };
+}
+
+// 新しい子 child(items にまだ無い矩形)を group gr の中に入れる: gr を child が margin 以上内側に来るまで広げ、広がった gr が
+// 新しく掛かる要素を押し出し・親も広げる(placeInGroupFit と同じ後始末)。返り値は動いた・広がった要素(呼び出し側が本文の行に書く)
+export function growGroupFor(items, gr, child, margin = 1) {
+  const ng = growToContain(gr, child, ['l', 't', 'r', 'b'], margin);
+  if (ng.x === gr.x && ng.y === gr.y && ng.w === gr.w && ng.h === gr.h) return [];
+  const boxes = (items || []).filter(i => i && i.type !== 'note');
+  const parents = parentMap(boxes);
+  const cur = boxes.map(i => (i.id === gr.id ? { ...i, ...ng } : i));
+  const sides = [];
+  if (ng.x < gr.x) sides.push('l'); if (ng.y < gr.y) sides.push('t');
+  if (ng.x + ng.w > gr.x + gr.w) sides.push('r'); if (ng.y + ng.h > gr.y + gr.h) sides.push('b');
+  const ch = fitParents(cur, parents, [{ id: gr.id, sides }], margin, [{ id: gr.id, from: { x: gr.x, y: gr.y, w: gr.w, h: gr.h } }]);
+  return [{ type: 'group', id: gr.id, x: ng.x, y: ng.y, w: ng.w, h: ng.h }, ...ch.filter(c => c.id !== gr.id)];
+}
+
 // キャンバス(px)を表示欄(px)に収める倍率。max を超えて拡大しない。
 export function fitZoom(canvasW, canvasH, areaW, areaH, opts = {}) {
   const min = opts.min ?? 0.1, max = opts.max ?? 1;
