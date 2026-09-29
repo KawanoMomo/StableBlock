@@ -888,3 +888,22 @@ test('includeAddTargets: 「すべてに取り込む」の相手は表示中の�
   // 足すと 2 行が元の位置に並ぶ(最後の @include の後)
   assert.equal(addIncludeInDsl(files['spi_swc.sb'], 'shared/hal.sb').split('\r\n').slice(2, 4).join('|'), '@include "shared/rte.sb"|@include "shared/hal.sb"');
 });
+
+test('expandIncludes: 同じファイルが 2 経路から来ても(ダイヤモンド)最初の 1 回だけ展開し、自分自身との ID 重複・重なりにしない', () => {
+  const files = {
+    'shared12/base.sb': 'block clk "Clock" at 1,1 size 6x3\nblock rst "Reset" at 1,6 size 6x3\n',
+    'shared12/a.sb': '@include "base.sb"\nblock ua "Unit A" at 9,6 size 6x3\nclk -> ua\n',
+    'shared12/b.sb': '@include "base.sb"\nblock ub "Unit B" at 17,6 size 6x3\nclk -> ub\n',
+  };
+  const text = '@canvas width=520 height=260 grid=20\n@include "shared12/a.sb"\n@include "shared12/b.sb"\nua -> ub "sync"\n';
+  const exp = expandIncludes(text, p => files[p] ?? null, 'd.sb');
+  assert.equal(exp.missing.length, 0);
+  const p = parseDSL(exp.text);
+  assert.equal(p.blocks.length, 4);                                            // clk・rst・ua・ub(base.sb は 1 回)
+  assert.equal(exp.lines.filter(l => l.startsWith('block clk ')).length, 1);
+  const d = checkIncluded(p, exp, connectionPaths(p), {});
+  assert.deepEqual(d.filter(x => /重複|重なって/.test(x.msg)), []);
+  // 同じファイルを続けて 2 回書いても 1 回だけ。読めない include 先は 2 回書けば 2 回知らせる
+  assert.equal(expandIncludes('@include "shared12/base.sb"\n@include "shared12/base.sb"\n', p => files[p] ?? null, 'd.sb').lines.filter(l => l.startsWith('block ')).length, 2);
+  assert.equal(expandIncludes('@include "x.sb"\n@include "x.sb"\n', () => null, 'd.sb').missing.length, 2);
+});

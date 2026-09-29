@@ -1,0 +1,2 @@
+block clk "Clock" at 1,1 size 6x3 color=#64748B text=#FFFFFF
+block rst "Reset" at 1,6 size 6x3 color=#64748B text=#FFFFFF

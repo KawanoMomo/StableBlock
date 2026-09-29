@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-porter-20260929-2211: 同じ共通部品を 2 経路(a.sb と b.sb)から @include する図(ダイヤモンド)は、共通部を最初の 1 回だけ展開する。自分自身との「ID が重複」「重なっている」の誤警告と二重描き・後から来た方に操作を横取りされる不具合が無くなる
 - BLK-owner-20260929-2209-1: Tab / Ctrl+Enter で足した block の名前を打っている間の Tab は、確定して同じ向きに次の block を足す(Tab → 名前 → Tab → 名前 → Enter で鎖)。既存の block の編集の Tab は読み順の次へ(移った先まで自動スクロール、移る先が無ければ編集を続ける)ので、離れた既存 block のラベルを黙って書き換えない
 - BLK-primary-20260929-2108-friction: ツール欄「共通部(@include)」の取り込み中の行で取り込み先を「替える…」で別の共通部に替えられ(同じ共通部を取り込んでいる図すべてに当たり、行の位置は元のまま)、「同じ共通部の図へ」で共通部を使う図だけに足せる。誰も取り込んでいない共通部の候補パスにも shared/ が付く
 - BLK-porter-20260929-2029: 接続のラベルを style= / lpos= / color= / width= の後ろ・間に書いた行(`a -> b style=dashed "後ろ"`)も、to の直後に書いたのと同じにラベルとして読んで描く(HTML 版・VSCode 拡張・core の往復)。本文の並びは変えず、接続パネルでラベルを直すと書いた場所のまま変わる

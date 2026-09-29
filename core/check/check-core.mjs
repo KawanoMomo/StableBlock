@@ -321,13 +321,14 @@ export function resolveIncludePath(from, rel) {
   return normPath(f.slice(0, f.lastIndexOf('/') + 1) + r);
 }
 
-// 本文 text の @include を展開する。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
+// 本文 text の @include を展開する(同じファイルは最初の 1 回だけ。2 経路から来ても重ねない)。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
 // 返り値: text / lines(展開後)、origin[i] = { file, line, at }(展開後の i+1 行目がどのファイルの何行目か。at は本文の何行目から来たか)、
 // missing = [{ at, file, line, path, resolved, cycle }](読めない @include。その行は展開後に残さない)。include の無い本文はそのまま返る。
 // 画布(@canvas)は本文のものが正: 本文に @canvas があれば include 先の @canvas 行は展開しない(共有部の画布の大きさ・線の形で本文の画布を上書きしない)
 export function expandIncludes(text, read, file = '') {
   const lines = [], origin = [], missing = [];
   const ownCanvas = String(text).replace(/^\uFEFF/, '').split('\n').some(l => /^@canvas\b/.test(l.trim()));
+  const done = new Set();   // 展開済みの include 先。同じファイルが別の経路(ダイヤモンド)から来ても 2 回目は展開しない(C の #pragma once・PlantUML の !include_once と同じ)
   const walk = (src, f, at, chain) => {
     String(src).replace(/^\uFEFF/, '').split('\n').forEach((line, i) => {
       const top = at === undefined ? i + 1 : at;
@@ -336,8 +337,9 @@ export function expandIncludes(text, read, file = '') {
       if (m) {
         const p = resolveIncludePath(f, m[1]);
         const cycle = chain.includes(p);
+        if (!cycle && done.has(p)) return;
         const sub = cycle ? null : read(p);
-        if (sub !== null && sub !== undefined) { walk(sub, p, top, [...chain, p]); return; }
+        if (sub !== null && sub !== undefined) { done.add(p); walk(sub, p, top, [...chain, p]); return; }
         missing.push({ at: top, file: f, line: i + 1, path: m[1], resolved: p, cycle });
         return;
       }
