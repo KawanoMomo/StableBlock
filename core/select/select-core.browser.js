@@ -95,6 +95,16 @@ function fieldKeyAction(key, shift) {
   }
 }
 
+// ── つないで追加(マインドマップ・draw.io の「複製してつなぐ」と同じ): block を 1 つ選んだ図の上で ──
+// Tab: 選んだ block から線を引いた先に新しい block(右の列)。Ctrl+Enter(⌘+Enter): 選んだ block と同じ元から線を引いた兄弟(下)。
+// 欄で打っている間・Shift / Alt 付き・block 以外や複数選択では取らない(Shift+Tab と欄の Tab はブラウザのまま)。返り値: 'child' | 'sibling' | null
+function linkAddKey(key, sel, mods = {}) {
+  if (!sel || sel.length !== 1 || sel[0].type !== 'block' || mods.shift || mods.alt) return null;
+  if (key === 'Tab' && !mods.ctrl && !mods.meta) return 'child';
+  if (key === 'Enter' && (mods.ctrl || mods.meta)) return 'sibling';
+  return null;
+}
+
 // ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
 // 1 つ選んでいるときの文字(IME の変換中 'Process' を含む)は、その文字からラベルのその場編集に入る(Excel・draw.io・Visio と同じ)。
 // 表示だけの切替(H 未接続を薄く・N 注釈・F 全体表示)は 1 つ選んでいないときに効く。本文を書き換える L(線の形)は何も選んでいないときだけ。
@@ -109,4 +119,4 @@ function typedKeyAction(key, selCount, mods = {}) {
   return c === 'h' ? 'highlight' : c === 'n' ? 'annotations' : c === 'f' ? 'fit' : null;
 }
 
-;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction };
+;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, linkAddKey, typedKeyAction };

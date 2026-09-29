@@ -676,7 +676,8 @@ function startInlineEdit(type,id){
     updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
     parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();});
   el.addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd('sibling');}   // 確定して同じ元から次の兄弟へ
+    else if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
     else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();const nx=nextInReadingOrder(ed.type,ed.id,e.shiftKey?-1:1);finishInlineEdit(true);if(nx)startInlineEdit(nx.type,nx.id);}});
   el.addEventListener('blur',()=>{if(inlineEd===ed)finishInlineEdit(true);});
@@ -749,6 +750,7 @@ function renderPropsPanel(){
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
         <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
+          block を 1 つ選んで <span style="color:var(--muted)">Tab</span> 線でつないだ次の block を右に <span style="color:var(--muted)">Ctrl+Enter</span> 同じ元から下に(名前を打って Enter)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
@@ -841,6 +843,7 @@ function renderPropsPanel(){
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span id="dup-hint" style="font-size:12px;font-weight:700;color:${typeColor}" title="複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄">${typeLabel}</span>
     <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
+    ${item.type==='block'?`<div class="prop-sub" id="link-add-hint" style="margin:-6px 0 8px;color:var(--muted)" title="同じ大きさ・色で置いて線でつなぎ、そのまま名前を打てる(Enter で確定)">Tab: つないで右に追加 ・ Ctrl+Enter: 同じ元から下に追加</div>`:''}
     ${(n=>n?`<div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(n)}${loadedKey(window.StableBlockCheck.includeOrigin(expanded,item.line).file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(window.StableBlockCheck.includeOrigin(expanded,item.line).file))} を開く</button>`:''}</div>`:'')(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
     <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
@@ -1005,6 +1008,23 @@ function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type===
   dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${r.x},${r.y} size ${r.w}x${r.h} color=#F1F5F9 border=#94A3B8\n`;
   parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
+// つないで追加(core/select linkAddKey): block を 1 つ選んで Tab で、その block から線を引いた先(右の列)に、Ctrl+Enter で同じ元から
+// 線を引いた兄弟(下)に、同じ大きさ・色の block を置いて結び(本文は定義行と接続行だけ)、そのままラベルのその場編集へ(名前を打って Enter)。
+// 置き場所は core/layout placeBeside。group の中の block からなら同じ group に入り、足りなければ group が広がる(core/layout growGroupFor)
+function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;
+  const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
+  const p=L.placeBeside([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parentsNow()[ref.id];
+  pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`
+${blockLine(id,p,ref)}
+`+from.map(f=>`${f} -> ${id}
+`).join('');
+  if(pid){parsed=parseDoc();const gr=parsed.groupMap[pid];if(gr)L.growGroupFor([...parsed.blocks,...parsed.groups].filter(x=>x.id!==id),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});}
+  lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();revealAndEdit('block',id);}
+// 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
+let revealScroll=false;
+function revealAndEdit(type,id){const area=document.getElementById('preview-area'),g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);
+  if(area&&g){const st=area.scrollTop,sl=area.scrollLeft;g.scrollIntoView({block:'nearest',inline:'nearest'});if(area.scrollTop!==st||area.scrollLeft!==sl)revealScroll=true;}
+  startInlineEdit(type,id);}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
 // ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。直前に足した要素(lastAddedId)の改名も追う(次の「+ ブロック追加」がその右隣に並ぶ)
 // __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
@@ -1329,7 +1349,7 @@ document.getElementById('preview-area').addEventListener('mousedown',e=>{
   releaseFocus();clearSelection();
 });
 // スクロール・ズームで入力欄が要素からずれるので、そこで確定する
-document.getElementById('preview-area').addEventListener('scroll',()=>{if(inlineEd)finishInlineEdit(true);});
+document.getElementById('preview-area').addEventListener('scroll',()=>{if(revealScroll){revealScroll=false;return;}if(inlineEd)finishInlineEdit(true);});
 
 document.getElementById('export-report').addEventListener('click',e=>{e.currentTarget.hidden=true;});
 
@@ -1355,6 +1375,9 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='x'){e.preventDefault();cutSelection();return;}
   // Ctrl+V: Paste
   if((e.ctrlKey||e.metaKey)&&e.key==='v'){e.preventDefault();pasteClipboard();return;}
+  // Tab / Ctrl+Enter: 選んだ block からつないで追加(linkAdd)。ツールバーのボタン等にフォーカスがあるときの Tab はブラウザのまま
+  const lk=window.StableBlockSelect.linkAddKey(e.key,sel,{ctrl:e.ctrlKey,meta:e.metaKey,shift:e.shiftKey,alt:e.altKey});
+  if(lk&&!(ae&&/^(BUTTON|A|SELECT|SUMMARY)$/.test(ae.tagName))){e.preventDefault();linkAdd(lk);return;}
   // F2 / Enter: キャンバス上でラベルを編集(ボタンにフォーカスがあるときの Enter はそのボタンのもの)
   if((e.key==='F2'||(e.key==='Enter'&&!(ae&&ae.tagName==='BUTTON')&&!(e.target&&e.target.tagName==='BUTTON')))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInlineEdit(sel[0].type,sel[0].id);return;}
   // Delete / Backspace: delete selected

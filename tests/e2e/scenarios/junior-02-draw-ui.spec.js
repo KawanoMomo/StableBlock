@@ -1422,3 +1422,106 @@ test('junior-02: 「+ ブロック追加」の後に ID 欄へ名前を打って
   await props.locator('#prop-id').press('Enter');
   expect(await getEditorText(page)).toMatch(/^block UartDrv "UART ドライバ" at /m);
 });
+
+// ─── つないで追加: block を 1 つ選んで Tab は線でつないだ次の block を右の列に、Ctrl+Enter は同じ元からの兄弟を下に置き、
+//     そのまま名前を打てる(追加 → 名前 → 選択解除 → 2 つ選んで結ぶ、の繰り返しをしない)(BLK-junior-20260925-1921-friction) ───
+test('junior-02: block を選んで Tab で線でつないだ次の block を右に、Ctrl+Enter で同じ元から下に置け、そのまま名前を打てる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const inline = page.locator('#inline-label');
+  const svg = page.locator('#svg-wrap svg');
+  const b = id => svg.locator(`g[data-type="block"][data-id="${id}"]`).first();
+  const t0 = await getEditorText(page);
+
+  // データフロー図(block 3・鎖 2 本): クリックは「+ ブロック追加」の 1 回だけ
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await page.keyboard.type('I2cDrv');
+  await page.keyboard.press('Enter');
+  for (const name of ['I2cData', 'I2cRte']) {
+    await page.keyboard.press('Tab');
+    await expect(inline).toBeFocused();                                   // 置いた block のラベルをその場で編集している
+    await page.keyboard.type(name);
+    await page.keyboard.press('Enter');
+    await expect(inline).toHaveCount(0);
+  }
+  let t = await getEditorText(page);
+  const all = boxes(t);
+  expect(all.I2cData).toMatchObject({ x: all.I2cDrv.x + all.I2cDrv.w + 2, y: all.I2cDrv.y, w: all.I2cDrv.w, h: all.I2cDrv.h });
+  expect(all.I2cRte).toMatchObject({ x: all.I2cData.x + all.I2cData.w + 2, y: all.I2cDrv.y });
+  expect(t).toMatch(/^I2cDrv -> I2cData$/m);
+  expect(t).toMatch(/^I2cData -> I2cRte$/m);
+  expect(t).not.toMatch(/__new_|New Block/);
+  // 本文の差分は足した定義行と接続行だけ
+  const added = t.split('\n').filter(l => l && !t0.split('\n').includes(l));
+  expect(added).toHaveLength(5);
+
+  // 同じ元から続けて: I2cData を選んで Ctrl+Enter → I2cDrv から結んだ兄弟が I2cData の下に。その場編集中の Ctrl+Enter で確定して次の兄弟へ
+  await b('I2cData').click();
+  await page.keyboard.press('Control+Enter');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('I2cCfg');
+  await page.keyboard.press('Control+Enter');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('I2cLog');
+  await page.keyboard.press('Enter');
+  t = await getEditorText(page);
+  const all2 = boxes(t);
+  expect(all2.I2cCfg).toMatchObject({ x: all2.I2cData.x, y: all2.I2cData.y + all2.I2cData.h + 1 });
+  expect(all2.I2cLog).toMatchObject({ x: all2.I2cData.x, y: all2.I2cCfg.y + all2.I2cCfg.h + 1 });
+  expect(t).toMatch(/^I2cDrv -> I2cCfg$/m);
+  expect(t).toMatch(/^I2cDrv -> I2cLog$/m);
+  expect(Object.values(all2).some(x => x.id !== 'I2cCfg' && hits(x, all2.I2cCfg))).toBe(false);
+
+  // Ctrl+Z 1 回で最後の 1 手(定義行と接続行)がまとめて戻る
+  const beforeUndo = t;
+  await page.keyboard.press('Escape');
+  await b('I2cRte').click();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Escape');                                    // 名前を打たずにやめても block と線は残る(仮の ID)
+  expect(await getEditorText(page)).toMatch(/^I2cRte -> __new_\d+$/m);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => getEditorText(page)).toBe(beforeUndo);
+
+  // 何も選んでいないとき・ツールバーのボタンにフォーカスがあるときの Tab は足さない(フォーカス移動のまま)
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Tab');
+  await b('I2cRte').click();
+  await page.locator('#fit-btn, [data-term=fit]').first().focus();
+  await page.keyboard.press('Tab');
+  expect(await getEditorText(page)).toBe(beforeUndo);
+
+  // 案内: block を選ぶとプロパティ欄の先頭に 1 行、ツール欄の「操作とキー」にも出る
+  await b('I2cRte').click();
+  await expect(page.locator('#link-add-hint')).toContainText('Tab');
+  await expect(page.locator('#link-add-hint')).toContainText('Ctrl+Enter');
+});
+
+test('junior-02: group の中の block から Tab で足した block は同じ group に入り、足りなければ group が広がる', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  await props.locator('[data-term=add-block-in-group]').click();                 // group 欄の「+ 中にブロック」
+  await page.keyboard.type('SpiDrv');
+  await page.keyboard.press('Enter');
+  const g0 = Object.values(boxes(await getEditorText(page))).find(x => x.type === 'group');
+  for (const name of ['SpiHw', 'SpiReg']) {
+    await page.keyboard.press('Tab');
+    await page.keyboard.type(name);
+    await page.keyboard.press('Enter');
+  }
+  const all = boxes(await getEditorText(page));
+  const g1 = all[g0.id];
+  expect(all.SpiHw.x).toBe(all.SpiDrv.x + all.SpiDrv.w + 2);
+  expect(all.SpiReg.x).toBe(all.SpiHw.x + all.SpiHw.w + 2);
+  for (const id of ['SpiHw', 'SpiReg']) {
+    expect(within(all[id], g1, 1)).toBe(true);                           // group の内側に 1 グリッドの余白を残して収まる
+    expect(parentOf(all, id)).toBe(g0.id);
+  }
+  expect(g1.w).toBeGreaterThan(g0.w);                                    // 足りない分 group が右へ広がる
+  expect(await getEditorText(page)).toMatch(/^SpiDrv -> SpiHw$/m);
+  expect(await getEditorText(page)).toMatch(/^SpiHw -> SpiReg$/m);
+  await expect(svg.locator('g[data-type="block"][data-id="SpiReg"]')).toHaveCount(1);
+});

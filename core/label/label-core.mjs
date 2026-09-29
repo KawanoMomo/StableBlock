@@ -98,6 +98,16 @@ export function hasConnDir(connections, from, to) {
   return (connections || []).some(c => (c.from === from && c.to === to) || (c.bidir && c.from === to && c.to === from));
 }
 
+// id へ入る接続の元(本文の順、重複なし)。双方向は逆の書き順でも元に数える。「つないで追加」の兄弟(Ctrl+Enter)が同じ元から結ぶ相手
+export function linkSources(connections, id) {
+  const out = [];
+  for (const c of connections || []) {
+    const from = c.to === id ? c.from : (c.bidir && c.from === id ? c.to : null);
+    if (from && from !== id && !out.includes(from)) out.push(from);
+  }
+  return out;
+}
+
 // 2 つの間の接続を向きを問わず全部(本文の順)
 export function connsBetween(connections, a, b) {
   return (connections || []).filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));

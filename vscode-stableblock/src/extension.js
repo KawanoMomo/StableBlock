@@ -368,7 +368,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, linkSources, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -390,7 +390,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -401,7 +401,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, growGroupFor };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -666,7 +666,7 @@ function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap
   var ed={el:el,type:tp,id:id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds)};inl=ed;
   el.addEventListener('input',function(){if(inl!==ed)return;if(!ed.pushed){pushH();ed.pushed=true;}var v=isN?el.value.replace(/\\n/g,"\\\\n"):el.value;sel=[{type:ed.type,id:ed.id}];
     upLb(ed.type,ed.id,v);fLbId(isN?el.value:v);ed.id=sel[0].id;parsed=parseDSL(dsl);render();showErr();});
-  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);finInl(true);if(nx)startInl(nx.type,nx.id);}});
+  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finInl(true);if(!askId())linkAdd('sibling');}else if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);finInl(true);if(nx)startInl(nx.type,nx.id);}});
   el.addEventListener('blur',function(){if(inl===ed)finInl(true);});
   el.focus();el.select();}
 // Tab / Shift+Tab: commit and edit the next / previous item of the same kind in reading order (rows top to bottom, left to right)
@@ -691,7 +691,7 @@ function propsPanel(){
         '<div class="pl">CANVAS</div><label id="cv-sec" style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
         '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click blocks in order, then press "a &rarr; b" (3+: "a &rarr; b &rarr; c"). Flip the direction afterwards"</div>'+
-        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Select 1 and type: edit its label<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>Nothing selected: H dim unlinked, N show notes</div>';
+        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Select 1 and type: edit its label<br>1 block + Tab / Ctrl+Enter: add a linked block<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>Nothing selected: H dim unlinked, N show notes</div>';
     }
     return;
   }
@@ -737,6 +737,7 @@ function propsPanel(){
   var colors=isN?NOTE_COLORS:isB?COLORS:BG_COLORS;
   var h='<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:'+typeColor+'">'+typeLabel+'</span><span onclick="sel=[];render();props()" style="cursor:pointer;color:#888;font-size:14px">&times;</span></div>';
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
+  if(isB)h+='<div class="pl" id="link-add-hint" style="margin-top:2px;font-size:9px">Tab: add linked block to the right / Ctrl+Enter: add from the same source below</div>';
   var incN=window.StableBlockCheck.includedItemNote(EXP,it.line,function(f){return f.split('/').pop();},'en');
   if(incN)h+='<div class="pl" id="prop-included" style="margin-top:4px;font-size:9px;text-transform:none;color:#FCD34D">'+esc(incN)+'</div>';
   // include 先の要素(core/check includedItemRows): 打っても本文は変わらないので値を見せるだけ(直すのは include 先のファイル)
@@ -847,6 +848,18 @@ function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}
 function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
+// Link-add (core/select linkAddKey): with 1 block selected, Tab adds a block linked from it (column to its right, core/layout placeBeside),
+// Ctrl+Enter a sibling linked from the same sources (below it); same size / colors, then its label is edited in place. In a group it joins that group (core/layout growGroupFor)
+function linkAdd(kind){var s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;var L=window.StableBlockLayout;
+  var from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
+  var p=L.placeBeside(parsed.blocks.concat(parsed.groups,parsed.notes),ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parNow()[ref.id];
+  pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,ref)+"\\n"+from.map(function(f){return f+' -> '+id+"\\n";}).join('');
+  if(pid){parsed=parseDoc();var gr=parsed.groupMap[pid];if(gr)L.growGroupFor(boxIt().filter(function(x){return x.id!==id;}),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});}
+  lastAddedId=id;sel=[{type:'block',id:id}];selClk=false;go();notify();revealEdit('block',id);}
+// A new item outside the visible area: scroll it into view, then edit its label (this scroll does not commit the edit)
+var revealScr=false;
+function revealEdit(tp,id){var area=document.getElementById('preview'),gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}
+  if(area&&g){var st=area.scrollTop,sl=area.scrollLeft;g.scrollIntoView({block:'nearest',inline:'nearest'});if(area.scrollTop!==st||area.scrollLeft!==sl)revealScr=true;}startInl(tp,id);}
 function addNote(){pushH();var id="__new_"+(addC++),p=freeSlot(8,2);dsl=dsl.trimEnd()+"\\nnote "+id+' "Annotation" at '+p.x+','+p.y+' size 8x2 color=#FEF3C7 text=#92400E\\n';sel=[{type:"note",id:id}];if(!showAnno){showAnno=true;var abtn=document.getElementById('anno-btn');if(abtn)abtn.classList.add('anno-act');}go();notify();}
 // ID: set in the property panel (sId). Renames touch only the definition line and connection endpoints (core/label renameIdInDsl).
 // __new_ items and IDs auto-assigned here (autoIds) follow the label as it is typed (fLbId). IDs of loaded diagrams never follow.
@@ -934,6 +947,7 @@ document.addEventListener('keydown',function(e){
   if(ta==='annotations'){e.preventDefault();toggleAnno();return;}
   if(ta==='fit'){e.preventDefault();fitV();return;}
   var tg=e.target&&e.target.tagName;if((tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'))return;
+  var lk=window.StableBlockSelect.linkAddKey(e.key,sel,{ctrl:e.ctrlKey,meta:e.metaKey,shift:e.shiftKey,alt:e.altKey});if(lk&&!(document.activeElement&&/^(BUTTON|A|SELECT|SUMMARY)$/.test(document.activeElement.tagName))){e.preventDefault();linkAdd(lk);return;}
   if((e.key==='F2'||(e.key==='Enter'&&!(document.activeElement&&document.activeElement.tagName==='BUTTON')&&tg!=='BUTTON'))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInl(sel[0].type,sel[0].id);return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClk=false;var an=showAnno?parsed.notes.map(function(n){return{type:'note',id:n.id}}):[];sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}})).concat(an);render();props();return;}
   var an=window.StableBlockSelect.arrowNudge(e.key);if(sel.length&&an){e.preventDefault();if(sel.length>1)bNudge(an.axis,an.d);else sNudge(an.axis,an.d);return;}
@@ -974,7 +988,7 @@ document.getElementById('preview').addEventListener('mousedown',function(e){
   var r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;
   relFocus();clrSel();
 });
-document.getElementById('preview').addEventListener('scroll',function(){if(inl)finInl(true);});
+document.getElementById('preview').addEventListener('scroll',function(){if(revealScr){revealScr=false;return;}if(inl)finInl(true);});
 
 // Drag the preview | side panel border to resize the side panel (core/layout paneWidths keeps a minimum preview width).
 // Double-click resets. The width survives hiding the webview (vscodeApi state)
