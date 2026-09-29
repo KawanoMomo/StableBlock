@@ -11,6 +11,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('build-single-html: stableblock.html が読む core/ の script は全部埋め込まれ、外のファイルを読む <script src> が残らない', () => {
   const src = readFileSync(join(ROOT, 'stableblock.html'), 'utf8');
+  assert.match(src, /<span style="color:var\(--muted\)">Shift\+Enter<\/span> ラベルを改行\(block・group・note・接続\)/);
   const wanted = [...src.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
   assert.ok(wanted.length >= 10, 'script src が見つからない: ' + wanted.length);
   const r = buildSingleHtml(ROOT);
