@@ -828,3 +828,63 @@ test('replacedDiagram: 読んだときの要素の ID が 1 つも残らず今�
   assert.equal(replacedDiagram('@canvas width=660 height=240 grid=20\n', 'block a "A" at 1,1 size 8x3\n'), false);   // 元が空の図
   assert.equal(replacedDiagram(null, 'block a "A" at 1,1 size 8x3\n'), false);
 });
+
+// 共通部を分けたあとの差し替え: 取り込み中の行で取り込み先を替え、同じ共通部を取り込んでいる図すべてに当てる。
+// 「すべてに取り込む」の相手は表示中の図と同じ共通部を取り込んでいる図(BLK-primary-20260929-2108-friction)
+import { includeSwapCandidates, planIncludeSwap, includeAddTargets } from '../check-core.mjs';
+
+const SPLIT = () => ({
+  'spi_swc.sb': '# SPI\r\n@canvas width=960\r\n@include "shared/common.sb"\r\nblock SpiDrv "S" at 1,1 size 4x2\r\nSpiDrv -> rte\r\nrte -> hal\r\n',
+  'can_swc.sb': '# CAN\n@canvas width=960\n@include "shared/common.sb"\nblock CanDrv "C" at 1,1 size 4x2\nCanDrv -> rte\n',
+  'spi_dataflow.sb': '# SPI DF\n@canvas width=960\nblock SpiDrv "S" at 1,1 size 4x2\nblock rte "RTE" at 8,1 size 4x2\nSpiDrv -> rte\n',
+  'can_dataflow.sb': '# CAN DF\n@canvas width=960\nblock CanDrv "C" at 1,1 size 4x2\nblock candata "D" at 8,1 size 4x2\nCanDrv -> candata\n',
+  'common.sb': 'block rte "RTE" at 20,2 size 8x3\nblock os "OS" at 20,8 size 8x3\nblock hal "HAL" at 20,14 size 8x3\nrte -> os',
+  'rte.sb': 'block rte "RTE" at 20,2 size 8x3\nblock os "OS" at 20,8 size 8x3\nrte -> os',
+  'hal.sb': 'block hal "HAL" at 20,14 size 8x3',
+});
+
+test('includeCandidates: 候補の図を誰も取り込んでいなくても、隣の共通部の書き方のフォルダ(shared/)を共通部らしい図に付ける', () => {
+  const c = includeCandidates(SPLIT(), 'spi_swc.sb');
+  assert.equal(c.find(x => x.file === 'rte.sb').path, 'shared/rte.sb');
+  assert.equal(c.find(x => x.file === 'hal.sb').path, 'shared/hal.sb');
+  // 使う側の図(ほかの構成図・データフロー図)には付けない
+  assert.equal(c.find(x => x.file === 'can_swc.sb').path, 'can_swc.sb');
+  assert.equal(c.find(x => x.file === 'spi_dataflow.sb').path, 'spi_dataflow.sb');
+  assert.equal(c.find(x => x.file === 'can_dataflow.sb').path, 'can_dataflow.sb');
+});
+
+test('includeSwapCandidates: 取り込み中の行の替え先は今の取り込み先以外で、行のフォルダ部分のまま名前だけ替えたパス', () => {
+  const c = includeSwapCandidates(SPLIT(), 'spi_swc.sb', 3);
+  assert.deepEqual(c.slice(0, 2), [{ file: 'rte.sb', path: 'shared/rte.sb' }, { file: 'hal.sb', path: 'shared/hal.sb' }]);
+  assert.ok(!c.some(x => x.file === 'common.sb' || x.file === 'spi_swc.sb'));
+  assert.deepEqual(includeSwapCandidates(SPLIT(), 'spi_swc.sb', 4), []);   // @include 行でなければ無い
+});
+
+test('planIncludeSwap: 行をその場で替え(差分 1 行・改行コードそのまま)、all なら同じ共通部を取り込んでいる図すべてに当てる。使っていない図は変えない', () => {
+  const files = SPLIT();
+  const one = planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', false);
+  assert.equal(one.from, 'common.sb');
+  assert.deepEqual(one.changes.map(c => [c.path, c.lines]), [['spi_swc.sb', [3]]]);
+  assert.equal(one.changes[0].text, files['spi_swc.sb'].replace('shared/common.sb', 'shared/rte.sb'));
+  const all = planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', true);
+  assert.deepEqual(all.changes.map(c => c.path), ['spi_swc.sb', 'can_swc.sb']);
+  assert.equal(all.changes[1].text, files['can_swc.sb'].replace('shared/common.sb', 'shared/rte.sb'));
+  assert.deepEqual(all.skipped, []);
+  // 既に替え先を取り込んでいる図・替え先が取り込んでいる図(循環)は替えない
+  const f2 = { ...files, 'can_swc.sb': files['can_swc.sb'] + '@include "shared/rte.sb"\n' };
+  assert.deepEqual(planIncludeSwap(f2, 'spi_swc.sb', 3, 'rte.sb', true).skipped, ['can_swc.sb']);
+  // 同じ図・行でない行は何もしない
+  assert.deepEqual(planIncludeSwap(files, 'spi_swc.sb', 3, 'common.sb', true).changes, []);
+  assert.deepEqual(planIncludeSwap(files, 'spi_swc.sb', 5, 'rte.sb', true).changes, []);
+});
+
+test('includeAddTargets: 「すべてに取り込む」の相手は表示中の図と同じ共通部を取り込んでいる図。何も取り込んでいなければ全部', () => {
+  const files = SPLIT();
+  for (const c of planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', true).changes) files[c.path] = c.text;
+  // 足す候補の先頭は足りない hal を定義する hal.sb(rte・os を重ねて持ち込む common.sb より先)
+  assert.deepEqual(includeCandidates(files, 'spi_swc.sb')[0], { file: 'hal.sb', path: 'shared/hal.sb' });
+  assert.deepEqual(includeAddTargets(files, 'spi_swc.sb', 'hal.sb'), ['spi_swc.sb', 'can_swc.sb']);
+  assert.deepEqual(includeAddTargets(files, 'spi_dataflow.sb', 'hal.sb'), ['spi_swc.sb', 'can_swc.sb', 'spi_dataflow.sb', 'can_dataflow.sb', 'common.sb', 'rte.sb']);
+  // 足すと 2 行が元の位置に並ぶ(最後の @include の後)
+  assert.equal(addIncludeInDsl(files['spi_swc.sb'], 'shared/hal.sb').split('\r\n').slice(2, 4).join('|'), '@include "shared/rte.sb"|@include "shared/hal.sb"');
+});

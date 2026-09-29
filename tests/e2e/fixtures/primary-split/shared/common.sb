@@ -1,0 +1,6 @@
+# 共通部(RTE・OS・HAL)
+@canvas width=960 height=520 grid=20
+block rte "RTE" at 20,2 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block os "OS" at 20,8 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+block hal "HAL" at 20,14 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+rte -> os

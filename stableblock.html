@@ -121,6 +121,9 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 .inc-row { align-items:center; }
 .inc-path { flex:1; min-width:0; font-size:11px; font-family:"IBM Plex Mono",monospace; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .inc-row .inc-remove { flex:none; height:22px; padding:0 8px; font-size:10px; border-radius:4px; }
+.inc-swap-row { margin-top:2px; }
+.inc-swap { font-size:11px; padding:2px 6px; }
+.inc-swap-all { display:flex; align-items:center; gap:4px; margin:2px 0 4px; cursor:pointer; }
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
 /* include 先の要素の値(打てない。枠を点線にして欄と見分ける) */
@@ -708,12 +711,13 @@ function includeSelf(){return dslFile&&hasLoaded(dslFile)?dslFile:'diagram.sb';}
 function includeSectionHtml(){const C=window.StableBlockCheck,files=includeFilesNow(),self=includeSelf(),cur=C.includeLines(dsl),cand=C.includeCandidates(files,self);
   const miss=new Set(((expanded&&expanded.missing)||[]).map(m=>m.at));
   let h=`<div class="prop-section" id="include-section"><div class="prop-label">共通部(@include)</div>`;
-  h+=cur.length?cur.map(x=>`<div class="prop-row inc-row" data-line="${x.line}"><span class="inc-path" title="本文 L${x.line}">${esc(x.path)}${miss.has(x.line)?' <span style="color:var(--red)">(読めない)</span>':''}</span><button class="step-btn inc-remove" data-term="remove-include" onclick="removeInclude(${x.line})" title="この @include 行を本文から消す(取り込んでいた要素は図から消える)">外す</button></div>`).join(''):'<div class="prop-sub">取り込んでいる図は無い</div>';
+  h+=cur.length?cur.map(x=>`<div class="prop-row inc-row" data-line="${x.line}"><span class="inc-path" title="本文 L${x.line}">${esc(x.path)}${miss.has(x.line)?' <span style="color:var(--red)">(読めない)</span>':''}</span><button class="step-btn inc-remove" data-term="remove-include" onclick="removeInclude(${x.line})" title="この @include 行を本文から消す(取り込んでいた要素は図から消える)">外す</button></div>`+includeSwapHtml(files,self,x)).join(''):'<div class="prop-sub">取り込んでいる図は無い</div>';
   if(cand.length){
     h+=`<select class="prop-input" id="include-pick" style="margin-top:6px" title="取り込む図(一緒に読み込んだ図から)" onchange="document.getElementById('include-path').value=this.options[this.selectedIndex].dataset.path">${cand.map((c,i)=>`<option value="${i}" data-path="${esc(c.path)}">${esc(c.file)}</option>`).join('')}</select>`;
     h+=`<input class="prop-input" id="include-path" style="margin-top:4px" value="${esc(cand[0].path)}" spellcheck="false" title="本文に書くパス(この図のフォルダから。違えば直す)">`;
     h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include" onclick="addInclude(false)" title="選んだ図を @include で取り込む(本文に @include の 1 行を足す)">取り込む</button></div>`;
-    h+=`<div class="prop-row" style="margin-top:4px"><button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">すべてに取り込む</button></div>`;
+    // 一括の相手: 表示中の図が何かを取り込んでいれば同じ共通部を取り込んでいる図だけ(core/check includeAddTargets)、何も取り込んでいなければ全部
+    h+=`<div class="prop-row" style="margin-top:4px">${cur.length?`<button class="prop-btn" data-term="add-include-same" onclick="addInclude(true)" title="この図と同じ共通部を取り込んでいる、一緒に読み込んだ図すべての本文に @include の 1 行を足す(共通部を使っていない図は変えない。「.sb 保存」で変わった図を全部書き出す)">同じ共通部の図へ</button>`:`<button class="prop-btn" data-term="add-include-all" onclick="addInclude(true)" title="一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)">全図に取り込む</button>`}</div>`;
   }else h+=`<div class="prop-sub" title="共通部の .sb も「.sb 読込」で一緒に選ぶと、ここから取り込める">取り込める図が無い</div>`;
   if(includeNote)h+=`<div class="prop-sub" id="include-note" style="color:var(--green)">${esc(includeNote)}</div>`;
   return h+'</div>';}
@@ -725,10 +729,26 @@ function addInclude(all){const C=window.StableBlockCheck,files=includeFilesNow()
   const typed=C.loadedKeyOf(files,self,path);if(typed===self)return;if(typed&&typed!==c.file){c=cands.find(x=>x.file===typed);if(!c)return;}
   const dir=f=>String(f).split('/').slice(0,-1).join('/');
   if(!all){pushHistory();dsl=C.addIncludeInDsl(dsl,path);includeNote=`${path} を取り込んだ(本文に 1 行)`;refresh();return;}
-  const done=[];pushHistoryAll();
-  for(const k of Object.keys(files)){if(k===c.file)continue;const t=C.includeCandidates(files,k).find(x=>x.file===c.file);if(!t)continue;
+  const done=[],targets=C.includeAddTargets(files,self,c.file);pushHistoryAll();
+  for(const k of targets){const t=C.includeCandidates(files,k).find(x=>x.file===c.file);if(!t)continue;
     const nd=C.addIncludeInDsl(files[k],dir(k)===dir(self)?path:t.path);files[k]=nd;if(k===self)dsl=nd;else includeFiles[k]=nd;done.push(baseName(k));}
   includeNote=done.length?`${path} を ${done.length} 枚に取り込んだ: ${done.join('、')}。「.sb 保存」で変わった図を全部書き出す`:`${path} を取り込める図は無い`;refresh();}
+// 取り込み中の行の下の「替える」: 取り込み先を一緒に読み込んだ別の図に替える(core/check includeSwapCandidates / planIncludeSwap)。行はその場で書き換わる(差分 1 行)。
+// 同じ共通部を取り込んでいるほかの図があれば、その図にも当てるか(既定で当てる)を横のチェックで選ぶ。変わった図は「.sb 保存」で一緒に出る。Ctrl+Z 1 回で戻る
+var includeSwapAll=true;
+function includeSwapHtml(files,self,x){const C=window.StableBlockCheck,cands=C.includeSwapCandidates(files,self,x.line);if(!cands.length)return '';
+  const from=C.loadedKeyOf(files,self,x.path),n=from?Object.keys(files).filter(f=>f!==self&&f!==from&&C.includeLines(files[f]).some(i=>C.loadedKeyOf(files,f,i.path)===from)).length:0;
+  let h=`<div class="prop-row inc-swap-row" data-line="${x.line}"><select class="prop-input inc-swap" title="この @include の取り込み先を、一緒に読み込んだ別の図に替える(行はその場で書き換わる)" onchange="swapInclude(${x.line},this)"><option value="">替える…</option>${cands.map((c,i)=>`<option value="${i}" title="${esc(c.path)}">${esc(c.file)}</option>`).join('')}</select></div>`;
+  if(n)h+=`<label class="prop-sub inc-swap-all" title="${esc(x.path)} を取り込んでいるほかの図の @include 行も一緒に替える"><input type="checkbox" ${includeSwapAll?'checked':''} onchange="includeSwapAll=this.checked"> 同じ共通部を取り込んでいるほかの ${n} 枚も替える</label>`;
+  return h;}
+function swapInclude(line,sel){if(!sel||sel.value==='')return;const C=window.StableBlockCheck,files=includeFilesNow(),self=includeSelf();
+  const c=C.includeSwapCandidates(files,self,line)[+sel.value];if(!c)return;
+  const plan=C.planIncludeSwap(files,self,line,c.file,includeSwapAll);if(!plan.changes.length)return;
+  if(plan.changes.length===1&&plan.changes[0].path===self){pushHistory();dsl=plan.changes[0].text;}
+  else{pushHistoryAll();for(const ch of plan.changes){if(ch.path===self)dsl=ch.text;else includeFiles[ch.path]=ch.text;}}
+  const names=plan.changes.map(ch=>baseName(ch.path)),from=plan.from?baseName(plan.from):'取り込み先';
+  includeNote=`${from} を ${c.file} に替えた: ${names.length} 枚(${names.join('、')})`+(plan.skipped.length?`。替えなかった図(既に取り込んでいる・循環になる): ${plan.skipped.map(baseName).join('、')}`:'')+(names.length>1?'。「.sb 保存」で変わった図を全部書き出す':'');
+  refresh();renderSearchHits();}
 function removeInclude(line){const nd=window.StableBlockCheck.removeIncludeInDsl(dsl,line);if(nd===dsl)return;pushHistory();dsl=nd;includeNote=null;refresh();}
 function renderProps(){
   if(labelEdit&&parsed)commitLabelEdit();   // ラベル欄を作り直す前に、確定していない編集をほかの図へも反映する(欄の外を押して選択が変わったとき)

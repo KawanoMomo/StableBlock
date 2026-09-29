@@ -533,26 +533,131 @@ export function relativeIncludePath(from, to) {
 // 自分自身・既に取り込んでいる図・自分を(include 先をたどって)取り込んでいる図は出さない(循環を作らない)。
 // path は、同じフォルダのほかの図がその図を既に include している書き方があればそれ(「.sb 読込」で選んだ図はフォルダを持たないので、
 // 本文どおりの `shared/common.sb` を使う)。無ければ self から見た相対パス
-export function includeCandidates(files, self) {
-  const has = includedKeys(files, self);
+// skipLine(省略可)は self のその @include 行を無いものとして数える(取り込み先を替える候補。並び・パスは今の本文で決める)
+export function includeCandidates(files, self, skipLine) {
+  const base = skipLine ? { ...files, [self]: removeIncludeInDsl(files[self], skipLine) } : files;
+  const has = includedKeys(base, self);
   const dir = f => String(f).split('/').slice(0, -1).join('/');
   const out = [];
   for (const k of Object.keys(files)) {
-    if (k === self || has.has(k) || includedKeys(files, k).has(self)) continue;
+    if (k === self || has.has(k) || includedKeys(base, k).has(self)) continue;
     let path = null;
     for (const f of Object.keys(files)) {
       if (f === k || dir(f) !== dir(self)) continue;
       const hit = includeLines(files[f]).find(x => loadedKeyOf(files, f, x.path) === k);
       if (hit) { path = hit.path; break; }
     }
+    // 候補の図そのものを取り込んでいる図が無くても、候補と同じフォルダの図(隣の共通部)を取り込んでいる書き方があれば、
+    // そのフォルダ部分を付ける(`shared/common.sb` を取り込んでいれば rte.sb は `shared/rte.sb`)。そのパスで候補の図に当たるときだけ
+    if (!path) path = siblingIncludePath(files, self, k);
     out.push({ file: k, path: path || relativeIncludePath(self, k) });
   }
-  // 先に出す順(選ばずに押せば共通部が入る): ほかの図が既に取り込んでいる図 → 自分の接続が指していて自分に無い ID を定義している図 → 残り
+  // 先に出す順(選ばずに押せば共通部が入る): ほかの図が既に取り込んでいる図 → 自分の接続が指していて自分に無い ID を定義している図
+  // (共通部らしく、自分と取り込み済みの図が既に持つ ID を定義していない図が先) → 残り
   const shared = new Set(Object.keys(files).flatMap(f => includeLines(files[f]).map(x => loadedKeyOf(files, f, x.path))));
   const own = definedIds(files[self]);
   const need = new Set([...connectedIds(files[self])].filter(id => !own.has(id)));
-  const rank = c => (shared.has(c.file) ? 0 : [...definedIds(files[c.file])].some(id => need.has(id)) ? 1 : 2);
-  return [0, 1, 2].flatMap(r => out.filter(c => rank(c) === r));
+  const have = new Set([...own, ...[...has].flatMap(k => [...definedIds(files[k])])]);
+  const fits = k => commonLike(files, self, k) && ![...definedIds(files[k])].some(id => have.has(id));
+  const rank = c => (shared.has(c.file) ? 0 : [...definedIds(files[c.file])].some(id => need.has(id)) ? (fits(c.file) ? 1 : 2) : 3);
+  return [0, 1, 2, 3].flatMap(r => out.filter(c => rank(c) === r));
+}
+
+// 図 k が共通部らしいか: k 自身は何も取り込まず、self と同じフォルダの図のどれかが接続で指していて自分では定義していない ID を k が定義し、
+// 何かを取り込んでいる図(部品を使う側)と同じ ID を k が定義していない。「.sb 読込」で選んだ図はフォルダを持たないので、
+// 構成図・データフロー図(使う側)と共通部を本文で見分ける
+function commonLike(files, self, k) {
+  if (includeLines(files[k]).length) return false;
+  const dir = f => String(f).split('/').slice(0, -1).join('/');
+  const mine = definedIds(files[k]);
+  if (!mine.size) return false;
+  const others = Object.keys(files).filter(f => f !== k);
+  if (others.some(f => includeLines(files[f]).length && [...definedIds(files[f])].some(id => mine.has(id)))) return false;
+  return others.some(f => {
+    if (dir(f) !== dir(self)) return false;
+    const own = definedIds(files[f]);
+    return [...connectedIds(files[f])].some(id => !own.has(id) && mine.has(id));
+  });
+}
+
+// 図 self から図 k を取り込むパスを、k と同じフォルダの図を self と同じフォルダの図が取り込んでいる書き方から作る(k が共通部らしいときだけ)。無ければ null
+function siblingIncludePath(files, self, k) {
+  const dir = f => String(f).split('/').slice(0, -1).join('/');
+  const base = String(k).split('/').pop();
+  if (!commonLike(files, self, k)) return null;
+  for (const f of Object.keys(files)) {
+    if (dir(f) !== dir(self)) continue;
+    for (const x of includeLines(files[f])) {
+      const t = loadedKeyOf(files, f, x.path);
+      if (!t || t === k || dir(t) !== dir(k)) continue;
+      const p = [...x.path.split('/').slice(0, -1), base].join('/');
+      if (loadedKeyOf(files, self, p) === k) return p;
+    }
+  }
+  return null;
+}
+
+// ─── 取り込み先を替える(ツール欄の「共通部(@include)」の取り込み中の行) ───
+// 図 f の @include 行 x(includeLines の 1 件)の取り込み先を図 to に替えたときに書くパス。x を消した f に to を足せない
+// (f 自身・既に取り込んでいる・to が f を取り込んでいて循環になる)なら null。
+// 元の取り込み先と同じフォルダの図なら、行に書いてあるフォルダ部分のまま名前だけ替える(`shared/common.sb` → `shared/rte.sb`)
+function swapPathFor(files, f, x, to) {
+  const c = includeCandidates(files, f, x.line).find(c => c.file === to);
+  if (!c) return null;
+  const dir = k => String(k).split('/').slice(0, -1).join('/');
+  const old = loadedKeyOf(files, f, x.path);
+  if (old && dir(old) === dir(to) && commonLike(files, f, to)) {
+    const p = [...x.path.split('/').slice(0, -1), String(to).split('/').pop()].join('/');
+    if (loadedKeyOf(files, f, p) === to) return p;
+  }
+  return c.path;
+}
+
+// 図 self の line 行目(1 始まり)の @include の取り込み先にできる、一緒に読み込んだ図: [{ file, path }](includeCandidates の順。今の取り込み先は出さない)
+export function includeSwapCandidates(files, self, line) {
+  const x = includeLines(files[self]).find(i => i.line === line);
+  if (!x) return [];
+  const old = loadedKeyOf(files, self, x.path);
+  return includeCandidates(files, self, line).filter(c => c.file !== old).map(c => ({ file: c.file, path: swapPathFor(files, self, x, c.file) || c.path }));
+}
+
+// 図 self の line 行目の @include の取り込み先を図 to に替える計画。行はその場で書き換える(差分 1 行・位置は元の行・改行コードとインデントはそのまま)。
+// all なら、同じ図(元の取り込み先)を取り込んでいる一緒に読み込んだ図すべての、その図を指す @include 行も替える。
+// 替えられない図(to 自身・既に to を取り込んでいる・循環になる)は skipped。元の取り込み先が読めない行は self だけを替える。
+// 返り値: { from(元の取り込み先のキー。読めなければ null), changes: [{ path, lines: [行], text }](self が先、あとは files の順), skipped: [キー] }
+const NL = '\n';
+export function planIncludeSwap(files, self, line, to, all) {
+  const x = includeLines(files[self]).find(i => i.line === line);
+  const from = x ? loadedKeyOf(files, self, x.path) : null;
+  const changes = [], skipped = [];
+  if (!x || to === from) return { from, changes, skipped };
+  const targets = all && from ? [self, ...Object.keys(files).filter(f => f !== self && f !== from && includeLines(files[f]).some(i => loadedKeyOf(files, f, i.path) === from))] : [self];
+  for (const f of targets) {
+    const hits = f === self ? [x] : includeLines(files[f]).filter(i => loadedKeyOf(files, f, i.path) === from);
+    const text = files[f];
+    const ls = String(text).split(NL);
+    const done = [];
+    for (const h of hits) {
+      const p = swapPathFor({ ...files, [f]: ls.join(NL) }, f, h, to);
+      if (!p) continue;
+      ls[h.line - 1] = ls[h.line - 1].replace(/"[^"]+"/, `"${p}"`);
+      done.push(h.line);
+    }
+    if (done.length) changes.push({ path: f, lines: done, text: ls.join(NL) });
+    else skipped.push(f);
+  }
+  return { from, changes, skipped };
+}
+
+// 図 self を取り込み先に足す「すべてに取り込む」の相手: self が取り込んでいる図(直接)のどれかを取り込んでいる、一緒に読み込んだ図(self を含む。files の順)。
+// self が何も取り込んでいなければ、読み込んだ図すべて。to(足す図)を足せない図は含めない
+export function includeAddTargets(files, self, to) {
+  const mine = new Set(includeLines(files[self]).map(i => loadedKeyOf(files, self, i.path)).filter(Boolean));
+  return Object.keys(files).filter(k => {
+    if (k === to) return false;
+    if (mine.size && !includeLines(files[k]).some(i => mine.has(loadedKeyOf(files, k, i.path)))) return false;
+    return includeCandidates(files, k).some(c => c.file === to);
+  });
 }
 
 // 本文(include は展開しない)で定義している ID と、接続の端に書いている ID
