@@ -618,3 +618,25 @@ test('fixPlaceholderIdsInDsl: 仮の ID が無ければ本文は 1 バイトも�
   assert.deepEqual(r.renamed, []);
   assert.deepEqual(r.left, []);
 });
+
+// ID 欄で仮の ID の要素に名前を付けると、既定のラベルも同じ表記になる(BLK-junior-20260929-1747-friction)
+test('renameIdInDsl defaultLabel: 仮の ID の要素のラベルが既定(New Block / New Group / Annotation)なら新 ID にし、ほかは変えない', () => {
+  const dsl = [
+    'block __new_1 "New Block" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    'group __new_2 "New Group" at 0,0 size 20x8 color=#F1F5F9 border=#94A3B8',
+    'note __new_3 "Annotation" at 10,1 size 8x2 color=#FEF3C7 text=#92400E',
+    'block __new_4 "UART ドライバ" at 1,5 size 8x3',
+    'block Old "New Block" at 1,9 size 8x3',
+    '__new_1 -> Old',
+  ].join('\n');
+  const a = renameIdInDsl(dsl, '__new_1', 'I2c_Hw', undefined, { defaultLabel: true }).split('\n');
+  assert.equal(a[0], 'block I2c_Hw "I2c_Hw" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4');
+  assert.equal(a[5], 'I2c_Hw -> Old');
+  assert.deepEqual(a.filter((l, i) => l !== dsl.split('\n')[i]).length, 2);                    // 定義行と接続行だけ
+  assert.equal(renameIdInDsl(dsl, '__new_2', 'Bus', undefined, { defaultLabel: true }).split('\n')[1], 'group Bus "Bus" at 0,0 size 20x8 color=#F1F5F9 border=#94A3B8');
+  assert.equal(renameIdInDsl(dsl, '__new_3', 'memo1', undefined, { defaultLabel: true }).split('\n')[2], 'note memo1 "memo1" at 10,1 size 8x2 color=#FEF3C7 text=#92400E');
+  // 利用者が変えたラベル・既に ID のある要素の改名・オプション無し(ID補正など)ではラベルを変えない
+  assert.equal(renameIdInDsl(dsl, '__new_4', 'UartDrv', undefined, { defaultLabel: true }).split('\n')[3], 'block UartDrv "UART ドライバ" at 1,5 size 8x3');
+  assert.equal(renameIdInDsl(dsl, 'Old', 'Renamed', undefined, { defaultLabel: true }).split('\n')[4], 'block Renamed "New Block" at 1,9 size 8x3');
+  assert.equal(renameIdInDsl(dsl, '__new_1', 'I2c_Hw').split('\n')[0], 'block I2c_Hw "New Block" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4');
+});

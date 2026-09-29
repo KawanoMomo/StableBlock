@@ -1006,11 +1006,11 @@ function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type===
   parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
 function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
-// ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。
+// ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。直前に足した要素(lastAddedId)の改名も追う(次の「+ ブロック追加」がその右隣に並ぶ)
 // __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
 const autoIds=new Set();
 function usedIdsExcept(id){return new Set([...parsed.blocks,...parsed.groups,...parsed.notes].map(x=>x.id).filter(x=>x!==id));}
-function applyRename(s,newId){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const o=it&&expanded?expanded.origin[it.line-1]:null;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&o&&o.file===expanded.file?o.line:undefined);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);return true;}
+function applyRename(s,newId,opts){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const o=it&&expanded?expanded.origin[it.line-1]:null;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&o&&o.file===expanded.file?o.line:undefined,opts);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);if(lastAddedId===s.id)lastAddedId=newId;return true;}
 function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}
   const SL=window.StableBlockLabel;const err=!SL.isValidId(nv)?'英数字と _ だけが使えます':usedIdsExcept(s.id).has(nv)?`「${nv}」は既に使われています`:'';
   if(err){if(msg)msg.textContent=err;return;}
@@ -1021,7 +1021,8 @@ function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=d
     sel=sel.map(x=>x.id===s.id?{...x,id:nv}:x);autoIds.delete(s.id);
     idNote={id:nv,text:`${plan.changes.length} 枚で改名: ${plan.changes.map(c=>`${baseName(c.path||sbFileName)}(${c.lines.length} 行)`).join('、')}。「.sb 保存」で変わった図を全部書き出す`};
     refresh();renderSearchHits();return;}
-  pushHistory();if(!applyRename(s,nv)){if(msg)msg.textContent='この図の本文に定義が無いため変えられません(@include 先)';return;}autoIds.delete(s.id);refresh();}
+  // 仮の ID の要素にここで ID を付けたら、ラベルが既定(New Block 等)のままならラベルも同じ表記にする(本文はその 1 行、Ctrl+Z 1 回で戻る)
+  pushHistory();if(!applyRename(s,nv,{defaultLabel:true})){if(msg)msg.textContent='この図の本文に定義が無いため変えられません(@include 先)';return;}autoIds.delete(s.id);refresh();}
 // ラベルを確定(Enter)しても ID が仮(__new_)のまま = ラベルに英数字が無く ID を作れなかった。その場で ID 欄へ移って名前を聞く
 // (打って Enter で確定、Esc で後回し。Tab で次の要素へ進む流れは変えない)。残った仮の ID はエラー欄に行番号付きで出る(core/check)
 function askIdIfUnnamed(){const s=sel.length===1?sel[0]:null;if(!s||!window.StableBlockLabel.isPlaceholderId(s.id))return false;

@@ -1372,3 +1372,53 @@ test('junior-02: 2 列に並んだ block を飛び飛びに選んで「選択を
   await expect(page.locator('#group-sel-msg')).toContainText('グループ化しませんでした');
   expect(await getEditorText(page)).toBe(tight);
 });
+
+// 新しい要素に ID 欄で名前を付けると、ラベルが既定(New Block / New Group / Annotation)のままならラベルも同じ表記になる。
+// ID とラベルに同じ名前を 2 回打たずに済む(BLK-junior-20260929-1747-friction)
+test('junior-02: 「+ ブロック追加」の後に ID 欄へ名前を打って Enter で、ID とラベルが同じ 1 行になる(group・note も)', async ({ page }) => {
+  await bootPlain(page);
+  await page.getByRole('button', { name: '新規' }).click();
+  const props = page.locator('#prop-content');
+  const nameById = async (add, id) => {
+    await page.keyboard.press('Escape');                            // 選択を外してツール欄の「+ … 追加」へ
+    await page.getByRole('button', { name: add }).click();
+    const inp = props.locator('#prop-id');
+    await expect(inp).toHaveValue(/^__new_/);                     // 仮の ID の間は ID 欄が開いている
+    await inp.click();
+    await inp.fill(id);
+    await inp.press('Enter');
+  };
+  await nameById('+ ブロック追加', 'I2c_Hw');
+  let text = await getEditorText(page);
+  expect(text.split('\n').filter(l => l.startsWith('block '))).toEqual([expect.stringMatching(/^block I2c_Hw "I2c_Hw" at /)]);
+  await expect(props.locator('#prop-label')).toHaveValue('I2c_Hw');
+  // Ctrl+Z 1 回で ID もラベルも戻る
+  await page.locator('#svg-wrap').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Control+z');
+  expect(await getEditorText(page)).toMatch(/^block __new_\d+ "New Block" at /m);
+  await page.keyboard.press('Control+y');
+  expect(await getEditorText(page)).toMatch(/^block I2c_Hw "I2c_Hw" at /m);
+  // 名前を付けた後の「+ ブロック追加」も、その block の右隣に並ぶ(改名で直前の要素を見失わない。X・Y を打たずに済む)
+  await nameById('+ ブロック追加', 'I2c_Drv');
+  const pos = async id => { const m = (await getEditorText(page)).match(new RegExp(`^block ${id} "[^"]*" at (\\d+),(\\d+) size (\\d+)x`, 'm')); return { x: +m[1], y: +m[2], w: +m[3] }; };
+  const hw = await pos('I2c_Hw'), drv = await pos('I2c_Drv');
+  expect(drv).toEqual({ x: hw.x + hw.w + 1, y: hw.y, w: hw.w });
+
+  await nameById('+ グループ追加', 'I2c_Bus');
+  await nameById('+ 注釈追加', 'memo_i2c');
+  text = await getEditorText(page);
+  expect(text).toMatch(/^group I2c_Bus "I2c_Bus" at /m);
+  expect(text).toMatch(/^note memo_i2c "memo_i2c" at /m);
+
+  // 利用者が打ったラベルは、ID 欄で名前を変えても変えない
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '+ ブロック追加' }).click();
+  await props.locator('#prop-label').click();
+  await props.locator('#prop-label').fill('UART ドライバ');
+  await props.locator('#prop-label').press('Enter');
+  const box = props.locator('#prop-id-box');
+  if (!(await box.evaluate(d => d.open))) await box.locator('summary').click();
+  await props.locator('#prop-id').fill('UartDrv');
+  await props.locator('#prop-id').press('Enter');
+  expect(await getEditorText(page)).toMatch(/^block UartDrv "UART ドライバ" at /m);
+});
