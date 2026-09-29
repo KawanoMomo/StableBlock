@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-porter-20260929-1908: BOM 付き UTF-8 の .sb を「.sb 読込」(ファイル・フォルダ・ドロップ)で開くと BOM の有無を図ごとに覚え、「.sb 保存」で同じく付けて書き出す(無変更保存がバイト一致。編集後も BOM は残り、新規の図には付けない)
 - BLK-junior-20260925-1921-friction: block を 1 つ選んで Tab で、その block から線でつないだ次の block を右の列に、Ctrl+Enter で同じ元からつないだ兄弟を下に、同じ大きさ・色で置き、そのまま名前を打てる(その場編集中の Ctrl+Enter で確定して次の兄弟へ。group の中なら同じ group に入り広がる。VSCode 拡張も同じ)。block を選ぶとプロパティ欄の先頭に案内が 1 行出る
 - BLK-junior-20260929-1747-friction: 「+ ブロック追加」「+ グループ追加」「+ 注釈追加」の直後にプロパティ欄の ID 欄で名前を付けると、ラベルが既定(New Block 等)のままならラベルも同じ表記になる(ID とラベルに同じ名前を 2 回打たずに済む。Ctrl+Z 1 回で戻る。VSCode 拡張も同じ)。名前を付けた後の「+ ブロック追加」もその block の右隣に並ぶ
 - BLK-primary-20260929-1747-friction: ブラウザ版でステータスバーの図名をダブルクリック(フォーカスして F2)すると、その場の欄で表示中の図の名前を付け・変えられる(Enter 確定・Esc 取消)。名前は「.sb 保存」と全部の書き出しの名前になり、改名した図を @include している一緒に読み込んだ図は @include 行が新しい名前に変わる(「.sb 保存」で一緒に書き出す)。同じ名前の図があれば理由を出して変えない。Ctrl+Z 1 回で戻る

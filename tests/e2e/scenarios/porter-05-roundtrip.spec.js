@@ -147,3 +147,36 @@ test('porter-05: @canvas が 2 行ある図は黙らずエラー欄に出て、�
   expect(lines[1]).toBe('@canvas width=1000 height=600 grid=40');
   await expect(bar).toContainText('L1: @canvas が 2 行ある。L2 の値が効く');
 });
+
+// BOM 付き UTF-8 の図(Windows のエディタで保存した部署の資産): 無変更保存で先頭の BOM も残りバイト一致。
+// 編集して保存しても BOM は付いたまま(変わるのは触った行だけ)。「新規」で起こした図には付けない(BLK-porter-20260929-1908)
+const BOM_SRC = path.join(FIXTURES, 'porter-bom.sb');
+
+test('porter-05: BOM 付きの図を無変更で Export → 先頭の BOM ごとバイト一致、編集しても BOM は残り、新規の図には付かない', async ({ page }, testInfo) => {
+  const original = fs.readFileSync(BOM_SRC);
+  expect([...original.subarray(0, 3)]).toEqual([0xEF, 0xBB, 0xBF]);
+  expect(original.includes('\r\n')).toBe(true);
+
+  await bootPlain(page);
+  await importSb(page, BOM_SRC);
+  await expect(page.locator('#svg-wrap svg g[data-type="block"]')).toHaveCount(2);
+  expect((await getEditorText(page)).charCodeAt(0)).not.toBe(0xFEFF);   // 本文欄には BOM を出さない(先頭は # の行)
+
+  const dir = saveDir(testInfo);
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '無変更の保存が元と違う(BOM が落ちた)').toBe(true);
+
+  // 矢印キーで 1 グリッド動かして保存: BOM と CRLF はそのまま、変わるのは ecu の行だけ
+  await page.locator('#svg-wrap svg g[data-type="block"][data-id="ecu"]').click();
+  await page.keyboard.press('ArrowRight');
+  const moved = (await exportSb(page, dir)).bytes;
+  expect([...moved.subarray(0, 3)]).toEqual([0xEF, 0xBB, 0xBF]);
+  const a = original.toString('utf8').split('\r\n'), b = moved.toString('utf8').split('\r\n');
+  expect(b).toHaveLength(a.length);
+  expect(a.filter((l, i) => l !== b[i])).toEqual(['block ecu "制御 ECU" at 1,1 size 8x3']);
+
+  // 「新規」の図は BOM 無し
+  await page.getByRole('button', { name: '新規' }).click();
+  const fresh = (await exportSb(page, dir)).bytes;
+  expect(fresh[0]).not.toBe(0xEF);
+});

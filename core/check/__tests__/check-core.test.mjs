@@ -777,3 +777,22 @@ test('planFileRename: 読み込んだ図はフォルダを保ってキーを変�
   // 取り込まれていない図の改名は、ほかの図を変えない
   assert.deepEqual(planFileRename(files, 'sys/uart_swc.sb', 'i2c_swc'), { name: 'i2c_swc.sb', key: 'sys/i2c_swc.sb', changes: [] });
 });
+
+import { decodeSbBytes, sbSaveText } from '../check-core.mjs';
+
+test('decodeSbBytes / sbSaveText: 先頭の BOM の有無を覚えて本文から外し、保存で戻すとバイト一致', () => {
+  const body = '# 図\r\nblock a "制御" at 1,1 size 8x3\r\n';
+  const withBom = new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(body)]);
+  const r = decodeSbBytes(withBom);
+  assert.equal(r.bom, true);
+  assert.equal(r.text, body);
+  assert.deepEqual([...new TextEncoder().encode(sbSaveText(r.text, r.bom))], [...withBom]);
+  const plain = decodeSbBytes(new TextEncoder().encode(body));
+  assert.equal(plain.bom, false);
+  assert.equal(sbSaveText(plain.text, plain.bom), body);
+  // BOM の後ろのもう 1 つの U+FEFF は本文の文字として残す(2 つとも落とさない)
+  const two = decodeSbBytes(new Uint8Array([0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF, 0x61]));
+  assert.equal(two.bom, true);
+  assert.equal(two.text, '\uFEFFa');
+  assert.deepEqual(decodeSbBytes(new Uint8Array([])), { text: '', bom: false });
+});
