@@ -663,8 +663,9 @@ function releaseFocus(){if(inlineEd)finishInlineEdit(true);const a=document.acti
 // Enter・欄の外を押すと確定、Esc で開く前に戻す(本文も元のバイトに戻る)。note は複数行(Shift+Enter で改行)。
 // Tab / Shift+Tab は確定して、同じ種類の次 / 前の要素(読み順: 上の行から、左から)のラベル編集へ移る(続けて名付けるのにマウスへ戻らない)
 // ═══════════════════════════════════════════════
-let inlineEd=null;
+let inlineEd=null,pendingLink=null;   // pendingLink: linkAdd が足した block の編集を始めるとき 'child' | 'sibling'(その編集中の Tab の向き)
 function startInlineEdit(type,id){
+  const startLink=pendingLink;pendingLink=null;
   if(inlineEd)finishInlineEdit(true);
   const it=type==='block'?parsed.blockMap[id]:type==='group'?parsed.groupMap[id]:parsed.noteMap[id];if(!it)return;
   sel=[{type,id}];renderProps();renderSVG();
@@ -678,7 +679,7 @@ function startInlineEdit(type,id){
   Object.assign(el.style,{left:r.left+'px',top:r.top+'px',width:Math.max(r.width,isGroup?140:80)+'px',height:h+'px'});
   if(isGroup)el.style.textAlign='left';
   document.body.appendChild(el);
-  const ed={el,type,id,origId:id,from:it.label,snap:dsl,pushed:false,auto:new Set(autoIds)};inlineEd=ed;
+  const ed={el,type,id,origId:id,from:it.label,snap:dsl,pushed:false,auto:new Set(autoIds),link:startLink};inlineEd=ed;
   el.addEventListener('input',()=>{if(inlineEd!==ed)return;if(!ed.pushed){pushHistory();ed.pushed=true;}
     const v=isNote?el.value.replace(/\n/g,'\\n'):el.value;sel=[{type:ed.type,id:ed.id}];
     updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
@@ -687,7 +688,13 @@ function startInlineEdit(type,id){
     if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd('sibling');}   // 確定して同じ元から次の兄弟へ
     else if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
-    else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();const nx=nextInReadingOrder(ed.type,ed.id,e.shiftKey?-1:1);finishInlineEdit(true);if(nx)startInlineEdit(nx.type,nx.id);}});
+    else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();
+      // つないで追加した block の名前を打っている間の Tab は同じ向きに次の block を足す。それ以外は読み順の次(Shift+Tab は前)の編集へ。
+      // 移る先が無ければ今の編集を続ける(確定してしまうと、続けて打った名前が今の block を書き換える)
+      const act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey);
+      if(act==='child'||act==='sibling'){finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd(act);return;}
+      const nx=nextInReadingOrder(ed.type,ed.id,act==='prev'?-1:1);if(!nx)return;
+      finishInlineEdit(true);revealAndEdit(nx.type,nx.id);}});
   el.addEventListener('blur',()=>{if(inlineEd===ed)finishInlineEdit(true);});
   el.focus();el.select();
 }
@@ -775,7 +782,7 @@ function renderPropsPanel(){
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
         <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
-          block を 1 つ選んで <span style="color:var(--muted)">Tab</span> 線でつないだ次の block を右に <span style="color:var(--muted)">Ctrl+Enter</span> 同じ元から下に(名前を打って Enter)<br>
+          block を 1 つ選んで <span style="color:var(--muted)">Tab</span> 線でつないだ次の block を右に <span style="color:var(--muted)">Ctrl+Enter</span> 同じ元から下に(名前を打って Enter、Tab でそのまま続けて足す)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
@@ -1041,7 +1048,7 @@ function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null
   const p=L.placeBeside([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parentsNow()[ref.id];
   pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
   if(pid){parsed=parseDoc();const gr=parsed.groupMap[pid];if(gr)L.growGroupFor([...parsed.blocks,...parsed.groups].filter(x=>x.id!==id),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});}
-  lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();revealAndEdit('block',id);}
+  lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();pendingLink=kind;revealAndEdit('block',id);}
 // 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
 let revealScroll=false;
 function revealAndEdit(type,id){const area=document.getElementById('preview-area'),g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);

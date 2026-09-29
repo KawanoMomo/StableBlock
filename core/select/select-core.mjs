@@ -103,6 +103,15 @@ export function linkAddKey(key, sel, mods = {}) {
   return null;
 }
 
+// ── ラベルのその場編集中の Tab ──
+// Tab / Ctrl+Enter で足したばかりの block の名前を打っている間(link = 'child' | 'sibling')は、確定して同じ向きに次の block を足す
+// (Tab → 名前 → Tab → 名前 → Enter で鎖。XMind・MindManager と同じ)。ダブルクリック・F2 で始めた編集は読み順の次(Shift+Tab は前)の要素へ移る。
+// 返り値: 'child' | 'sibling' | 'next' | 'prev'
+export function inlineTabAction(link, shift) {
+  if (shift) return 'prev';
+  return link === 'child' || link === 'sibling' ? link : 'next';
+}
+
 // ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
 // 1 つ選んでいるときの文字(IME の変換中 'Process' を含む)は、その文字からラベルのその場編集に入る(Excel・draw.io・Visio と同じ)。
 // 表示だけの切替(H 未接続を薄く・N 注釈・F 全体表示)は 1 つ選んでいないときに効く。本文を書き換える L(線の形)は何も選んでいないときだけ。
