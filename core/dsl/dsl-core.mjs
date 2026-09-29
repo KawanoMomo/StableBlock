@@ -65,11 +65,16 @@ function template(raw, m, keys, restGroup, attrs, item, bad = []) {
   spans.sort((a, b) => a.s - b.s);
   const used = [];
   for (const sp of spans) if (!used.length || sp.s >= used[used.length - 1].e) used.push(sp);
+  // 行末コメント(空白の後の `#` から行末まで。README の DSL 構文にある書き方)は先頭 `#` の行と同じく書いたまま残す。
+  // 意味は stableblock.html の parser と同じにする(コメント内の color= なども今は読む)ので、落とさないだけ
+  const cm = /(?:^|\s)#/.exec(rest);
+  const commentAt = cm ? restStart + cm.index + cm[0].length - 1 : Infinity;
   const drops = [];
   const tok = /(\s*)(\S+)/g;
   let t;
   while ((t = tok.exec(rest))) {
     const s = restStart + t.index, e = s + t[0].length, ts = s + t[1].length;
+    if (ts >= commentAt) break;
     if (!used.some(sp => sp.s >= ts && sp.e <= e)) drops.push({ s, e });
   }
   const parts = [];
