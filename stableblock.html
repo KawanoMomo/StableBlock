@@ -200,6 +200,7 @@ textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #status .status-file-name { font:inherit; font-size:10px; font-weight:600; width:180px; padding:0 4px; border:1px solid var(--accent,#6366F1); border-radius:3px; background:var(--bg,#0F172A); color:#E2E8F0; }
 #status .status-file-note { color:var(--dim); }
 #status .status-file-note.err { color:var(--red); }
+#status .status-file-note.ask { color:var(--amber); font-weight:700; }
 #error-bar .diag-file { font:inherit; padding:0; border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; }
 #prop-content .help-keys { margin-top:16px; font-size:10px; color:var(--dim); line-height:1.5; }
 #prop-content .help-keys summary { cursor:pointer; color:var(--muted); font-size:11px; }
@@ -1115,7 +1116,7 @@ function renderErrors(){const el=document.getElementById('error-bar');lastDiag=d
 // ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる。
 // ダブルクリック(フォーカスして F2)でその場の欄になり、表示中の図の名前を変える(fileEdit。Enter 確定・Esc 取消・外を押すと確定)
 function statusFileHtml(){const keys=Object.keys(includeFiles),i=dslFile?keys.indexOf(dslFile):-1,dirty=i>=0&&loadedTexts[dslFile]!==undefined&&dsl!==loadedTexts[dslFile];
-  const note=fileNote?`<span id="status-file-note" class="status-file-note${fileNote.err?' err':''}">${esc(fileNote.text)}</span>`:'';
+  const note=fileNote?`<span id="status-file-note" class="status-file-note${fileNote.err?' err':fileNote.ask?' ask':''}">${esc(fileNote.text)}</span>`:'';
   if(fileEdit)return `<input type="text" id="status-file-name" class="status-file-name" value="${esc(fileEdit.value)}" spellcheck="false" aria-label="図の名前" title="図の名前(.sb 保存と書き出しの名前)。Enter で確定、Esc で取り消す" oninput="fileEdit&&(fileEdit.value=this.value)" onkeydown="fileRenameKey(event)" onblur="fileRenameBlur(this)">`+note;
   return `<button type="button" id="status-file" class="status-file" onclick="showLoadedList()" ondblclick="startFileRename()" onkeydown="if(event.key==='F2'){event.preventDefault();event.stopPropagation();startFileRename();}" title="表示中の図。押すと検索欄で一緒に読み込んだ図の名前を並べる(名前を打って Enter で開く)。ダブルクリック(F2)で名前を変える">${esc(dslFile?baseName(dslFile):sbFileName)}${dirty?'<span class="status-dirty" title="保存していない変更がある"> ●</span>':''}${keys.length>1&&i>=0?` <span class="status-pos">(${i+1}/${keys.length})</span>`:''}</button>`+note;}
 let fileEdit=null,fileNote=null;// fileEdit: 図名の欄で編集中({ value })。fileNote: 改名した・しなかった理由の一言(図を読む・開く・新規で消える)
@@ -1145,8 +1146,8 @@ function commitFileRename(value,keep){if(!fileEdit)return;const then=keep?fileEd
 // Esc・欄の外を押すとやめる)。確かめた図は聞き直さない。聞いたら true(呼び出し側は出さずに戻る)
 let nameChecked=null;
 function nameGate(action){const k=dslFile;if(!k||nameChecked===k||fileEdit||typeof loadedTexts[k]!=='string'||!window.StableBlockCheck.replacedDiagram(loadedTexts[k],dsl))return false;
-  startFileRename();if(!fileEdit)return false;fileEdit.then=action;fileNote={text:`読み込んだ ${baseName(k)} の中身を全部入れ替えた図。この名前で出すなら Enter、別の名前を打って Enter(Esc でやめる)`};
-  const inp=document.getElementById('status-file-name');if(inp){const n=document.createElement('span');n.id='status-file-note';n.className='status-file-note';n.textContent=fileNote.text;inp.after(n);}return true;}
+  startFileRename();if(!fileEdit)return false;fileEdit.then=action;fileNote={ask:true,text:`読み込んだ ${baseName(k)} の中身を全部入れ替えた図。この名前で出すなら Enter、別の名前を打って Enter(Esc でやめる)`};
+  const inp=document.getElementById('status-file-name');if(inp){const n=document.createElement('span');n.id='status-file-note';n.className='status-file-note ask';n.textContent=fileNote.text;inp.after(n);}return true;}
 // 出した名前をステータスバーの図名の横に出す(図名のダブルクリック・F2 で変えられる)
 function savedNote(name,verb){fileNote={text:`${name} で${verb}(名前は図名のダブルクリック・F2 で変える)`};renderStatus();}
 // ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」。押すと選択を外し、右のツール欄の「キャンバス (px)」(寸法と「はみ出したら自動で広げる」)を光らせて示す
