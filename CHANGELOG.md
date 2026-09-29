@@ -4,6 +4,8 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+## v3.0 (2026-09-29)
+
 - BLK-porter-20260929-0511: 接続の lpos=diagonal など取れない値を書いた図を無変更で保存しても本文の値がそのまま残る(core の往復もバイト一致)。block の round=、接続の width=、@canvas の width / height / grid= に数でない値を書くと、その行に「実際に描く値」がエラー欄に出る
 - BLK-owner-20260929-0405-4: note から出る接続(注釈の破線)が block の上を横切っても、block 同士の線と同じにエラー欄・`npm run check`・VSCode 拡張が「接続「…」の線が block「…」の上を横切る」と知らせる
 - BLK-owner-20260929-0405-3: Excel に書き出した接続ラベルの白地が画面と同じ位置・大きさ(文字の幅に合う。lpos= も画面と同じ所)になり、長いラベルが白地からはみ出して block の名前に掛からない
