@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-reviewer-20260928-2255-wish: `npm run check` が接続の 1 本も無い block(画面の「◎ 未接続」が薄くするものと同じ判定)を `info` で並べる。@include 先の block は定義の図と行に「(… から include)」を添える。info は error / warn の数にも終了コードにも数えない
 - BLK-reviewer-20260929-0505-wish: `npm run check` が一緒に検査した図をまたいで大文字小文字・区切り(_ -)だけが違う block ID(`UartDrv` と `uartdrv` など)を、違う方の図・行に基準の図・行を添えて warn で出す(多い書き方を基準に 1 定義 1 件)
 
 ## v3.0 (2026-09-29)

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as L from '../../label/label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
-import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch } from '../render-core.mjs';
+import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch, linkedIds, unlinkedBlocks } from '../render-core.mjs';
 import { buildRenderCoreBrowser } from '../../excel/build-browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -31,6 +31,13 @@ const parsed = parseDSL(SRC);
 test('render-core.browser.js is up to date (drift detection)', () => {
   assert.equal(norm(read('core/render/render-core.browser.js')), norm(buildRenderCoreBrowser(norm(read('core/render/render-core.mjs')))),
     'Run `npm run build:browser` to regenerate render-core.browser.js');
+});
+
+test('unlinkedBlocks: 接続が 1 本も無い block だけ(注釈の破線も接続に数える)。画面の「◎ 未接続」が薄くするのと同じ', () => {
+  assert.deepEqual(unlinkedBlocks(parsed).map(b => b.id), ['solo']);
+  assert.deepEqual([...linkedIds(parsed)].sort(), ['logic', 'lone', 'memo', 'ui']);
+  const s = renderSvg(parsed, { highlight: true, interactive: false }, L, measure);
+  assert.deepEqual([...s.matchAll(/<g data-type="block" data-id="([^"]+)" opacity="0.15"/g)].map(m => m[1]), ['solo']);
 });
 
 test('書き出しの SVG は @canvas の寸法で、選択枠・ハンドル・グリッド・薄めを含まない', () => {
