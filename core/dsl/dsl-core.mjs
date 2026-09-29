@@ -11,7 +11,7 @@ import { badAttrValues } from '../check/check-core.mjs';
 const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_GROUP = /^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_NOTE = /^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/d;
+const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*?)(?:\s+"((?:\\"|[^"])*)")?\s*$/d;
 const RE_CANVAS = /^@canvas(.*)/d;
 
 const BOX_KEYS = ['id', 'label', 'x', 'y', 'w', 'h'];
@@ -51,9 +51,9 @@ function boxItem(type, m, ln) {
 // restGroup 以降のうち parser が読まなかったトークンは落とす(往復で差分として現れる)。
 // 取れない値(bad = core/check の badAttrValues。lpos=diagonal・round=abc など)は警告したうえで本文の値を書いたまま残す:
 // その参照は { key, raw, val } を持ち、item[key] が読んだ時の val のままなら raw を書き戻す(値を変えたときだけ新しい値になる)
-function template(raw, m, keys, restGroup, attrs, item, bad = []) {
+function template(raw, m, keys, restGroup, attrs, item, bad = [], keyGroups = {}) {
   const spans = [];
-  keys.forEach((key, i) => { const ix = m.indices[i + 1]; if (ix) spans.push({ s: ix[0], e: ix[1], key }); });
+  keys.forEach((key, i) => { const ix = m.indices[keyGroups[key] ?? i + 1]; if (ix) spans.push({ s: ix[0], e: ix[1], key }); });
   const restStart = m.indices[restGroup][0];
   const rest = m[restGroup];
   for (const [key, re] of attrs) {
@@ -140,7 +140,9 @@ export function parseDSL(text) {
       if (done) continue;
       const m = raw.match(RE_CONN);
       if (m) {
-        const [, from, arrow, to, label, rest] = m;
+        const [, from, arrow, to, leadingLabel, middle, trailingLabel] = m;
+        const label = leadingLabel ?? trailingLabel;
+        const rest = middle;
         const c = {
           from, to, label: unquoteLabel(label || ''),
           color: rest?.match(/color=(\S+)/)?.[1] || '#64748B',
@@ -154,7 +156,7 @@ export function parseDSL(text) {
         };
         connections.push(c);
         const bad = valueWarn(ln, 'conn', rest);
-        rec.item = c; rec.parts = template(raw, m, CONN_KEYS, 5, ATTRS.conn, c, bad);
+        rec.parts = template(raw, m, CONN_KEYS, 5, ATTRS.conn, c, bad, trailingLabel !== undefined ? { label: 6 } : {});
         continue;
       }
       errors.push({ line: ln, msg: raw.substring(0, 40) });
