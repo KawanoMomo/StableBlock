@@ -11,7 +11,7 @@ import { parseDSL, serializeDSL } from '../dsl-core.mjs';
 import * as L from '../../label/label-core.mjs';
 import { checkDiagram, findNegative, explainLine } from '../../check/check-core.mjs';
 import { renderSvg, exportSvg, exportPngSize } from '../../render/render-core.mjs';
-import { keepPos } from '../../layout/layout-core.mjs';
+import { keepPos, noteFloors, posFloor, clampShift } from '../../layout/layout-core.mjs';
 import { buildDrawingXml, shiftToOrigin } from '../../excel/emitter.js';
 import { toMermaid } from '../../mermaid/mermaid-core.mjs';
 
@@ -103,6 +103,51 @@ test('keepPos: GUI で動かしても原点より左・上へは出さないが�
   assert.equal(keepPos(-1, -2), -1);
   assert.equal(keepPos(-3, -2), -2);
   assert.equal(keepPos(4, -2), 4);
+});
+
+// BLK-owner-20260930-0608-1: 止める位置は「動かし始めの位置」でなく「読み込んだときの位置」。group と中身は同じ量だけ動く
+test('noteFloors: 本文に出た原点より左・上の位置を覚え、右へ動かした後も下限は読み込んだ位置のまま', () => {
+  const loaded = parseDSL('@canvas width=320 height=200 grid=20\ngroup g "G" at -2,1 size 12x6\nblock k "K" at 3,2 size 4x2\nblock a "A" at -4,-1 size 2x2\nnote n "N" at 1,-3 size 2x1\n');
+  const f0 = noteFloors({}, loaded);
+  assert.deepEqual(f0, { 'block:a': { x: -4, y: -1 }, 'group:g': { x: -2, y: 0 }, 'note:n': { x: 0, y: -3 } });
+  // a を右へ 1(-3,-1)動かした本文を読んでも下限は -4 のまま
+  const moved = parseDSL('@canvas width=320 height=200 grid=20\nblock a "A" at -3,-1 size 2x2\n');
+  const f1 = noteFloors(f0, moved);
+  assert.equal(f1, f0, '変わらなければ同じ控えを返す');
+  assert.deepEqual(f1['block:a'], { x: -4, y: -1 });
+  assert.deepEqual(posFloor(f1, 'block', 'a', -3, -1), { x: -4, y: -1 });
+  // 控えに無い(0 以上で読んだ)要素の下限は原点
+  assert.deepEqual(posFloor(f1, 'block', 'k', 3, 2), { x: 0, y: 0 });
+  // 本文欄でさらに左へ書けば、その位置が新しい下限
+  const f2 = noteFloors(f1, parseDSL('@canvas width=320 height=200 grid=20\nblock a "A" at -7,-1 size 2x2\n'));
+  assert.deepEqual(f2['block:a'], { x: -7, y: -1 });
+  assert.deepEqual(f1['block:a'], { x: -4, y: -1 }, '元の控えは書き換えない');
+});
+
+test('clampShift: group と中身は同じ量だけ動き、どれかが下限に当たれば全員が止まる', () => {
+  const floors = noteFloors({}, parseDSL('@canvas width=320 height=200 grid=20\ngroup g "G" at -2,1 size 12x6\nblock k "K" at 3,2 size 4x2\n'));
+  const items = [{ type: 'group', id: 'g', x: -2, y: 1 }, { type: 'block', id: 'k', x: 3, y: 2 }];
+  // 左へ 3: 枠は -2 が下限なので動けない → 中身も動かない
+  assert.deepEqual(clampShift(items, -3, 0, floors), { dx: 0, dy: 0 });
+  // 上へ 5: k(y=2、下限 0)が 2 で止まり、枠(y=1、下限 0)は 1 で止まる → 全員 1
+  assert.deepEqual(clampShift(items, 0, -5, floors), { dx: 0, dy: -1 });
+  // 右・下へは制限しない
+  assert.deepEqual(clampShift(items, 4, 3, floors), { dx: 4, dy: 3 });
+  // 右へ 2 動かした後(g -0、k 5)は、左へ読み込んだ位置まで(2)戻せるが、それより先へは出ない
+  const after = [{ type: 'group', id: 'g', x: 0, y: 1 }, { type: 'block', id: 'k', x: 5, y: 2 }];
+  assert.deepEqual(clampShift(after, -1, 0, floors), { dx: -1, dy: 0 });
+  assert.deepEqual(clampShift(after, -9, 0, floors), { dx: -2, dy: 0 });
+  // 0 以上で読んだ要素は負にならない
+  assert.deepEqual(clampShift([{ type: 'block', id: 'k', x: 3, y: 2 }], -9, -9, floors), { dx: -3, dy: -2 });
+});
+
+test('HTML 版と VSCode 拡張は、移動(ドラッグ・矢印キー・group の中身)を clampShift の共通量で動かす', () => {
+  for (const f of ['stableblock.html', 'vscode-stableblock/src/extension.js']) {
+    const src = readFileSync(join(ROOT, f), 'utf8');
+    assert.doesNotMatch(src, /keepPos\((it\.sx|it\.x|b\.x|g\.x)[^)]*,(it\.sx|it\.x|b\.x|g\.x)\)/, f + ': 要素ごとに「動かし始めの位置」で止めている');
+    assert.match(src, /clampShift\(/, f);
+    assert.match(src, /noteFloors\(/, f);
+  }
 });
 
 test('HTML 版と VSCode 拡張の parser・座標の書換・貼付は負の座標を読む', () => {
