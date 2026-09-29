@@ -6,10 +6,10 @@ group ecu "ECU" at 1,1 size 30x12 color=#DCFCE7 border=#22C55E
 
 block can   "CAN"      at 2,3  size 8x3 color=#16A34A text=#FFFFFF round=4
 block com   "Com"      at 12,3 size 8x3 color=#16A34A text=#FFFFFF round=4 style=dashed
-block pdu   "PduR"     at 22,3 size 8x3 color=#16A34A text=#FFFFFF round=4
+block pdu   "PduR"     at 22,3 size 8x3 color=#16A34A text=#FFFFFF round=4   # 行末コメント
   block nm  "NM\n管理"  at 2,8  size 8x3 color=#64748B
 note n1 "受信は 10ms 周期" at 12,8 size 10x2 color=#FEF3C7 text=#92400E
 
-can -> pdu "Rx"
+can -> pdu "Rx"  # 受信
 pdu -> com "I-PDU" color=#EF4444 style=dashed width=2 lpos=top
-can --> nm
+can --> nm # 双方向

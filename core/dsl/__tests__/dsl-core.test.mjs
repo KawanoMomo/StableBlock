@@ -65,6 +65,37 @@ test('serializeDSL: parser が黙って捨てる記法は往復で差分にな�
   }
 });
 
+test('serializeDSL: 行末の # コメントは block / group / note / 接続 / @canvas とも書いたまま往復する(BLK-owner-20260929-1928-1)', () => {
+  const text = [
+    '@canvas width=400 grid=20   # 図全体',
+    'group g "G" at 0,0 size 30x10 color=#EEF2FF # 電源系',
+    '\tblock reg "Regulator" at 14,3 size 8x3   # 3.3V',
+    'block psu "PSU" at 1,1 size 5x3 color=#f00 shape=x # 未知の属性の後ろ',
+    'note n "メモ" at 0,0 size 3x1 #直後',
+    'psu -> reg "x"  # c',
+    'psu --> reg # 双方向',
+    'reg -> psu style=dashed # 破線 color=#123456 も本文のまま',
+    '',
+  ].join('\r\n');
+  const p = parseDSL(text);
+  assert.deepEqual(p.errors, []);
+  const back = serializeDSL(p).split('\r\n');
+  const want = text.split('\r\n');
+  want[3] = 'block psu "PSU" at 1,1 size 5x3 color=#f00 # 未知の属性の後ろ';   // コメントより前の未知の属性はこれまでどおり落ちる
+  assert.deepEqual(back, want);
+  // コメントのある行の値を変えても、コメントはそのまま残る
+  p.blockMap.reg.x = 20;
+  p.connections[0].label = 'y';
+  const moved = serializeDSL(p).split('\r\n');
+  assert.equal(moved[2], '\tblock reg "Regulator" at 20,3 size 8x3   # 3.3V');
+  assert.equal(moved[5], 'psu -> reg "y"  # c');
+});
+
+test('parseDSL: 行末コメントの読み方は stableblock.html と同じ(ドリフト検出)', () => {
+  const text = 'block a "A" at 1,1 size 2x2 # c\ngroup g "G" at 0,0 size 9x9 # g\na -> a "l" # c\na -> a #c\n';
+  assert.deepEqual(strip(parseDSL(text)), strip(htmlParseDSL()(text)));
+});
+
 test('serializeDSL: core の parseDSL 以外の結果は拒否する', () => {
   assert.throws(() => serializeDSL(strip(parseDSL('a -> b'))), /parsed\.source/);
 });
