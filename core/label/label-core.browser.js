@@ -232,9 +232,14 @@ function uniqueId(base, used) {
   return `${base}_${n}`;
 }
 
+// 「+ ブロック追加」「+ グループ追加」「+ 注釈追加」が付ける既定のラベル(HTML 版・VSCode 拡張)
+const DEFAULT_LABELS = ['New Block', 'New Group', 'Annotation'];
+
 // oldId を newId に改名する。書き換えるのは定義行(line: 1 始まり。省略時は最初の定義)と、接続行の from / to だけ。
 // ラベル・属性・コメントの中の同じ文字列には触れない(ラベル全体が旧 ID と同じ文字列のときだけ新 ID に揃える)。同じ ID の定義が他に残るとき(重複 ID)は接続行を書き換えない。
-function renameIdInDsl(dsl, oldId, newId, line) {
+// opts.defaultLabel(プロパティ欄の ID 欄で名前を付けたとき): 仮の ID(`__new_`)の要素のラベルが既定(DEFAULT_LABELS)のままなら、ラベルも新 ID と同じ表記にする
+// (ID 欄から名付けた人だけ同じ名前をラベル欄にもう一度打たずに済む。利用者が変えたラベル・既に ID のある要素の改名ではラベルを変えない)
+function renameIdInDsl(dsl, oldId, newId, line, opts = {}) {
   const lines = dsl.split('\n');
   const defRe = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
   let target = -1;
@@ -248,7 +253,9 @@ function renameIdInDsl(dsl, oldId, newId, line) {
   if (target < 0) return dsl;
   lines[target] = lines[target].replace(defRe, (_, head, _id, sp) => head + newId + sp);
   // ラベルが ID と同じ文字列(ID をそのまま表示名にしている)なら、表示名も新しい ID に揃える(ID と表示名の食い違いを作らない)
-  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"((?:\\"|[^"])*)"/, (all, head, label) => (unquoteLabel(label) === oldId ? `${head}"${newId}"` : all));
+  const adopt = !!(opts && opts.defaultLabel) && isPlaceholderId(oldId);
+  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"((?:\\"|[^"])*)"/, (all, head, label) =>
+    (unquoteLabel(label) === oldId || (adopt && DEFAULT_LABELS.includes(unquoteLabel(label))) ? `${head}"${newId}"` : all));
   if (others === 0) {
     const connRe = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
     for (let i = 0; i < lines.length; i++) {
