@@ -1243,7 +1243,13 @@ function exportSB(){if(nameGate(exportSB))return;fileNote=null;const SC=window.S
   savedNote(sbFileName,'保存した');}
 // 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
 const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
-function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=freshAddId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
+// ほかの図を読み込んでいれば、新しい図もその 1 枚として一緒に開いている図に入れる(表示中の図と同じフォルダに diagram.sb。
+// 同じ名前があれば diagram-2.sb …)。「一括 ▾」の枚数・zip、ステータスバーの図名の一覧・切り替えに入り、図名の改名でキーも変わる。未保存(●)で始まる
+function newDiagram(){syncLoaded();const others=Object.keys(includeFiles).length>0;let key='';
+  if(others){const dir=dslFile.includes('/')?dslFile.slice(0,dslFile.lastIndexOf('/')+1):'';key=window.StableBlockCheck.newLoadedKey(includeFiles,dir);}
+  if(others)pushHistoryAll();else pushHistory();
+  dsl=EMPTY_DSL;dslFile=key;if(key){includeFiles[key]=dsl;loadedTexts[key]=null;}
+  sel=[];lastAddedId=freshAddId=null;lastPaste=null;addCounter=1;setSbFileName(key?baseName(key):'diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
 function exportSVG(){if(nameGate(exportSVG))return;const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した');showExportReport('SVG',includeDrops());}
@@ -1326,10 +1332,12 @@ async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
       per.push({path:d.path,name,dropped});
     }
     const zipName=C.bulkZipName(includeFiles,fmt,loadedFolder),url=URL.createObjectURL(await zip.generateAsync({type:'blob'}));
-    download(zipName,url);setTimeout(()=>URL.revokeObjectURL(url),1000);showBulkReport(f.label,zipName,per);
+    download(zipName,url);setTimeout(()=>URL.revokeObjectURL(url),1000);showBulkReport(f.label,zipName,per,dslFile&&hasLoaded(dslFile)?null:sbFileName);
   }catch(e){alert(`${f.label} の一括書き出し失敗: `+e.message);console.error(e);}}
-function showBulkReport(label,zipName,per){const el=document.getElementById('export-report'),drops=window.StableBlockCheck.bulkDrops(per);
+// shown: 表示中の図が一緒に読み込んだ図に入っておらず zip に入らなかったとき、その図名(黙って欠けさせない)
+function showBulkReport(label,zipName,per,shown){const el=document.getElementById('export-report'),drops=window.StableBlockCheck.bulkDrops(per);
   el.innerHTML=`<b>${esc(label)}: ${per.length} 枚を ${esc(zipName)} に書き出した</b><div>${per.map(x=>esc(x.name)).join('、')}</div>`
+    +(shown?`<div id="bulk-missing" style="color:var(--red)">表示中の図 ${esc(shown)} は一緒に読み込んだ図に入っていないので zip に入っていない。ツールバーの SVG・PNG・Excel・Mermaid で書き出す</div>`:'')
     +(drops.length?`<b>${esc(label)} に書き出せなかったもの(${drops.length} 件)</b><ul>${drops.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`:'<div class="hint">クリックで閉じる</div>');
   el.hidden=false;}
 document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,#open-menu,.tb-more,#png-more,#open-sb-btn'))closeExportMenu();});

@@ -735,6 +735,16 @@ export function planFileRename(files, oldKey, input, current = 'diagram.sb') {
   return { name, key, changes };
 }
 
+// 「新規」の図を一緒に読み込んだ図の 1 枚にするときのキー: dir(表示中の図のフォルダ。末尾 / 付き、無ければ '')の diagram.sb。
+// 同じ名前(大文字小文字を区別しない)が既にあれば diagram-2.sb、diagram-3.sb …
+export function newLoadedKey(files, dir = '') {
+  const used = new Set(Object.keys(files || {}).map(k => String(k).toLowerCase()));
+  for (let i = 1; ; i++) {
+    const key = `${dir}diagram${i === 1 ? '' : '-' + i}.sb`;
+    if (!used.has(key.toLowerCase())) return key;
+  }
+}
+
 // 書き出しのファイル名: 図のパス(または .sb 保存の名前)から .sb / .stableblock / .txt を除き、suffix(透過 PNG の _transparent など)と拡張子 ext を付ける。
 // 一括の zip の中身も 1 枚の書き出し(HTML 版のツールバー・VSCode 拡張の保存ダイアログの既定名)もこれで名付ける。新規の図は diagram.sb なので diagram.{ext}
 export function bulkFileName(path, ext, suffix = '') {

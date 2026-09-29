@@ -907,3 +907,12 @@ test('expandIncludes: 同じファイルが 2 経路から来ても(ダイヤモ
   assert.equal(expandIncludes('@include "shared12/base.sb"\n@include "shared12/base.sb"\n', p => files[p] ?? null, 'd.sb').lines.filter(l => l.startsWith('block ')).length, 2);
   assert.equal(expandIncludes('@include "x.sb"\n@include "x.sb"\n', () => null, 'd.sb').missing.length, 2);
 });
+
+import { newLoadedKey } from '../check-core.mjs';
+
+test('newLoadedKey: 「新規」の図は表示中の図のフォルダの diagram.sb、同じ名前があれば diagram-2.sb …', () => {
+  assert.equal(newLoadedKey({ 'wdg_swc.sb': '', 'rte.sb': '' }), 'diagram.sb');
+  assert.equal(newLoadedKey({ 'primary/wdg_swc.sb': '', 'primary/shared/rte.sb': '' }, 'primary/'), 'primary/diagram.sb');
+  assert.equal(newLoadedKey({ 'diagram.sb': '', 'Diagram-2.sb': '' }), 'diagram-3.sb');
+  assert.equal(newLoadedKey({}), 'diagram.sb');
+});
