@@ -172,3 +172,15 @@ test('接続ラベルの \\n は改行して描き、「\\n」の文字を描か
   // 1 行のラベルは 1 つの <text> のまま
   assert.equal((exportSvg(parsed, L, measure).match(/<g class="conn-label"[^>]*>.*?<\/g>/)[0].match(/<text /g) || []).length, 1);
 });
+
+// group の名前の `\n` も block・note・接続と同じく改行(Shift+Enter で打った 2 行が画面・SVG で 2 行。Excel・Mermaid と同じ行割り)(BLK-owner-20260930-0208-2)
+test('group の名前の \\n は改行して描き、「\\n」の文字を描かない', () => {
+  const p = parseDSL(['@canvas width=400 height=200 grid=20', 'group g "Can\\nStack" at 1,1 size 10x6'].join('\n'));
+  const svg = exportSvg(p, L, measure);
+  assert.doesNotMatch(svg, /\\n/);
+  const g = svg.match(/<g data-type="group"[^>]*>(.*?)<\/g>/)[1];
+  const ys = [...g.matchAll(/<text x="[^"]+" y="([^"]+)"[^>]*>([^<]*)</g)].map(m => [+m[1], m[2]]);
+  assert.deepEqual(ys.map(x => x[1]), ['Can', 'Stack']);
+  assert.equal(ys[1][0] - ys[0][0], 13);
+  assert.equal((exportSvg(parsed, L, measure).match(/<g data-type="group"[^>]*>.*?<\/g>/)[0].match(/<text /g) || []).length, 1);   // 1 行は 1 つのまま
+});

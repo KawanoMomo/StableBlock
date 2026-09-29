@@ -126,6 +126,7 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 .inc-swap-all { display:flex; align-items:center; gap:4px; margin:2px 0 4px; cursor:pointer; }
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
+textarea.prop-input.label-field { display:block; resize:none; overflow:hidden; white-space:pre; line-height:1.4; }
 /* include 先の要素の値(打てない。枠を点線にして欄と見分ける) */
 .prop-ro { border:1px dashed var(--border); border-radius:4px; color:var(--muted); padding:4px 8px; font-size:12px; font-family:'IBM Plex Mono',monospace; overflow-wrap:anywhere; user-select:text; }
 .prop-ro-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; border:1px solid var(--border); }
@@ -195,6 +196,7 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 /* キャンバス上のラベル編集(ダブルクリック / F2 / Enter)。#svg-wrap の外に置き、再描画で消えない */
 .inline-label { position:fixed; z-index:40; box-sizing:border-box; margin:0; padding:2px 6px; border:2px solid var(--accent); border-radius:4px; background:#FFFFFF; color:#0F172A; font:600 12px 'IBM Plex Sans','Noto Sans JP',sans-serif; text-align:center; outline:none; box-shadow:0 4px 12px rgba(0,0,0,0.35); resize:none; }
 textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
+textarea.inline-label.inline-label-line { text-align:center; font-weight:600; overflow:hidden; white-space:pre; }
 #export-report ul { margin:4px 0 0 16px; }
 #export-report .hint { color:#D6B98C; font-size:10px; margin-top:4px; }
 #status { display:flex; gap:14px; padding:3px 12px; border-top:1px solid var(--bg2); font-size:10px; color:var(--dim); flex-shrink:0; }
@@ -660,7 +662,7 @@ function releaseFocus(){if(inlineEd)finishInlineEdit(true);const a=document.acti
 // ═══════════════════════════════════════════════
 // キャンバス上のラベル編集(ダブルクリック / F2 / Enter)
 // 要素の上に入力欄を重ね、打つたびに本文のラベルの 1 行だけを書き換える(新しい要素の ID はプロパティ欄と同じくラベルに追従)。
-// Enter・欄の外を押すと確定、Esc で開く前に戻す(本文も元のバイトに戻る)。note は複数行(Shift+Enter で改行)。
+// Enter・欄の外を押すと確定、Esc で開く前に戻す(本文も元のバイトに戻る)。どの要素も Shift+Enter で改行(本文は改行の印 1 つ。core/select labelEnterKey)。
 // Tab / Shift+Tab は確定して、同じ種類の次 / 前の要素(読み順: 上の行から、左から)のラベル編集へ移る(続けて名付けるのにマウスへ戻らない)。
 // 足したばかりでまだ名前の無い block の Tab と、移る先の無い block の Tab は右につないだ次の block を足す(inlineTabAction)
 // ═══════════════════════════════════════════════
@@ -675,21 +677,28 @@ function startInlineEdit(type,id){
   if(window.StableBlockCheck.includeOrigin(expanded,it.line))return;   // include 先の要素は打てない(プロパティ欄の「{ファイル} を開く」で直す)
   const g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);if(!g)return;
   const r=g.querySelector('rect').getBoundingClientRect(),isNote=type==='note',isGroup=type==='group';
-  const el=document.createElement(isNote?'textarea':'input');
-  el.className='inline-label';el.id='inline-label';el.spellcheck=false;el.setAttribute('aria-label','ラベル');
-  el.value=isNote?it.label.split('\\n').join('\n'):it.label;
-  const h=isGroup?Math.max(22,Math.min(r.height,28)):isNote?Math.max(r.height,44):Math.max(r.height,24);
-  Object.assign(el.style,{left:r.left+'px',top:r.top+'px',width:Math.max(r.width,isGroup?140:80)+'px',height:h+'px'});
+  // 欄はどの要素も textarea(Shift+Enter の改行が欄の中でも同じ位置に見える。本文は改行の印 1 つ: core/label labelFieldText / labelFromField)
+  const el=document.createElement('textarea');
+  el.className=isNote?'inline-label':'inline-label inline-label-line';el.id='inline-label';el.spellcheck=false;el.setAttribute('aria-label','ラベル');
+  if(!isNote)el.setAttribute('wrap','off');
+  el.value=window.StableBlockLabel.labelFieldText(it.label);
+  const h0=isGroup?Math.max(22,Math.min(r.height,28)):isNote?Math.max(r.height,44):Math.max(r.height,24);
+  Object.assign(el.style,{left:r.left+'px',top:r.top+'px',width:Math.max(r.width,isGroup?140:80)+'px',height:h0+'px'});
   if(isGroup)el.style.textAlign='left';
+  // block・group は行の塊を縦の中央に置き、行が増えたら欄を伸ばす(note は上詰めのまま)
+  const fit=()=>{if(isNote)return;const n=Math.max(1,el.value.split('\n').length),lh=17,h=Math.max(h0,n*lh+8);el.style.height=h+'px';el.style.paddingTop=el.style.paddingBottom=Math.max(2,(h-n*lh)/2-2)+'px';};
+  fit();
   document.body.appendChild(el);
   const ed={el,type,id,origId:id,from:it.label,snap:dsl,pushed:false,auto:new Set(autoIds),link:startLink};inlineEd=ed;
-  el.addEventListener('input',()=>{if(inlineEd!==ed)return;if(!ed.pushed){pushHistory();ed.pushed=true;}
-    const v=isNote?el.value.replace(/\n/g,'\\n'):el.value;sel=[{type:ed.type,id:ed.id}];
-    updateLabel(ed.type,ed.id,v);followLabelId(isNote?el.value:v);ed.id=sel[0].id;
+  el.addEventListener('input',()=>{if(inlineEd!==ed)return;if(!ed.pushed){pushHistory();ed.pushed=true;}fit();
+    const v=window.StableBlockLabel.labelFromField(el.value);sel=[{type:ed.type,id:ed.id}];
+    updateLabel(ed.type,ed.id,v);followLabelId(el.value);ed.id=sel[0].id;
     parsed=parseDSL(dsl);syncEditor();renderSVG();renderErrors();renderStatus();});
   el.addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd('sibling');}   // 確定して同じ元から次の兄弟へ
-    else if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
+    const ek=window.StableBlockSelect.labelEnterKey(e.key,{shift:e.shiftKey,ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});
+    if(ek==='newline'){e.stopPropagation();}   // Shift+Enter: 欄に改行(本文は改行の印 1 つ)。block・group・note・接続で同じ
+    else if(ek==='ctrl'&&ed.type==='block'){e.preventDefault();e.stopPropagation();finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd('sibling');}   // 確定して同じ元から次の兄弟へ
+    else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
     else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();
       // つないで追加した block・足してまだ名前の無い block の名前を打っている間の Tab は同じ向きに次の block を足す。それ以外は読み順の次(Shift+Tab は前)の編集へ。
@@ -822,7 +831,7 @@ function renderPropsPanel(){
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
     if(sel.length>=3&&justLinked.length){
       html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
-      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to).find(x=>x.from===c.from&&x.to===c.to);html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to).find(x=>x.from===c.from&&x.to===c.to);html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><textarea class="prop-input link-label label-field" data-i="${i}" rows="${labelRows(cur?cur.label:'')}" wrap="off" spellcheck="false" oninput="fitLabelField(this);setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る。Shift+Enter で改行">${esc(window.StableBlockLabel.labelFieldText(cur?cur.label:''))}</textarea>`;});
       html+=`</div>`;
     } else if(sel.length>=3&&chainIds()){
       const ids=chainIds();
@@ -845,7 +854,7 @@ function renderPropsPanel(){
         html+=`<button class="prop-btn conn-flip" onclick="flipConn('${fa}','${ta}')" style="flex:1"${noFlip||' title="方向を反転"'}>⇄ 反転</button>`;
         html+=`<button class="prop-btn conn-bidir" onclick="toggleBidir('${fa}','${ta}')" style="flex:1"${noFlip||' title="双方向切替"'}>${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
         html+=`</div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input conn-label" id="${k===focusK?'conn-label-input':'conn-label-input-'+k}" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><textarea class="prop-input conn-label label-field" id="${k===focusK?'conn-label-input':'conn-label-input-'+k}" rows="${labelRows(c.label)}" wrap="off" spellcheck="false" oninput="fitLabelField(this);setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(labelFieldEnter(event))leaveToCanvas();" placeholder="(なし)" title="Shift+Enter で改行(本文は改行の印 1 つ)。Enter でキャンバスへ戻る">${esc(window.StableBlockLabel.labelFieldText(c.label))}</textarea>`;
         html+=`<div class="prop-sub" style="margin-top:6px">ラベル位置</div><div style="display:flex;gap:4px">${[['right','右'],['left','左'],['top','上'],['bottom','下'],['center','中央']].map(([v,l])=>`<button class="style-btn ${c.lpos===v?'active':''}" onclick="setConnProp('${fa}','${ta}','lpos','${v}')">${l}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
@@ -885,7 +894,7 @@ function renderPropsPanel(){
     <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
     ${item.type==='block'?`<div class="prop-sub" id="link-add-hint" style="margin:-6px 0 8px;color:var(--muted)" title="同じ大きさ・色で置いて線でつなぎ、そのまま名前を打てる(Enter で確定)">Tab: つないで右に追加 ・ Ctrl+Enter: 同じ元から下に追加</div>`:''}
     ${(n=>n?`<div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(n)}${loadedKey(window.StableBlockCheck.includeOrigin(expanded,item.line).file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(window.StableBlockCheck.includeOrigin(expanded,item.line).file))} を開く</button>`:''}</div>`:'')(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}
-    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
+    <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<textarea class="prop-input label-field" id="prop-label" rows="${labelRows(item.label)}" wrap="off" spellcheck="false" title="Shift+Enter で改行(本文は改行の印 1 つ)。Enter で確定" oninput="fitLabelField(this);setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(labelFieldEnter(event)){this.blur();askIdIfUnnamed();}">${esc(window.StableBlockLabel.labelFieldText(item.label))}</textarea>`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
     <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
       <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" ${fieldAttrs('x',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
@@ -918,9 +927,14 @@ function renderPropsPanel(){
 // Actions: single
 // ═══════════════════════════════════════════════
 function setProp(p,v,t){if(!t&&!sel.length)return;pushHistory();const s=t||sel[0];updateProp(s.type,s.id,p,v);refresh();}
-function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
-function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
-function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+// ラベルの欄の値(改行は本物の改行)を本文の形(改行の印)にして書く(core/label labelFromField)。block・group・note・接続で同じ
+function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,window.StableBlockLabel.labelFromField(v));followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,window.StableBlockLabel.labelFromField(v));parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+function setNoteLabel(v){setLabel(v);}
+// ラベルの欄(textarea)の行数は中の行の数。Shift+Enter は改行を入れて true を返さない、それ以外の Enter は既定の改行を止めて true(呼んだ側が確定する)
+function labelRows(label){return Math.max(1,String(label||'').split('\\n').length);}
+function fitLabelField(el){el.rows=Math.max(1,el.value.split('\n').length);}
+function labelFieldEnter(e){if(e.key!=='Enter')return false;if(window.StableBlockSelect.labelEnterKey(e.key,{shift:e.shiftKey,ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey})==='newline')return false;e.preventDefault();return true;}
 // プロパティ欄の数値・色の欄(core/select fieldCommit): 打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く
 // (色は # と 6 桁が揃えば打っている間にも)。▲▼ と欄の中の ↑↓ は 1 押しで書く。Esc は打った値を捨てる。
 // 欄は入ったときの要素(data-ftype / data-fid)に書く: 欄から出るのがキャンバスを押して選択が変わる途中でも、打った要素に入る
@@ -1001,7 +1015,7 @@ function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap 
     connectTwo(from,to);}
   window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);}
 function leaveToCanvas(){if(document.activeElement)document.activeElement.blur();const w=document.getElementById('svg-wrap');if(w){w.setAttribute('tabindex','-1');w.focus({preventScroll:true});}}
-function linkLabelKey(e,i){if(e.key!=='Enter')return;e.preventDefault();const next=document.querySelector(`.link-label[data-i="${i+1}"]`);if(next){next.focus();next.select();}else leaveToCanvas();}
+function linkLabelKey(e,i){if(!labelFieldEnter(e))return;const next=document.querySelector(`.link-label[data-i="${i+1}"]`);if(next){next.focus();next.select();}else leaveToCanvas();}
 function removeConn(a,b){pushHistory();dsl=window.StableBlockLabel.removeConnInDsl(dsl,a,b);refresh();}
 function flipConn(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.flipConnInDsl(dsl,a,b);refresh();}
 function toggleBidir(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.toggleBidirInDsl(dsl,a,b);refresh();}

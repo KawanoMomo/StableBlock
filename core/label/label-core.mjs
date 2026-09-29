@@ -90,7 +90,16 @@ export function unquoteLabel(raw) {
   return String(raw == null ? '' : raw).replace(/\\"/g, '"');
 }
 export function quoteLabel(label) {
-  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"') + '"';
+  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"').replace(/\r\n?|\n/g, '\\n') + '"';   // 欄から来た本物の改行は改行の印に(行を割らない)
+}
+
+// ─── ラベルの欄(その場編集・プロパティ欄・接続パネル)と本文の行き来。本文の改行の印(バックスラッシュと n の 2 文字)は欄では本物の改行に見せ、
+// 欄の改行(Shift+Enter)は本文では印 1 つに戻す。block・group・note・接続で同じ(画面の改行と欄の改行が同じ位置に見える)
+export function labelFieldText(label) {
+  return String(label == null ? '' : label).split('\\n').join('\n');
+}
+export function labelFromField(text) {
+  return String(text == null ? '' : text).replace(/\r\n?|\n/g, '\\n');
 }
 
 // 接続行で to の直後にラベルが無いとき、属性の後ろ・間に書いたラベル(`a -> b style=dashed "後ろ"`)を探す(BLK-porter-20260929-2029)。

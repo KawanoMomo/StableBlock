@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink, labelEnterKey } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -184,4 +184,15 @@ test('inlineEditLink: 「+ ブロック追加」・「+ 中にブロック」で
   assert.equal(inlineEditLink(null, 'block', 'X', null, false), null);             // 既存の block
   assert.equal(inlineEditLink(null, 'note', '__new_0', '__new_0', true), null);
   assert.equal(inlineEditLink(null, 'block', undefined, undefined, true), null);
+});
+
+test('labelEnterKey: ラベルの欄の Shift+Enter は改行、Enter は確定、Ctrl+Enter は確定して次の兄弟へ(block・group・note・接続で同じ)', () => {
+  assert.equal(labelEnterKey('Enter', { shift: true }), 'newline');
+  assert.equal(labelEnterKey('Enter', {}), 'commit');
+  assert.equal(labelEnterKey('Enter'), 'commit');
+  assert.equal(labelEnterKey('Enter', { ctrl: true }), 'ctrl');
+  assert.equal(labelEnterKey('Enter', { meta: true }), 'ctrl');
+  assert.equal(labelEnterKey('Enter', { shift: true, ctrl: true }), null);
+  assert.equal(labelEnterKey('Enter', { alt: true }), null);
+  assert.equal(labelEnterKey('Tab', { shift: true }), null);
 });

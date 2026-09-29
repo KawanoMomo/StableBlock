@@ -119,7 +119,11 @@ export function renderSvg(parsed, view, L, measure) {
     const op = hlIds && !hlGroups.has(gr.id) ? RD_DIM : q && !matchesSearchItem(gr, q) ? RD_SEARCH_DIM : null;
     s += `<g data-type="group" data-id="${gr.id}"${grab}${opAttr(op)}>`;
     s += `<rect x="${gr.x * g}" y="${gr.y * g}" width="${gr.w * g}" height="${gr.h * g}" fill="${gr.color}" stroke="${sl ? '#6366F1' : gr.borderColor}" stroke-width="${sl ? 3 : 1.5}" rx="8" opacity="0.85"${sl ? ' stroke-dasharray="8,4"' : ''}/>`;
-    s += `<text x="${gr.x * g + 8}" y="${gr.y * g + 14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${rdEsc(gr.label)}</text></g>`;
+    // 本文の改行の印は block・note・接続と同じく改行(1 行ずつ <text>。Excel・Mermaid の書き出しと同じ行割り)
+    String(gr.label).split('\\n').forEach((line, li) => {
+      s += `<text x="${gr.x * g + 8}" y="${gr.y * g + 14 + li * 13}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${rdEsc(line)}</text>`;
+    });
+    s += '</g>';
   });
 
   // Normal connections

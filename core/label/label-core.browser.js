@@ -92,7 +92,16 @@ function unquoteLabel(raw) {
   return String(raw == null ? '' : raw).replace(/\\"/g, '"');
 }
 function quoteLabel(label) {
-  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"') + '"';
+  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"').replace(/\r\n?|\n/g, '\\n') + '"';   // 欄から来た本物の改行は改行の印に(行を割らない)
+}
+
+// ─── ラベルの欄(その場編集・プロパティ欄・接続パネル)と本文の行き来。本文の改行の印(バックスラッシュと n の 2 文字)は欄では本物の改行に見せ、
+// 欄の改行(Shift+Enter)は本文では印 1 つに戻す。block・group・note・接続で同じ(画面の改行と欄の改行が同じ位置に見える)
+function labelFieldText(label) {
+  return String(label == null ? '' : label).split('\\n').join('\n');
+}
+function labelFromField(text) {
+  return String(text == null ? '' : text).replace(/\r\n?|\n/g, '\\n');
 }
 
 // 接続行で to の直後にラベルが無いとき、属性の後ろ・間に書いたラベル(`a -> b style=dashed "後ろ"`)を探す(BLK-porter-20260929-2029)。
@@ -724,4 +733,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLines, labelTextWidth, labelLayout, unquoteLabel, quoteLabel, connTrailingLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLines, labelTextWidth, labelLayout, unquoteLabel, quoteLabel, labelFieldText, labelFromField, connTrailingLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

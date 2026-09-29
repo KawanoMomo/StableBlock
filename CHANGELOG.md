@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20260930-0208-2: block・group・note・接続のラベルは、キャンバス上のその場編集でもプロパティ欄・接続パネルのラベル欄でも Shift+Enter で改行が入り、本文は改行の印 1 つになる(欄の中でも画面と同じ位置で改行して見える)。group の名前も 2 行で描く。Enter の確定・Tab・Ctrl+Enter の働きは変わらない。VSCode 拡張も同じ
 - BLK-owner-20260930-0208-1: ツール欄の「+ ブロック追加」・group の「+ 中にブロック」で足した block に名前を打って Tab でも、確定して右につないだ次の block を足す(名前 → Tab → 名前 → Tab → 名前 → Enter で鎖 3 個・接続 2 本)。読み順で次の既存 block の編集へ移ってそのラベルを黙って書き換えない。移る先の無い block の Tab も右につないで足し、空の図でも名前が 1 つのラベルに連ならない。既存 block の名付け直し(F2・ダブルクリック)の Tab は読み順の次へ移るまま。VSCode 拡張も同じ
 - BLK-porter-20260930-0109: 接続ラベルの `\n` を block・note と同じく改行して描く(`a -> b "要求\n(非同期)"` が 2 行)。画面・SVG・PNG・Excel で同じ行割りで、白地は 2 行を覆い、自動配置は複数行の大きさで block の名前・他のラベルを避ける。Mermaid は `<br/>`
 - BLK-porter-20260929-2211: 同じ共通部品を 2 経路(a.sb と b.sb)から @include する図(ダイヤモンド)は、共通部を最初の 1 回だけ展開する。自分自身との「ID が重複」「重なっている」の誤警告と二重描き・後から来た方に操作を横取りされる不具合が無くなる

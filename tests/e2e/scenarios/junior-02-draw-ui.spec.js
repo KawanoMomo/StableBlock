@@ -477,7 +477,7 @@ test('junior-02: ID は作図 UI で決める(ラベルに追従し、プロパ�
 
   // 新しい block はラベルを打つと ID がその表記のまま付く(大文字と _ を落とさない)
   await props.getByRole('button', { name: '+ ブロック追加' }).click();
-  const label = props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const label = props.locator('#prop-label');
   await label.fill('');
   await label.pressSequentially('Spi_Api');
   await expect(props.locator('#prop-id')).toHaveValue('Spi_Api');
@@ -657,7 +657,7 @@ test('junior-02: 入れ子の group を作図 UI だけで組め、子は親の�
   await importSb(page, BLANK);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const label = () => props.locator('#prop-label');
   const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
 
   // 新しい group のラベルを書き換えて Enter した直後でも、同じ欄の「+ 中にブロック」が効く
@@ -738,7 +738,7 @@ test('junior-02: group にブロックを足し続けて group が広がって�
   await importSb(page, BLANK);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const label = () => props.locator('#prop-label');
   const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
 
   // group を 3 つ(空き位置に左から並び、3 つ目は 1 つ目の下へ折り返す)。3 つ目には block を 1 つ入れておく
@@ -789,7 +789,7 @@ test('junior-02: 入れ子の子 group に足して兄弟の block を押し出�
   await importSb(page, BLANK);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const label = () => props.locator('#prop-label');
   const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
   const block = id => svg.locator(`g[data-type="block"][data-id="${id}"]`);
 
@@ -1232,7 +1232,7 @@ test('junior-02: group を別の group の中へドラッグで入れると外�
   await importSb(page, BLANK);
   const props = page.locator('#prop-content');
   const svg = page.locator('#svg-wrap svg');
-  const label = () => props.locator('.prop-section', { hasText: 'ラベル' }).locator('input');
+  const label = () => props.locator('#prop-label');
   const groupEl = id => svg.locator(`g[data-type="group"][data-id="${id}"]`);
   const selectGroup = id => groupEl(id).click({ position: { x: 30, y: 8 } });
   const lineOf = (text, id) => text.split('\n').find(l => new RegExp(`^(block|group) ${id} `).test(l));
@@ -1689,6 +1689,89 @@ test('junior-02: group の中の block から Tab で足した block は同じ g
   expect(await getEditorText(page)).toMatch(/^SpiDrv -> SpiHw$/m);
   expect(await getEditorText(page)).toMatch(/^SpiHw -> SpiReg$/m);
   await expect(svg.locator('g[data-type="block"][data-id="SpiReg"]')).toHaveCount(1);
+});
+
+// ラベルの改行はどの要素でも Shift+Enter(その場編集・プロパティ欄・接続パネルのラベル欄。note と同じ)。本文は改行の印 1 つで、
+// 欄の中でも画面と同じ位置で改行して見える。Enter の確定は変わらない(BLK-owner-20260930-0208-2)
+test('junior-02: block・group・接続のラベルに Shift+Enter で改行を入れられ、本文は \\n 1 つで 2 行に描かれる', async ({ page }, testInfo) => {
+  const fs = require('node:fs');
+  const file = testInfo.outputPath('newline.sb');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [
+    '@canvas width=960 height=520 grid=20',
+    'block a "A" at 1,1 size 6x3',
+    'block b "B" at 16,1 size 6x3',
+    'group g "G" at 1,8 size 20x6',
+  ].join('\n') + '\n');
+  await bootPlain(page);
+  await importSb(page, file);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const inline = page.locator('#inline-label');
+  const b = id => svg.locator(`g[data-type="block"][data-id="${id}"]`).first();
+  const texts = async sel => svg.locator(`${sel} text`).allTextContents();
+
+  // (a) block のその場編集: 通知 → Shift+Enter → Mail → Enter で本文は "通知\nMail"、画面は 2 行
+  await b('a').dblclick();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('通知');
+  await page.keyboard.press('Shift+Enter');
+  await expect(inline).toBeFocused();                      // 確定せず編集が続く
+  await page.keyboard.type('Mail');
+  await expect(inline).toHaveValue('通知\nMail');           // 欄の中でも改行して見える(「\n」の文字を見せない)
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  expect(await getEditorText(page)).toMatch(/^block a "通知\\nMail" at 1,1 size 6x3$/m);
+  expect(await texts('g[data-type="block"][data-id="a"]')).toEqual(['通知', 'Mail']);
+  // 開き直しても欄は 2 行
+  await b('a').click();
+  await page.keyboard.press('F2');
+  await expect(inline).toHaveValue('通知\nMail');
+  await page.keyboard.press('Escape');
+  await expect(props.locator('#prop-label')).toHaveValue('通知\nMail');
+
+  // (b) 接続パネルのラベル欄: call → Shift+Enter → async → Enter で本文は "call\nasync"
+  await b('a').click();
+  await b('b').click({ modifiers: ['Shift'] });
+  await props.getByRole('button', { name: 'a → b', exact: true }).click();
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('call');
+  await page.keyboard.press('Shift+Enter');
+  await expect(page.locator('#conn-label-input')).toBeFocused();
+  await page.keyboard.type('async');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toMatch(/^a -> b "call\\nasync"$/m);
+  await expect(svg.locator('text', { hasText: /^async$/ })).toHaveCount(1);
+  await b('a').click();
+  await b('b').click({ modifiers: ['Shift'] });
+  await expect(props.locator('.conn-label').first()).toHaveValue('call\nasync');
+  await expect(props.locator('.conn-label').first()).toHaveAttribute('title', /Shift\+Enter/);
+
+  // (c) プロパティ欄のラベル欄: B1 → Shift+Enter → B2 → Enter で本文は "B1\nB2"
+  await b('b').click();
+  const field = props.locator('#prop-label');
+  await expect(field).toHaveAttribute('title', /Shift\+Enter/);
+  await field.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('B1');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('B2');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toMatch(/^block b "B1\\nB2" at 16,1 size 6x3$/m);
+  expect(await texts('g[data-type="block"][data-id="b"]')).toEqual(['B1', 'B2']);
+
+  // (d) group のその場編集も同じ(名前は 2 行で描かれる)
+  await svg.locator('g[data-type="group"][data-id="g"]').first().click({ position: { x: 60, y: 60 } });
+  await page.keyboard.press('F2');
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Can');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('Stack');
+  await page.keyboard.press('Enter');
+  expect(await getEditorText(page)).toMatch(/^group g "Can\\nStack" at 1,8 size 20x6$/m);
+  expect(await texts('g[data-type="group"][data-id="g"]')).toEqual(['Can', 'Stack']);
+  expect((await getEditorText(page)).split('\n').filter(l => l.includes('\\n'))).toHaveLength(4);   // 本文の改行は印だけ(行は割れない)
 });
 
 // 指摘の横切り・重なりを直す: 表示中の図の警告行を押すと、直す相手の要素が選ばれ本文がその行へ送られる(BLK-junior-20260929-2012-friction)。

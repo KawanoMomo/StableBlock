@@ -104,7 +104,7 @@ test('porter-05: ラベルに \\" を含む図が描かれ、無変更で Export
 
   // GUI: block を選び、ラベル欄に " を含む名前を打つ
   await svg.locator('g[data-type="block"][data-id="a_1_b_2"]').click();
-  const label = page.locator('#prop-content input[oninput="setLabel(this.value)"]');
+  const label = page.locator('#prop-label');
   await label.click();
   await page.keyboard.press('Control+A');
   await page.keyboard.type('Say "hi"');

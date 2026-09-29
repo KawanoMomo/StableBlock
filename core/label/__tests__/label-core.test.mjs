@@ -535,6 +535,19 @@ test('quoteLabel / unquoteLabel: " は \\" で書き、ほかの \\(\\n の印�
   assert.equal(unquoteLabel('A\\nB'), 'A\\nB');
   assert.equal(quoteLabel('C:\\'), '"C:\\"');
   assert.equal(unquoteLabel(undefined), '');
+  assert.equal(quoteLabel('通知\nMail'), '"通知\\nMail"');       // 欄から来た本物の改行は行を割らず改行の印に
+  assert.equal(quoteLabel('a\r\nb'), '"a\\nb"');
+});
+
+import { labelFieldText, labelFromField } from '../label-core.mjs';
+test('labelFieldText / labelFromField: 本文の改行の印は欄では本物の改行、欄の改行(Shift+Enter)は本文の印 1 つ(block・group・note・接続で同じ)', () => {
+  assert.equal(labelFieldText('通知\\nMail'), '通知\nMail');
+  assert.equal(labelFieldText('A'), 'A');
+  assert.equal(labelFieldText(undefined), '');
+  assert.equal(labelFromField('通知\nMail'), '通知\\nMail');
+  assert.equal(labelFromField('call\r\nasync'), 'call\\nasync');
+  assert.equal(labelFromField('A'), 'A');
+  for (const lb of ['A', '要求\\n(非同期)', 'x\\ny\\nz', 'say \\"hi\\"']) assert.equal(labelFromField(labelFieldText(lb)), lb);   // 往復で本文は変わらない
 });
 
 test('renameIdInDsl / searchIdsInFiles: 引用符を含むラベルの行も定義行として扱う', () => {
