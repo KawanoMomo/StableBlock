@@ -273,6 +273,29 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
 }
 
+// 一緒に検査した図(同じ図の中も)で、大文字小文字・区切り(_ -)だけが違う block ID(同じ部品の表記揺れの疑い)。
+// diagrams: [{ file, blocks }](blocks は parseDSL の結果。line は 1 始まり)。同じ部品の書き方のうち最も多いもの(同数なら先に
+// 現れたもの)を基準にし、それと違う書き方の定義ごとに { a: 違う方, b: 基準の最初の定義 } を 1 件返す(組の総当たりにしない)
+export function findIdSpellingVariants(diagrams) {
+  const normalize = id => String(id).replace(/[_-]/g, '').toLowerCase();
+  const groups = new Map();
+  for (const { file, blocks } of diagrams || []) for (const block of blocks || []) {
+    const key = normalize(block.id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ id: block.id, file, line: block.line });
+  }
+  const out = [];
+  for (const items of groups.values()) {
+    const count = new Map();
+    for (const it of items) count.set(it.id, (count.get(it.id) || 0) + 1);
+    if (count.size < 2) continue;
+    let base = items[0].id;
+    for (const [id, n] of count) if (n > count.get(base)) base = id;
+    const ref = items.find(it => it.id === base);
+    for (const it of items) if (it.id !== base) out.push({ a: it, b: ref });
+  }
+  return out;
+}
 
 // ── @include ──────────────────────────────────────────────
 // 本文と include 先はファイルのパス(区切りは /)で呼ぶ。HTML 版は「.sb 読込」で一緒に選んだファイル、VSCode 拡張は

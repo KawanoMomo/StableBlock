@@ -4,6 +4,8 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-reviewer-20260929-0505-wish: `npm run check` が一緒に検査した図をまたいで大文字小文字・区切り(_ -)だけが違う block ID(`UartDrv` と `uartdrv` など)を、違う方の図・行に基準の図・行を添えて warn で出す(多い書き方を基準に 1 定義 1 件)
+
 ## v3.0 (2026-09-29)
 
 - BLK-porter-20260929-0511: 接続の lpos=diagonal など取れない値を書いた図を無変更で保存しても本文の値がそのまま残る(core の往復もバイト一致)。block の round=、接続の width=、@canvas の width / height / grid= に数でない値を書くと、その行に「実際に描く値」がエラー欄に出る

@@ -2,13 +2,14 @@
 // 複数の .sb を開かずに検査する: `npm run check -- <file.sb|dir> ...`(dir はその下の .sb を全部)
 // 画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線の横切り・ラベルの重なり)を
 // `ファイル:行: error|warn: 内容` で出す。@include は読み込んだ先のファイルと行で示す。error があれば終了コード 1。
+// 一緒に検査した図をまたいで大文字小文字・区切り(_ -)だけが違う block ID は、違う方の行に基準の図と行を添えて warn で出す。
 // --refs <ID>: ID を定義・参照している図と行を一覧する。--rename <旧> <新>: 全図で ID を改名する(core/label の planRename)。
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDSL } from '../dsl/dsl-core.mjs';
 import { connectionPaths, placeLabels, labelIssues, findIdInDsl, planRename } from '../label/label-core.mjs';
-import { expandIncludes, checkIncluded } from './check-core.mjs';
+import { expandIncludes, checkIncluded, findIdSpellingVariants } from './check-core.mjs';
 
 // @include を展開する(core の expandIncludes に fs の読み込みを渡す)。include 先は include 元のファイルからの相対パス
 export function expandFile(file) {
@@ -31,20 +32,6 @@ function collect(p) {
   if (!st.isDirectory()) return [p];
   return readdirSync(p).filter(n => !n.startsWith('.') && n !== 'node_modules')
     .flatMap(n => collect(join(p, n))).filter(f => f.endsWith('.sb'));
-}
-
-// 複数図で大文字小文字・区切りだけが異なる部品 ID をまとめて報告する。
-export function findIdSpellingVariants(diagrams) {
-  const normalize = id => String(id).replace(/[_-]/g, '').toLowerCase();
-  const items = (diagrams || []).flatMap(({ file, blocks }) => (blocks || []).map(block => ({
-    id: block.id, file, line: block.line,
-  })));
-  const out = [];
-  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
-    const a = items[i], b = items[j];
-    if (a.id !== b.id && normalize(a.id) === normalize(b.id)) out.push({ a, b });
-  }
-  return out;
 }
 
 // 指定したファイル・フォルダの .sb と、それらが @include している先(フォルダの外も)。重複なし、絶対パス
@@ -122,7 +109,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const { a, b } of findIdSpellingVariants(diagrams)) {
     const aFile = relative(process.cwd(), a.file) || a.file;
     const bFile = relative(process.cwd(), b.file) || b.file;
-    console.log(`${aFile}:${a.line}: warn: block ID "${a.id}" は ${bFile}:${b.line} の "${b.id}" と表記揺れの可能性があります`);
+    console.log(`${aFile}:${a.line}: warn: block ID "${a.id}" は ${bFile}:${b.line} の "${b.id}" と大文字小文字・区切りだけが違う(同じ部品の表記揺れ?)`);
     warns++;
   }
   console.log(`error ${errors} / warn ${warns}`);
