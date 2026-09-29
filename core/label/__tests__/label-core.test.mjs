@@ -661,3 +661,34 @@ test('connTrailingLabel / setConnLabelInDsl: 属性の後ろ・間に書いた�
   assert.equal(setConnLabelInDsl(dsl, 'a', 'b', ''), dsl.replace(' "後ろ"', ''));
   assert.equal(setConnLabelInDsl('a -> b lpos=top # "c"', 'a', 'b', 'L'), 'a -> b "L" lpos=top # "c"');
 });
+
+// 接続ラベルの `\n` は block・note と同じく改行(BLK-porter-20260930-0109)
+import { labelLines, labelTextWidth } from '../label-core.mjs';
+test('接続ラベルの \\n: 行に分け、幅は行ごとの最大、白地は行の分だけ縦に伸びる(top / bottom は線の側の端を保つ)', () => {
+  assert.deepEqual(labelLines('call\\nasync'), ['call', 'async']);
+  assert.deepEqual(labelLines('one'), ['one']);
+  assert.equal(labelTextWidth('call\\nasync'), estimateTextWidth('async', 10));
+  assert.equal(labelTextWidth('ab', t => t.length * 7), 14);
+  const r = labelLayout({ x: 100, y: 50 }, 'right', 30, 2);
+  assert.equal(r.ty, 50);
+  assert.deepEqual(r.bg, { x: 106, y: 37, w: 38, h: 26, rx: 2 });
+  const t = labelLayout({ x: 100, y: 50 }, 'top', 30, 2);
+  assert.equal(t.bg.y + t.bg.h, 47);   // 1 行のときの下端(33 + 14)のまま上へ伸びる
+  assert.equal(t.bg.h, 26);
+  const b = labelLayout({ x: 100, y: 50 }, 'bottom', 30, 3);
+  assert.equal(b.bg.y, 53);            // 1 行のときの上端のまま下へ伸びる
+  assert.equal(b.bg.h, 38);
+  assert.deepEqual(labelLayout({ x: 100, y: 50 }, 'right', 30, 1), labelLayout({ x: 100, y: 50 }, 'right', 30));
+});
+
+test('placeLabels: 複数行の接続ラベルは行の分の高さ・行ごとの最大の幅の白地で置く', () => {
+  const p = parseDSL([
+    '@canvas width=400 height=160 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'a -> b "call\\nasync"',
+  ].join('\n'));
+  const [LL] = placeLabels([{ conn: p.connections[0], mid: { x: 180, y: 50 } }], p);
+  assert.equal(LL.bg.h, 26);
+  assert.equal(LL.bg.w, estimateTextWidth('async', 10) + 8);   // 「call\nasync」全体の幅ではない
+});

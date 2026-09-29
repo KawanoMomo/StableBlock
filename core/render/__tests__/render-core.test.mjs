@@ -150,3 +150,25 @@ test('marks(見比べる画面の印): 変わった要素に橙の破線枠、�
   // 注釈を隠しているときは note の印も出さない
   assert.doesNotMatch(renderSvg(parsed, { interactive: false, showAnnotations: false, marks: { items: ['memo'], conns: [] } }, L, measure), /data-changed/);
 });
+
+// 接続ラベルの `\n` は block・note と同じく改行: 1 行ずつ <text>、白地は行の分の高さ(BLK-porter-20260930-0109)
+test('接続ラベルの \\n は改行して描き、「\\n」の文字を描かない(block 同士の線と注釈線)', () => {
+  const p = parseDSL([
+    '@canvas width=400 height=200 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'note n "N" at 1,6 size 5x2',
+    'a -> b "call\\nasync"',
+    'n -> b "要求\\n(非同期)"',
+  ].join('\n'));
+  const svg = exportSvg(p, L, measure);
+  assert.doesNotMatch(svg, /\\n/);
+  for (const t of ['>call<', '>async<', '>要求<', '>(非同期)<']) assert.ok(svg.includes(t), t);
+  const g = svg.match(/<g class="conn-label"[^>]*>(.*?)<\/g>/)[1];
+  const ys = [...g.matchAll(/<text x="[^"]+" y="([^"]+)"/g)].map(m => +m[1]);
+  assert.equal(ys.length, 2);
+  assert.equal(ys[1] - ys[0], 12);
+  assert.equal(+g.match(/<rect [^>]*height="([^"]+)"/)[1], 26);
+  // 1 行のラベルは 1 つの <text> のまま
+  assert.equal((exportSvg(parsed, L, measure).match(/<g class="conn-label"[^>]*>.*?<\/g>/)[0].match(/<text /g) || []).length, 1);
+});

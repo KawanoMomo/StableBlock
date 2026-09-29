@@ -252,3 +252,20 @@ test('buildDrawingXml: L を渡さなくても白地は文字の幅以上(線の
   const s = shapes.find(x => x.i === ci);
   assert.ok(s.w >= pxToEmu(LabelCore.estimateTextWidth('JobEndNotif', 10)), `${s.w}`);
 });
+
+// 接続ラベルの `\n`: Excel の白地は画面の複数行の白地と同じ大きさ、文字は行ごとの段落(BLK-porter-20260930-0109)
+test('buildDrawingXml(L): 複数行の接続ラベルは画面と同じ高さの白地に行ごとの段落で置く', () => {
+  const p = parseSb([
+    '@canvas width=400 height=160 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'a -> b "call\\nasync"',
+  ].join('\n'));
+  const measure = t => LabelCore.estimateTextWidth(t, 10);
+  const xml = drawingXml(p, { L: LabelCore, measure });
+  const [s] = labelShapes(xml);
+  assert.equal(s.h, pxToEmu(26));
+  assert.ok(Math.abs(s.w - pxToEmu(measure('async') + 8)) <= 1);
+  assert.match(xml, /<a:t>call<\/a:t>[\s\S]*<a:t>async<\/a:t>/);
+  assert.ok(!xml.includes('call\\nasync'));
+});
