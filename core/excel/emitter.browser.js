@@ -390,9 +390,31 @@ function sortByZOrder(items) {
   });
 }
 
+// 原点より左・上(座標が負)の group / block / note があれば、図全体を同じ量(グリッド)だけ右・下へずらした写しを返す
+// (シートの左上より外には置けない。画面・SVG が描く範囲を左・上へ広げるのと同じ見え方。core/label の drawArea)。無ければ ast をそのまま返す
+function shiftToOrigin(ast) {
+  let dx = 0, dy = 0;
+  for (const list of [ast.groups, ast.blocks, ast.notes]) for (const it of list || []) {
+    if (!it) continue;
+    if (it.x < dx) dx = it.x;
+    if (it.y < dy) dy = it.y;
+  }
+  if (!dx && !dy) return ast;
+  const move = it => ({ ...it, x: it.x - dx, y: it.y - dy });
+  const out = { ...ast };
+  for (const [list, map] of [['groups', 'groupMap'], ['blocks', 'blockMap'], ['notes', 'noteMap']]) {
+    if (!ast[list]) continue;
+    out[list] = ast[list].map(move);
+    out[map] = Object.fromEntries(out[list].map(it => [it.id, it]));
+  }
+  out.canvas = { ...(ast.canvas || {}), width: (ast.canvas?.width || 0) - dx * (ast.canvas?.grid || 20), height: (ast.canvas?.height || 0) - dy * (ast.canvas?.grid || 20) };
+  return out;
+}
+
 // opts.L: core/label(browser は window.StableBlockLabel)、opts.measure: ラベルの文字幅(px)。渡すと接続ラベルを画面と同じ所に置く
 // (lpos= が無ければ block の名前・他のラベルを避けた位置)。渡さなければ線の中点に置く
 function buildDrawingXml(ast, opts = {}) {
+  ast = shiftToOrigin(ast);
   const gridPx = ast.canvas?.grid || 20;
   const items = [];
 
@@ -524,4 +546,4 @@ async function loadTemplateFilesAsync() {
   return mod.loadTemplateFiles();
 }
 
-;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, boxLine, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, connectionSiteIndex, xlsxRoute, connectorGeometry, buildConnectionShape, buildConnectionLabel, sortByZOrder, buildDrawingXml, listXlsxDrops, packageXlsx, renderXlsx };
+;window.StableBlockExcel = { pxToEmu, gridToEmu, escapeXml, normalizeColor, boxLine, buildBlockShape, buildGroupShape, buildNoteShape, centerOfShape, getSide, portPos, computeAllPorts, computeConnectionEndpoints, connectionSiteIndex, xlsxRoute, connectorGeometry, buildConnectionShape, buildConnectionLabel, sortByZOrder, shiftToOrigin, buildDrawingXml, listXlsxDrops, packageXlsx, renderXlsx };

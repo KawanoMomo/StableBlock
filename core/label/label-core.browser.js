@@ -565,6 +565,20 @@ function connPathInfo(fp, tp, fs, ts, mode) {
   return { d: `M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`, mid: bezierMidpoint(fp, c1, c2, tp) };
 }
 
+// 描く範囲(px): 原点(0,0)から `@canvas` の width × height。原点より左・上(座標が負)の group / block / note があれば、
+// その端まで左・上へ広げる(右・下は広げない。はみ出しは core/check の findOutside が知らせる)。本文は書き換えない。
+// 画面・SVG / PNG の書き出し・ラベルの置き場所がこの範囲を使う(Excel は core/excel が同じ量だけずらして置く)
+function drawArea(parsed) {
+  const c = (parsed && parsed.canvas) || {}, g = c.grid || 20;
+  let x = 0, y = 0;
+  for (const list of [parsed.groups, parsed.blocks, parsed.notes]) for (const it of list || []) {
+    if (!it) continue;
+    if (it.x * g < x) x = it.x * g;
+    if (it.y * g < y) y = it.y * g;
+  }
+  return { x, y, width: (c.width || 0) - x, height: (c.height || 0) - y };
+}
+
 // 図全体の既定の線の形(本文の `@canvas ... route=straight`)。書いていなければ・知らない値なら曲線
 function canvasRoute(canvas) {
   const r = canvas && canvas.route;
@@ -676,7 +690,8 @@ function isAutoLpos(c) {
 // 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
 function placeLabels(items, parsed, measure) {
   const obstacles = labelObstacles(parsed);
-  const bounds = { x: 0, y: 0, w: parsed.canvas.width, h: parsed.canvas.height };
+  const area = drawArea(parsed);
+  const bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
   const width = measure || (t => estimateTextWidth(t, 10));
   const out = [];
   for (const { conn, mid, anno } of items) {
@@ -733,4 +748,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLines, labelTextWidth, labelLayout, unquoteLabel, quoteLabel, labelFieldText, labelFromField, connTrailingLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLines, labelTextWidth, labelLayout, unquoteLabel, quoteLabel, labelFieldText, labelFromField, connTrailingLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, drawArea, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

@@ -8,7 +8,7 @@
 //   snapGuides([{x1,y1,x2,y2}])/ grid(背景の点)/ interactive(data-resize のハンドル・cursor)/ font /
 //   marks({ items: [ID], conns: ['from->to'] }。見比べる画面の「変わった要素」の印: 要素に橙の破線枠、接続に橙の太線を重ねる)
 // 書き出し(exportSvg)はこれらを持ち込まない: 選択・ハンドル・スナップガイド・グリッド・薄め無し、注釈は本文どおり全部、
-// 大きさは @canvas の寸法(倍率 1)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
+// 大きさは @canvas の寸法(倍率 1。原点より左・上の要素があればその分だけ左・上へ広げる。core/label の drawArea)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
 
 const RD_FONT = "'IBM Plex Sans','Noto Sans JP',sans-serif";
 const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2, RD_MARK = '#F59E0B';
@@ -57,9 +57,16 @@ export function isAnnotationConnOf(parsed, c) {
   return !!(nm[c.from] || nm[c.to]);
 }
 
-// PNG の画素数: @canvas の寸法 × 固定の倍率 2(表示倍率・窓の大きさに依らない)
-export function exportPngSize(canvas) {
-  return { width: canvas.width * 2, height: canvas.height * 2 };
+// PNG の画素数: 描く範囲(core/label の drawArea。@canvas の寸法に、原点より左・上の要素の分を足したもの)× 固定の倍率 2
+// (表示倍率・窓の大きさに依らない)。{ width, height } を持つもの(drawArea の結果・@canvas)を受け取る
+export function exportPngSize(area) {
+  return { width: area.width * 2, height: area.height * 2 };
+}
+
+// 描く範囲(px)。L(core/label)の drawArea。古い L で無ければ @canvas の寸法
+function rdArea(parsed, L) {
+  if (L && L.drawArea) return L.drawArea(parsed);
+  return { x: 0, y: 0, width: parsed.canvas.width, height: parsed.canvas.height };
 }
 
 // 接続ラベル(置き場所 LL は core/label の placeLabels / labelLayout)。block より上の層に白地で描く。
@@ -106,12 +113,13 @@ export function renderSvg(parsed, view, L, measure) {
   const normalConns = connections.filter(c => !isAnnotationConnOf(parsed, c));
   const annoConns = connections.filter(c => isAnnotationConnOf(parsed, c));
 
-  let s = `<svg width="${canvas.width * zoom}" height="${canvas.height * zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:${font}">`;
+  const A = rdArea(parsed, L);
+  let s = `<svg width="${A.width * zoom}" height="${A.height * zoom}" viewBox="${A.x} ${A.y} ${A.width} ${A.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:${font}">`;
   s += '<defs>';
   if (v.grid) s += `<pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g / 2}" cy="${g / 2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
   connections.forEach((c, i) => { s += `<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`; });
   s += '</defs>';
-  if (v.grid) s += '<rect width="100%" height="100%" fill="url(#gd)"/>';
+  if (v.grid) s += `<rect x="${A.x}" y="${A.y}" width="${A.width}" height="${A.height}" fill="url(#gd)"/>`;
 
   // Groups
   groups.forEach(gr => {
@@ -222,7 +230,7 @@ export function renderSvg(parsed, view, L, measure) {
 }
 
 // 書き出し用の SVG: 本文だけで決まる(画面の選択・ハンドル・スナップガイド・グリッド・検索や「未接続を薄く」の薄め・
-// 注釈の表示切替・表示倍率を持ち込まない)。大きさは @canvas の寸法
+// 注釈の表示切替・表示倍率を持ち込まない)。大きさは描く範囲(@canvas の寸法と、原点より左・上の要素)
 export function exportSvg(parsed, L, measure, font) {
   return renderSvg(parsed, { zoom: 1, grid: false, interactive: false, showAnnotations: true, font }, L, measure);
 }

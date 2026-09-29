@@ -8,9 +8,9 @@ import { parseLpos, hasLpos, unquoteLabel, connTrailingLabel } from '../label/la
 import { badAttrValues } from '../check/check-core.mjs';
 
 // ラベルは "…"。中の \" は " を表す(core/label の quoteLabel / unquoteLabel)
-const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_GROUP = /^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
-const RE_NOTE = /^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+([\d.]+),([\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_BLOCK = /^block\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_GROUP = /^group\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
+const RE_NOTE = /^note\s+(\S+)\s+"((?:\\"|[^"])*)"\s+at\s+(-?[\d.]+),(-?[\d.]+)\s+size\s+([\d.]+)x([\d.]+)(.*)/d;
 const RE_CONN = /^(\S+)\s+(-->|->)\s+(\S+)\s*(?:"((?:\\"|[^"])*)")?\s*(.*)/d;
 const RE_CANVAS = /^@canvas(.*)/d;
 
