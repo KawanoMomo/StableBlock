@@ -46,6 +46,24 @@ test('porter-05: @include の図を include 先と一緒に読込むと描かれ
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
 });
 
+// 同じ共通部品を 2 経路(a.sb と b.sb)から @include するダイヤモンド: 共通部は 1 回だけ展開し、自分自身との ID 重複・重なりの警告を出さない(BLK-porter-20260929-2211)
+test('porter-05: 同じ共通部を 2 経路から @include する図は誤警告も二重描きも無く描かれ、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const main = path.join(FIXTURES, 'porter-diamond.sb'), sh = f => path.join(FIXTURES, 'shared', f);
+  const original = fs.readFileSync(main);
+  await bootPlain(page);
+  await importSb(page, [main, sh('diamond-a.sb'), sh('diamond-b.sb'), sh('diamond-base.sb')]);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(4);      // clk・rst・ua・ub(clk と rst は 2 枚重ねにならない)
+  await expect(svg.locator('g[data-type="block"][data-id="clk"]')).toHaveCount(1);
+  await expect(svg.locator('path[marker-end]')).toHaveCount(3);          // clk→ua・clk→ub・ua→ub
+  await expect(page.locator('#error-bar')).not.toContainText('重複');          // 「ID "clk" が重複」も
+  await expect(page.locator('#error-bar')).not.toContainText('重なって');      // 「block「clk」が block「clk」に重なっている」も出ない(線が ua を横切る配置の警告は本物なので残る)
+  await svg.locator('g[data-type="block"][data-id="clk"]').click();
+  await expect(page.locator('#prop-content')).toContainText('clk');
+  const { bytes } = await exportSb(page, saveDir(testInfo));
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+});
+
 test('porter-05: include 先を選ばずに読込むと、@include の行と参照する接続に理由が出て、書き出しでも知らせる', async ({ page }, testInfo) => {
   await bootPlain(page);
   await importSb(page, INC_MAIN);
