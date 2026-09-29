@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction } from '../select-core.mjs';
+import { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink } from '../select-core.mjs';
 
 const A = { type: 'block', id: 'a' }, B = { type: 'block', id: 'b' }, C = { type: 'block', id: 'c' }, G = { type: 'group', id: 'g' };
 
@@ -163,4 +163,25 @@ test('inlineTabAction: 足したばかりの block の名前を打っている�
   assert.equal(inlineTabAction(undefined, false), 'next');
   assert.equal(inlineTabAction('child', true), 'prev');   // Shift+Tab は前の要素へ(足さない)
   assert.equal(inlineTabAction(null, true), 'prev');
+});
+
+test('inlineTabAction: 移る先が無いとき、block は案内どおり右につないで足し、group・note は読み順の反対の端へ回る(今のラベルの後ろに連ねない)', () => {
+  assert.equal(inlineTabAction(null, false, { type: 'block', hasNext: false }), 'child');
+  assert.equal(inlineTabAction(null, false, { type: 'block', hasNext: true }), 'next');
+  assert.equal(inlineTabAction(null, false, { type: 'note', hasNext: false }), 'first');
+  assert.equal(inlineTabAction(null, false, { type: 'group', hasNext: false }), 'first');
+  assert.equal(inlineTabAction(null, true, { type: 'block', hasPrev: false }), 'last');
+  assert.equal(inlineTabAction(null, true, { type: 'block', hasPrev: true }), 'prev');
+  assert.equal(inlineTabAction('sibling', false, { type: 'block', hasNext: false }), 'sibling');
+});
+
+test('inlineEditLink: 「+ ブロック追加」・「+ 中にブロック」で足してまだ名前の無い block の編集は Tab でつないで足す。既存の block の名付け直しは読み順のまま', () => {
+  assert.equal(inlineEditLink('child', 'block', 'x', null, false), 'child');       // つないで追加が渡した向き
+  assert.equal(inlineEditLink('sibling', 'block', 'x', null, false), 'sibling');
+  assert.equal(inlineEditLink(null, 'block', '__new_0', '__new_0', true), 'child'); // 直前に足した名前の無い block
+  assert.equal(inlineEditLink(null, 'block', '__new_0', '__new_1', true), null);    // 前に足した block(直前ではない)
+  assert.equal(inlineEditLink(null, 'block', 'Spi_Drv', 'Spi_Drv', false), null);  // 名前を付けた後
+  assert.equal(inlineEditLink(null, 'block', 'X', null, false), null);             // 既存の block
+  assert.equal(inlineEditLink(null, 'note', '__new_0', '__new_0', true), null);
+  assert.equal(inlineEditLink(null, 'block', undefined, undefined, true), null);
 });

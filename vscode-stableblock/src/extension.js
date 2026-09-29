@@ -390,7 +390,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction, linkAddKey, inlineTabAction, inlineEditLink };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -647,13 +647,13 @@ function setupInt(){
 function clrSel(){if(!sel.length)return;sel=[];render();props();}
 // Pressing the canvas moves focus to it: a toolbar button that keeps focus would be pressed again by Enter (item mousedown is preventDefault'ed)
 // lastClick: the item last clicked without moving; pressing anywhere else or typing forgets it (two far-apart clicks are not a double-click)
-var lastClick=null,inl=null;
+var lastClick=null,inl=null,pendLk=null,freshId=null;   // pendLk: linkAdd hands the Tab direction to the edit it opens; freshId: the block the tool panel's add just placed (core/select inlineEditLink)
 document.addEventListener('mousedown',function(e){var g=e.target.closest&&e.target.closest('#wrap g[data-id]');if(!g||!lastClick||g.dataset.id!==lastClick.id)lastClick=null;},true);
 document.addEventListener('keydown',function(){lastClick=null;},true);
 function relFocus(){if(inl)finInl(true);var a=document.activeElement;if(a&&a!==document.body&&typeof a.blur==='function')a.blur();}
 // Edit a label on the canvas (double-click / F2 / Enter): an input over the item rewrites only its label line as you type.
 // Enter or a press elsewhere commits, Esc restores the text as it was. Notes are multi-line (Shift+Enter).
-function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap[id]:tp==='group'?parsed.groupMap[id]:parsed.nm[id];if(!it)return;
+function startInl(tp,id){var lk=window.StableBlockSelect.inlineEditLink(pendLk,tp,id,freshId,window.StableBlockLabel.isPlaceholderId(id));pendLk=null;if(inl)finInl(true);var it=tp==='block'?parsed.blockMap[id]:tp==='group'?parsed.groupMap[id]:parsed.nm[id];if(!it)return;
   sel=[{type:tp,id:id}];render();props();
   if(window.StableBlockCheck.includeOrigin(EXP,it.line))return;
   var gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}if(!g)return;
@@ -663,13 +663,16 @@ function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap
   var h=isG?Math.max(22,Math.min(r.height,28)):isN?Math.max(r.height,44):Math.max(r.height,24);
   el.style.left=r.left+'px';el.style.top=r.top+'px';el.style.width=Math.max(r.width,isG?140:80)+'px';el.style.height=h+'px';if(isG)el.style.textAlign='left';
   document.body.appendChild(el);
-  var ed={el:el,type:tp,id:id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds)};inl=ed;
+  var ed={el:el,type:tp,id:id,origId:id,snap:dsl,pushed:false,auto:new Set(autoIds),link:lk};inl=ed;
   el.addEventListener('input',function(){if(inl!==ed)return;if(!ed.pushed){pushH();ed.pushed=true;}var v=isN?el.value.replace(/\\n/g,"\\\\n"):el.value;sel=[{type:ed.type,id:ed.id}];
     upLb(ed.type,ed.id,v);fLbId(isN?el.value:v);ed.id=sel[0].id;parsed=parseDSL(dsl);render();showErr();});
-  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finInl(true);if(!askId())linkAdd('sibling');}else if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);finInl(true);if(nx)startInl(nx.type,nx.id);}});
+  el.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&ed.type==='block'&&!e.shiftKey&&!e.altKey){e.preventDefault();e.stopPropagation();finInl(true);if(!askId())linkAdd('sibling');}else if(e.key==='Enter'&&!(isN&&e.shiftKey)){e.preventDefault();e.stopPropagation();finInl(true);askId();}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finInl(false);}else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();var nx=nextRead(ed.type,ed.id,e.shiftKey?-1:1);var act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey,{type:ed.type,hasNext:!!nx,hasPrev:!!nx});if(act==='child'||act==='sibling'){finInl(true);if(!askId())linkAdd(act);return;}var to=act==='first'||act==='last'?endRead(ed.type,act):nx;if(!to||to.id===ed.id){el.select();return;}finInl(true);revealEdit(to.type,to.id);}});
   el.addEventListener('blur',function(){if(inl===ed)finInl(true);});
   el.focus();el.select();}
-// Tab / Shift+Tab: commit and edit the next / previous item of the same kind in reading order (rows top to bottom, left to right)
+// Tab / Shift+Tab: commit and edit the next / previous item of the same kind in reading order (rows top to bottom, left to right). While naming a block added by Tab / Ctrl+Enter
+// or by the tool panel's add (still unnamed), Tab commits and adds the next linked block (core/select inlineEditLink / inlineTabAction). With nothing to move to, a block's Tab
+// adds a linked block to its right and a group / note wraps to the other end, so the next keys never pile onto the current label
+function endRead(tp,end){var list=(tp==='block'?parsed.blocks:tp==='group'?parsed.groups:parsed.notes).slice().sort(function(a,b){return a.y-b.y||a.x-b.x||a.line-b.line});return (end==='first'?list[0]:list[list.length-1])||null;}
 function nextRead(tp,id,dir){var list=(tp==='block'?parsed.blocks:tp==='group'?parsed.groups:parsed.notes).slice().sort(function(a,b){return a.y-b.y||a.x-b.x||a.line-b.line});var i=-1;for(var k=0;k<list.length;k++){if(list[k].id===id){i=k;break;}}return i<0?null:(list[i+dir]||null);}
 function finInl(commit){var ed=inl;if(!ed)return;inl=null;
   if(!commit&&ed.pushed){dsl=ed.snap;hist.pop();sel=[{type:ed.type,id:ed.origId}];autoIds.clear();ed.auto.forEach(function(x){autoIds.add(x);});}
@@ -845,8 +848,8 @@ function blockLine(id,p,src){var w=src?src.w:8,h=src?src.h:3;var l='block '+id+'
 function groupOf(r,skip){return parsed.groups.filter(function(g){return !(skip&&skip[g.id])&&isIn(r,g)}).sort(function(a,b){return a.w*a.h-b.w*b.h})[0]||null;}
 function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.concat(parsed.groups,parsed.notes);if(!gr)return L.placeNext(all,w,h,{prev:prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});var p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();return p;}
 function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
-function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
-function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=id;sel=[{type:"block",id:id}];go();notify();}
+function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
+function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 // Link-add (core/select linkAddKey): with 1 block selected, Tab adds a block linked from it (column to its right, core/layout placeBeside),
 // Ctrl+Enter a sibling linked from the same sources (below it); same size / colors, then its label is edited in place. In a group it joins that group (core/layout growGroupFor)
@@ -855,7 +858,7 @@ function linkAdd(kind){var s=sel.length===1&&sel[0].type==='block'?sel[0]:null,r
   var p=L.placeBeside(parsed.blocks.concat(parsed.groups,parsed.notes),ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parNow()[ref.id];
   pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,ref)+"\\n"+from.map(function(f){return f+' -> '+id+"\\n";}).join('');
   if(pid){parsed=parseDoc();var gr=parsed.groupMap[pid];if(gr)L.growGroupFor(boxIt().filter(function(x){return x.id!==id;}),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});}
-  lastAddedId=id;sel=[{type:'block',id:id}];selClk=false;go();notify();revealEdit('block',id);}
+  lastAddedId=id;sel=[{type:'block',id:id}];selClk=false;go();notify();pendLk=kind;revealEdit('block',id);}
 // A new item outside the visible area: scroll it into view, then edit its label (this scroll does not commit the edit)
 var revealScr=false;
 function revealEdit(tp,id){var area=document.getElementById('preview'),gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}

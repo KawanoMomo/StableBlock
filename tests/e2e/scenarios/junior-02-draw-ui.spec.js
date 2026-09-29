@@ -1559,13 +1559,107 @@ test('junior-02: 足した block の名前を打って Tab で次の block を�
   const box = await inline.boundingBox(), vp = page.viewportSize();
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
-  // 読み順の最後(Far_Drv)で Tab しても編集は続き、次の打鍵は今の編集の中に入る(確定して選んだだけの状態にしない)
+  // 読み順の最後(Far_Drv)の Tab は、案内「Tab: つないで右に追加」どおり右につないだ block を足してその名前の編集へ。
+  // 続けて打った名前は Far_Drv のラベルに連ならない(BLK-owner-20260930-0208-1 (3))。Ctrl+Z で足す前に戻る
   const before = await getEditorText(page);
   await page.keyboard.press('Tab');
   await expect(inline).toBeFocused();
-  await page.keyboard.press('Escape');
+  await page.keyboard.type('Far_Hal');
+  await page.keyboard.press('Enter');
   await expect(inline).toHaveCount(0);
-  expect(await getEditorText(page)).toBe(before);
+  t = await getEditorText(page);
+  expect(t).toMatch(/^block Far_Drv "Far_Drv" at 1,80 /m);
+  expect(t).toMatch(/^block Far_Hal "Far_Hal" at /m);
+  expect(t).toMatch(/^Far_Drv -> Far_Hal$/m);
+  expect(t.split('\n').filter(l => l && !before.split('\n').includes(l))).toHaveLength(2);   // 足した定義行と接続行だけ
+});
+
+// 「+ ブロック追加」・group の「+ 中にブロック」で足してまだ名前の無い block も、名前を打って Tab で確定して右につないだ次の block を足す
+// (プロパティ欄の案内「Tab: つないで右に追加」どおり)。読み順で次の既存 block の編集へ移って、そのラベルを黙って書き換えない。
+// 空の図でも名前は 1 つのラベルに連ならない。既存の block の名付け直し(F2)の Tab は読み順の次へ移るまま(BLK-owner-20260930-0208-1)
+test('junior-02: 「+ ブロック追加」で足した block に名前 → Tab → 名前 → Tab → 名前 → Enter で鎖 3 個になり、既存 block のラベルを書き換えない', async ({ page }, testInfo) => {
+  const fs = require('node:fs');
+  const file = testInfo.outputPath('add_then_tab.sb');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [
+    '@canvas width=960 height=520 grid=20',
+    'block X "Xray" at 1,10 size 8x3',
+    'block Y "Yank" at 11,10 size 8x3',
+  ].join('\n') + '\n');
+  await bootPlain(page);
+  await importSb(page, file);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const inline = page.locator('#inline-label');
+  const b = id => svg.locator(`g[data-type="block"][data-id="${id}"]`).first();
+  const t0 = await getEditorText(page);
+
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await expect(props).toContainText('Tab: つないで右に追加');
+  await page.keyboard.type('Spi_Drv');
+  await expect(inline).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('Spi_Hal');
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('Spi_Rte');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  let t = await getEditorText(page);
+  expect(t).toMatch(/^block X "Xray" at 1,10 /m);
+  expect(t).toMatch(/^block Y "Yank" at 11,10 /m);
+  expect(t).toMatch(/^block Spi_Drv "Spi_Drv" at /m);
+  expect(t).toMatch(/^block Spi_Hal "Spi_Hal" at /m);
+  expect(t).toMatch(/^block Spi_Rte "Spi_Rte" at /m);
+  expect(t).toMatch(/^Spi_Drv -> Spi_Hal$/m);
+  expect(t).toMatch(/^Spi_Hal -> Spi_Rte$/m);
+  expect(t.split('\n').filter(l => l && !l.startsWith('@canvas') && !t0.split('\n').includes(l))).toHaveLength(5);   // 定義行 3 と接続行 2 だけ
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(5);
+
+  // 既存の block の名付け直し(F2)の Tab は読み順の次の block の編集へ移るまま(足さない)
+  await b('X').click();
+  await page.keyboard.press('F2');
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Xenon');
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await expect(inline).toHaveValue('Yank');
+  await page.keyboard.press('Escape');
+  t = await getEditorText(page);
+  expect(t).toMatch(/^block X "Xenon" at 1,10 /m);
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(5);
+
+  // group の「+ 中にブロック」で足した block も同じ: 名前 → Tab → 名前 → Enter で group の中に 2 個・接続 1 本
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '+ グループ追加' }).click();
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await page.keyboard.type('Can_If');
+  await page.keyboard.press('Tab');
+  await expect(inline).toBeFocused();
+  await page.keyboard.type('Can_Trcv');
+  await page.keyboard.press('Enter');
+  t = await getEditorText(page);
+  expect(t).toMatch(/^block Can_If "Can_If" at /m);
+  expect(t).toMatch(/^block Can_Trcv "Can_Trcv" at /m);
+  expect(t).toMatch(/^Can_If -> Can_Trcv$/m);
+  expect(t).toMatch(/^block Y "Yank" at 11,10 /m);
+
+  // 空の図(「新規」)でも同じ。名前が 1 つのラベルに連ならない
+  await page.getByRole('button', { name: '新規', exact: true }).click();
+  await page.getByRole('button', { name: '+ ブロック追加' }).click();
+  await page.keyboard.type('Spi_Drv');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Spi_Hal');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Spi_Rte');
+  await page.keyboard.press('Enter');
+  await expect(inline).toHaveCount(0);
+  t = await getEditorText(page);
+  expect(t.split('\n').filter(l => l.startsWith('block ')).map(l => l.split(' ')[1])).toEqual(['Spi_Drv', 'Spi_Hal', 'Spi_Rte']);
+  expect(t).toMatch(/^Spi_Drv -> Spi_Hal$/m);
+  expect(t).toMatch(/^Spi_Hal -> Spi_Rte$/m);
+  expect(t).not.toMatch(/Spi_DrvSpi_Hal/);
 });
 
 test('junior-02: group の中の block から Tab で足した block は同じ group に入り、足りなければ group が広がる', async ({ page }) => {

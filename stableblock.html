@@ -661,11 +661,14 @@ function releaseFocus(){if(inlineEd)finishInlineEdit(true);const a=document.acti
 // キャンバス上のラベル編集(ダブルクリック / F2 / Enter)
 // 要素の上に入力欄を重ね、打つたびに本文のラベルの 1 行だけを書き換える(新しい要素の ID はプロパティ欄と同じくラベルに追従)。
 // Enter・欄の外を押すと確定、Esc で開く前に戻す(本文も元のバイトに戻る)。note は複数行(Shift+Enter で改行)。
-// Tab / Shift+Tab は確定して、同じ種類の次 / 前の要素(読み順: 上の行から、左から)のラベル編集へ移る(続けて名付けるのにマウスへ戻らない)
+// Tab / Shift+Tab は確定して、同じ種類の次 / 前の要素(読み順: 上の行から、左から)のラベル編集へ移る(続けて名付けるのにマウスへ戻らない)。
+// 足したばかりでまだ名前の無い block の Tab と、移る先の無い block の Tab は右につないだ次の block を足す(inlineTabAction)
 // ═══════════════════════════════════════════════
-let inlineEd=null,pendingLink=null;   // pendingLink: linkAdd が足した block の編集を始めるとき 'child' | 'sibling'(その編集中の Tab の向き)
+let inlineEd=null,pendingLink=null,freshAddId=null;   // pendingLink: linkAdd が足した block の編集を始めるとき 'child' | 'sibling'(その編集中の Tab の向き)
+// freshAddId: ツール欄の「+ ブロック追加」・group の「+ 中にブロック」で直前に足した block。まだ仮の ID(名前が無い)のうちは、その名前を打っている間の Tab も
+// つないで右に足す(core/select inlineEditLink。プロパティ欄の案内「Tab: つないで右に追加」と同じ流れ)
 function startInlineEdit(type,id){
-  const startLink=pendingLink;pendingLink=null;
+  const startLink=window.StableBlockSelect.inlineEditLink(pendingLink,type,id,freshAddId,window.StableBlockLabel.isPlaceholderId(id));pendingLink=null;
   if(inlineEd)finishInlineEdit(true);
   const it=type==='block'?parsed.blockMap[id]:type==='group'?parsed.groupMap[id]:parsed.noteMap[id];if(!it)return;
   sel=[{type,id}];renderProps();renderSVG();
@@ -689,17 +692,22 @@ function startInlineEdit(type,id){
     else if(e.key==='Enter'&&!(isNote&&e.shiftKey)){e.preventDefault();e.stopPropagation();finishInlineEdit(true);askIdIfUnnamed();}
     else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finishInlineEdit(false);}
     else if(e.key==='Tab'){e.preventDefault();e.stopPropagation();
-      // つないで追加した block の名前を打っている間の Tab は同じ向きに次の block を足す。それ以外は読み順の次(Shift+Tab は前)の編集へ。
-      // 移る先が無ければ今の編集を続ける(確定してしまうと、続けて打った名前が今の block を書き換える)
-      const act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey);
+      // つないで追加した block・足してまだ名前の無い block の名前を打っている間の Tab は同じ向きに次の block を足す。それ以外は読み順の次(Shift+Tab は前)の編集へ。
+      // 移る先が無ければ block は右につないで足し、group・note は読み順の反対の端へ回る(core/select inlineTabAction)。回った先が今の要素なら文字を選び直す
+      // (続けて打った文字が今のラベルの後ろに黙って連ならない)
+      const nx=nextInReadingOrder(ed.type,ed.id,e.shiftKey?-1:1);
+      const act=window.StableBlockSelect.inlineTabAction(ed.type==='block'?ed.link:null,e.shiftKey,{type:ed.type,hasNext:!!nx,hasPrev:!!nx});
       if(act==='child'||act==='sibling'){finishInlineEdit(true);if(!askIdIfUnnamed())linkAdd(act);return;}
-      const nx=nextInReadingOrder(ed.type,ed.id,act==='prev'?-1:1);if(!nx)return;
-      finishInlineEdit(true);revealAndEdit(nx.type,nx.id);}});
+      const to=act==='first'||act==='last'?endInReadingOrder(ed.type,act):nx;
+      if(!to||to.id===ed.id){el.select();return;}
+      finishInlineEdit(true);revealAndEdit(to.type,to.id);}});
   el.addEventListener('blur',()=>{if(inlineEd===ed)finishInlineEdit(true);});
   el.focus();el.select();
 }
-function nextInReadingOrder(type,id,dir){const list=(type==='block'?parsed.blocks:type==='group'?parsed.groups:parsed.notes).slice().sort((a,b)=>a.y-b.y||a.x-b.x||a.line-b.line);
+function readingOrder(type){return (type==='block'?parsed.blocks:type==='group'?parsed.groups:parsed.notes).slice().sort((a,b)=>a.y-b.y||a.x-b.x||a.line-b.line);}
+function nextInReadingOrder(type,id,dir){const list=readingOrder(type);
   const i=list.findIndex(x=>x.id===id);return i<0?null:list[i+dir]||null;}
+function endInReadingOrder(type,end){const list=readingOrder(type);return (end==='first'?list[0]:list[list.length-1])||null;}
 function finishInlineEdit(commit){const ed=inlineEd;if(!ed)return;inlineEd=null;
   if(!commit&&ed.pushed){dsl=ed.snap;history.pop();sel=[{type:ed.type,id:ed.origId}];autoIds.clear();ed.auto.forEach(x=>autoIds.add(x));}
   ed.el.remove();if(commit&&ed.pushed)relabelElsewhere(ed.type,ed.id,ed.from);refresh(!ed.pushed);if(commit&&ed.pushed)renderSearchHits();}
@@ -1021,11 +1029,11 @@ function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.b
 // The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
 function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}
 function addBlock(){pushHistory();const id=`__new_${addCounter++}`,prev=lastAddedId&&parsed.blockMap[lastAddedId]||null;
-  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
+  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
 // gid を省くと選択中の group(ラベルの入力で ID が変わった直後でも今の ID を使う)。prev は group の直下の block(子 group の中は数えない)
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
-  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
+  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 // 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
 // 選んでいない要素が間に挟まっていれば、選んだ block だけを空きへ寄せて囲む(選んでいない要素の所属は変えない)。寄せられなければ囲まずに理由を出す
@@ -1217,7 +1225,7 @@ function exportSB(){if(nameGate(exportSB))return;fileNote=null;const SC=window.S
   savedNote(sbFileName,'保存した');}
 // 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
 const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
-function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
+function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=freshAddId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
 function exportSVG(){if(nameGate(exportSVG))return;const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した');showExportReport('SVG',includeDrops());}
