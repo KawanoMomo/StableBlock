@@ -1,0 +1,7 @@
+# GPIO データフロー図
+@canvas width=960 height=520 grid=20
+block GPIODrv "GPIODrv" at 4,4 size 8x3 color=#6366F1 text=#FFFFFF round=4
+block gpiodata "GPIOData" at 14,4 size 8x3 color=#0EA5E9 text=#FFFFFF round=4
+block rte "RTE" at 24,4 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+GPIODrv -> gpiodata
+gpiodata -> rte

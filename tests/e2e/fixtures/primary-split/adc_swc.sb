@@ -1,0 +1,6 @@
+# ADC 構成図
+@canvas width=960 height=520 grid=20
+@include "shared/common.sb"
+block ADCDrv "ADCDrv" at 4,2 size 8x3 color=#6366F1 text=#FFFFFF round=4
+ADCDrv -> rte "req"
+rte -> hal
