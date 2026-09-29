@@ -593,6 +593,42 @@ function removeIncludeInDsl(dsl, line) {
   return lines.join('\n');
 }
 
+// ─── 図の改名(HTML 版のステータスバーの図名をダブルクリック) ───
+// 図 oldKey(一緒に読み込んだ図のキー。新規の図のように読み込んでいなければ null)の名前を input に変える計画。
+// 名前は .sb 保存と全部の書き出しの名前になる。拡張子を打たなければ元の拡張子(無ければ .sb)を付け、フォルダは元の図のまま。
+// 改名した図を @include している一緒に読み込んだ図は、その @include 行のファイル名の部分だけを新しい名前に書き換える(書いてあるフォルダはそのまま)。
+// 返り値: { error }(名前が空・使えない文字・同じ名前の図が既にある)、{ same: true }(変わらない)、
+// { name, key, changes: [{ path, lines: [行], text(書き換え後の本文) }] }(key は新しいキー。oldKey が null なら null)
+function planFileRename(files, oldKey, input, current = 'diagram.sb') {
+  const raw = String(input == null ? '' : input).trim();
+  const oldName = oldKey ? String(oldKey).split('/').pop() : String(current || 'diagram.sb');
+  if (!raw) return { error: '名前が空' };
+  if (/[\/:*?"<>|]/.test(raw) || /[\u0000-\u001f]/.test(raw)) return { error: '名前に使えない文字(\ / : * ? " < > |)がある' };
+  const ext = (oldName.match(/\.(sb|stableblock|txt)$/i) || ['.sb'])[0];
+  const name = /\.(sb|stableblock|txt)$/i.test(raw) ? raw : raw + ext;
+  if (/^\.(sb|stableblock|txt)$/i.test(name) || /^\.+$/.test(raw)) return { error: '名前が空' };
+  if (name === oldName) return { same: true };
+  const keys = Object.keys(files || {});
+  const dup = keys.find(k => k !== oldKey && k.split('/').pop().toLowerCase() === name.toLowerCase());
+  if (dup) return { error: `同じ名前の図「${dup}」が既に読み込まれている` };
+  if (!oldKey) return { name, key: null, changes: [] };
+  const dir = String(oldKey).split('/').slice(0, -1);
+  const key = [...dir, name].join('/');
+  const changes = [];
+  for (const f of keys) {
+    if (f === oldKey) continue;
+    const hit = includeLines(files[f]).filter(x => loadedKeyOf(files, f, x.path) === oldKey);
+    if (!hit.length) continue;
+    const lines = String(files[f]).split('\n');
+    for (const { line, path } of hit) {
+      const to = [...String(path).split('/').slice(0, -1), name].join('/');
+      lines[line - 1] = lines[line - 1].replace(`"${path}"`, `"${to}"`);
+    }
+    changes.push({ path: f, lines: hit.map(x => x.line), text: lines.join('\n') });
+  }
+  return { name, key, changes };
+}
+
 // 書き出しのファイル名: 図のパス(または .sb 保存の名前)から .sb / .stableblock / .txt を除き、suffix(透過 PNG の _transparent など)と拡張子 ext を付ける。
 // 一括の zip の中身も 1 枚の書き出し(HTML 版のツールバー・VSCode 拡張の保存ダイアログの既定名)もこれで名付ける。新規の図は diagram.sb なので diagram.{ext}
 function bulkFileName(path, ext, suffix = '') {
@@ -673,4 +709,4 @@ function bulkFormatOrder(fmts, last) {
   return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
 }
 
-;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
+;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, planFileRename, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
