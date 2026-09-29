@@ -5,7 +5,7 @@
 // DOM API と import は使用禁止 — node --test で検証する純粋関数のみ。経路の点列は呼び出し側が
 // core/label/label-core.mjs の computePorts / pathPoints で作って渡す(描画と同じ計算)。
 //
-// 返す診断: { line, level: 'error' | 'warn', msg }。line は parse した本文の行番号(1 始まり)。
+// 返す診断: { line, level: 'error' | 'warn', msg, refs?, pick? }。line は parse した本文の行番号(1 始まり)。pick は直す相手の要素の ID(GUI で行を押すと選ぶ)。
 
 const KEYWORDS = ['block', 'group', 'note', '@canvas', '@include'];
 const BOX_FORM = { block: 'block ID "ラベル" at X,Y size WxH', group: 'group ID "ラベル" at X,Y size WxH', note: 'note ID "テキスト" at X,Y size WxH' };
@@ -197,6 +197,7 @@ const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 // 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)。
 // where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)。
 // 相手のある診断(重なり・またぎ・横切り・2 本目・ラベル・キャンバスの外)は refs に相手の行(本文の行番号)を持つ(どの図とどの図の間の診断かを includeImpact が見る)
+// 直す相手の要素が決まる診断は pick にその ID を持つ(GUI のエラー欄で行を押すと選ぶ要素。横切りは横切られた block、重なりは重なった 2 つ)
 function checkDiagram(parsed, lines, paths, labelIssues, where) {
   const ref = where || (n => `L${n}`);
   const out = [];
@@ -228,39 +229,39 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
       continue;
     }
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
-    if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
+    if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない`, pick: [c.from, c.to] });
     // 同じ向きの 2 本目だけを警告する。行き(a -> b)と戻り(b -> a)は別の線(BLK-owner-20260928-2255-2)。双方向(-->)は両方の向きを持つ
     const dirs = [c.from + '\u0000' + c.to].concat(c.bidir ? [c.to + '\u0000' + c.from] : []);
     const dup = dirs.find(k => seen[k]);
-    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]] });
+    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]], pick: [c.from, c.to] });
     else dirs.forEach(k => { seen[k] = c.line; });
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
-    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line] });
+    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line], pick: [q.id, p.id] });
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
-    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line] });
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line], pick: [item.id] });
   }
   // 追加した要素の仮の ID(`__new_N`)が残っている: ラベルが日本語だけだと ID は自動で付かない。保存・レビューの前に名前を付ける
   for (const [kind, list] of [['block', parsed.blocks], ['group', parsed.groups], ['note', parsed.notes]]) {
     for (const it of list || []) {
       if (!String(it.id).startsWith('__new_')) continue;
       const label = String(it.label || '').replace(/\\n/g, ' ');
-      out.push({ line: it.line, level: 'warn', msg: `${kind}「${it.id}」(「${label.length > 20 ? label.slice(0, 20) + '…' : label}」)はまだ仮の ID。英数字と _ で名前を付ける(プロパティ欄の ID)` });
+      out.push({ line: it.line, level: 'warn', msg: `${kind}「${it.id}」(「${label.length > 20 ? label.slice(0, 20) + '…' : label}」)はまだ仮の ID。英数字と _ で名前を付ける(プロパティ欄の ID)`, pick: [it.id] });
     }
   }
   if (parsed.canvas) {
     const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
       const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
-      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, pick: [item.id], ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
     }
   }
   if (paths) {
     const g = parsed.canvas.grid;
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
-      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line] });
+      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line], pick: [block.id] });
     }
   }
   for (const { conn, kind, item } of labelIssues || []) {
@@ -269,7 +270,7 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
       : kind === 'title' ? `${head}が group「${item.id}」(${ref(item.line)})の見出しに重なる`
       : kind === 'note' ? `${head}が note「${item.id}」(${ref(item.line)})の下に隠れる`
       : `${head}が接続「${connText(item)}」(${ref(item.line)})のラベルに重なる`;
-    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line] });
+    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line], pick: [conn.from, conn.to] });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -369,7 +370,7 @@ function checkIncluded(parsed, exp, paths, opts = {}) {
     let msg = d.msg;
     if (unread && /という ID の block \/ note が無い$/.test(msg)) msg += unread;
     if (r.file !== exp.file && opts.inline !== false) msg += `(${name(r.file)} L${r.line})`;
-    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
+    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.pick ? { pick: d.pick } : {}), ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);

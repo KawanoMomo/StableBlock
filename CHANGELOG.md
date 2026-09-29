@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-junior-20260929-2012-friction: エラー欄の表示中の図の警告・エラーの行を押すと、その行の要素を選んで本文をその行へ送る。線の横切りは横切られた block、重なりは重なった 2 つを選び(続けて押すと 1 つずつ。隠れた block も選べる)、1 つならプロパティ欄の X に入ってそのまま位置を打てる
 - BLK-owner-20260929-1928-1: 行末の `# ...` コメント(block / group / note / 接続 / @canvas)を core の parseDSL → serializeDSL の往復で落とさず、バイト一致で戻す
 - BLK-junior-20260929-1908-wish: 読み込んだ図を白紙化して別の図を起こしたまま「.sb 保存」・1 枚の書き出しを押すと、出す前にステータスバーの図名の欄が開いて名前を聞く(打って Enter で改名して出す、Enter だけなら元の名前、Esc でやめる)。保存・書き出しの後は出した名前を図名の横に出す
 - BLK-porter-20260929-1908: BOM 付き UTF-8 の .sb を「.sb 読込」(ファイル・フォルダ・ドロップ)で開くと BOM の有無を図ごとに覚え、「.sb 保存」で同じく付けて書き出す(無変更保存がバイト一致。編集後も BOM は残り、新規の図には付けない)

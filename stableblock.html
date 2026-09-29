@@ -95,6 +95,8 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 #error-bar .diag-inc { color:#CBD5E1; border-bottom:1px solid rgba(255,255,255,.15); margin-bottom:2px; padding-bottom:2px; }
 #error-bar button.diag-other { display:block; width:100%; text-align:left; background:none; border:0; padding:0; margin:0; font:inherit; line-height:inherit; cursor:pointer; }
 #error-bar button.diag-other:hover { text-decoration:underline; }
+#error-bar .diag-here { cursor:pointer; }
+#error-bar .diag-here:hover { text-decoration:underline; }
 #line-nums .ln-hit { color:#FDE68A; background:rgba(253,230,138,.15); }
 #editor-wrap { flex:1; display:flex; overflow:hidden; background:var(--bg); }
 #line-nums { width:40px; padding:12px 4px 12px 0; text-align:right; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; color:var(--dim); user-select:none; overflow:hidden; flex-shrink:0; }
@@ -1103,15 +1105,25 @@ function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.
 function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
 // 一緒に読み込んだ図を開き、line があればその行の要素を選んで本文をその行へ送る(エラー欄に出る図名はどれもこれで開く)
 function openImpact(i){const d=impact.added[i];if(d)openLoadedAt(d.path,d.line);}
-function openLoadedAt(path,line){if(!hasLoaded(path))return;openLoaded(path);if(!line)return;const l=dsl.split('\n')[line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
-  const find=id=>[...parsed.blocks.map(x=>['block',x]),...parsed.groups.map(x=>['group',x]),...parsed.notes.map(x=>['note',x])].find(([,x])=>x.id===id),s=(m?[m[2]]:c?[c[1],c[3]]:[]).map(find).filter(Boolean).map(([type,x])=>({type,id:x.id}));
-  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:path,line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+function openLoadedAt(path,line){if(!hasLoaded(path))return;openLoaded(path);if(!line)return;goLine(line,lineIds(line));}
+// 本文の line 行が書いている要素の ID(block / group / note はその ID、接続は両端)
+function lineIds(line){const l=dsl.split('\n')[line-1]||'',m=l.match(/^\s*(block|group|note)\s+(\S+)/),c=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);return m?[m[2]]:c?[c[1],c[3]]:[];}
+// 表示中の図で ids の要素を選び(あるものだけ)、本文を line 行へ送って行番号に印を付ける
+function goLine(line,ids){const find=id=>[...parsed.blocks.map(x=>['block',x]),...parsed.groups.map(x=>['group',x]),...parsed.notes.map(x=>['note',x])].find(([,x])=>x.id===id),s=[...new Set(ids)].map(find).filter(Boolean).map(([type,x])=>({type,id:x.id}));
+  if(s.length){sel=s;renderSVG();renderProps();renderStatus();}hitLine={file:dslFile,line};renderLineNums();const ed=document.getElementById('editor');ed.scrollTop=Math.max(0,(line-3)*20);document.getElementById('line-nums').scrollTop=ed.scrollTop;}
+// 表示中の図のエラー・警告の行を押す: 診断が直す相手を持てば(core/check の pick。横切りは横切られた block、重なりは重なった 2 つ)それを、無ければその行の要素を選び、本文をその行へ送る。
+// 相手が 2 つ以上の行を続けて押すと 1 つずつ選ぶ(全部 → 1 つ目 → 2 つ目 → 全部。重なって隠れた block もプロパティ欄の X/Y を打てる)。
+// 1 つを選んだらプロパティ欄の X に入る(そのまま値を打ち、Tab で Y へ。欄を押し直さない)
+let diagCycle=null;
+function openDiag(i){const d=lastDiag[i];if(!d)return;const ids=[...new Set(d.pick||lineIds(d.line))],key=d.line+'|'+d.msg,cur=sel.map(s=>s.id).join('|');
+  let n=diagCycle&&diagCycle.key===key&&diagCycle.sel===cur&&ids.length>1?(diagCycle.n+1)%(ids.length+1):0;const pick=n?[ids[n-1]]:ids;
+  goLine(d.line,pick);diagCycle={key,n,sel:sel.map(s=>s.id).join('|')};if(sel.length===1)refocusField('x');}
 // 診断の文末の include 先の場所「(shared/common.sb L15)」は、その図を一緒に読み込んでいれば押すとその図のその行を開く
 function diagMsgHtml(d){const suf=`(${d.file} L${d.fileLine})`,k=d.file&&d.file!==dslFile&&d.msg.endsWith(suf)&&loadedKey(d.file);if(!k)return esc(d.msg);
-  return `${esc(d.msg.slice(0,-suf.length))}(<button type="button" class="diag-file" data-path="${esc(k)}" data-line="${d.fileLine}" title="その図を開いてその行へ" onclick="openLoadedAt(this.dataset.path,+this.dataset.line)">${esc(d.file)} L${d.fileLine}</button>)`;}
+  return `${esc(d.msg.slice(0,-suf.length))}(<button type="button" class="diag-file" data-path="${esc(k)}" data-line="${d.fileLine}" title="その図を開いてその行へ" onclick="event.stopPropagation();openLoadedAt(this.dataset.path,+this.dataset.line)">${esc(d.file)} L${d.fileLine}</button>)`;}
 function renderErrors(){const el=document.getElementById('error-bar');lastDiag=diagnose();measureImpact();const inc=impact.includers,oth=impact.added,edited=inc.length&&impactBase[dslFile]!==undefined&&impactBase[dslFile]!==dsl;
   if(lastDiag.length||inc.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));
-    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>`<button type="button" class="diag-file" data-path="${esc(k)}" title="その図を開く" onclick="openLoadedAt(this.dataset.path)">${esc(baseName(k))}</button>`).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${diagMsgHtml(d)}</div>`).join('')
+    el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>`<button type="button" class="diag-file" data-path="${esc(k)}" title="その図を開く" onclick="openLoadedAt(this.dataset.path)">${esc(baseName(k))}</button>`).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map((d,i)=>`<div class="diag diag-${d.level} diag-here" role="button" tabindex="0" title="押すとその行の要素を選び、本文をその行へ送る(1 つならプロパティ欄の X に入る。相手が 2 つあれば続けて押すと 1 つずつ選ぶ)" onclick="openDiag(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();openDiag(${i});}">L${d.line}: ${diagMsgHtml(d)}</div>`).join('')
       +oth.map((d,i)=>`<button type="button" class="diag diag-${d.level} diag-other" data-path="${esc(d.path)}" data-line="${d.line}" title="その図を開いてその行へ" onclick="openImpact(${i})">ほかの図: ${esc(baseName(d.path))} L${d.line}: ${esc(d.msg)}</button>`).join('');}else{el.style.display='none';}}
 // ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる。
 // ダブルクリック(フォーカスして F2)でその場の欄になり、表示中の図の名前を変える(fileEdit。Enter 確定・Esc 取消・外を押すと確定)
