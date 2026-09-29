@@ -354,8 +354,8 @@ let selClicked=false, justLinked=[];
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
 // 一緒に読み込んだ図をまたぐ操作(表示する図の切替・図をまたぐ改名)は、全部の図の本文と表示中の図を 1 段として戻す
-function snapAll(){syncLoaded();return {ws:true,dsl,dslFile,name:sbFileName,files:{...includeFiles},folder:loadedFolder};}
-function restoreAll(s){Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,s.files);loadedFolder=s.folder||'';dsl=s.dsl;dslFile=s.dslFile;setSbFileName(s.name);}
+function snapAll(){syncLoaded();return {ws:true,dsl,dslFile,name:sbFileName,files:{...includeFiles},folder:loadedFolder,bom:[...bomFiles]};}
+function restoreAll(s){Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,s.files);loadedFolder=s.folder||'';bomFiles=new Set(s.bom||[]);dsl=s.dsl;dslFile=s.dslFile;setSbFileName(s.name);}
 function pushHistoryAll(){history.push(snapAll());if(history.length>MAX_HIST)history.shift();future.length=0;}
 function undo(){if(!history.length)return;const h=history.pop();if(h&&h.ws){future.push(snapAll());restoreAll(h);}else{future.push(dsl);dsl=h;}sel=[];refresh(true);renderSearchHits();}
 function redo(){if(!future.length)return;const h=future.pop();if(h&&h.ws){history.push(snapAll());restoreAll(h);}else{history.push(dsl);dsl=h;}sel=[];refresh(true);renderSearchHits();}
@@ -459,6 +459,8 @@ function readInclude(p){return window.StableBlockCheck.loadedReader(includeFiles
 // ツールバーの検索は表示中でない図の当たりも図と行で並べ(クリックでその図を開く)、プロパティ欄の ID の改名はほかの図が同じ ID を使っていれば
 // 全部の図に当てる(core/label の planRename。CLI の --rename・VSCode の F2 と同じ)。「.sb 保存」は表示中の図と、変わったほかの図を全部書き出す
 // 検索は一緒に読み込んだ図の名前(パス)にも当たり、当たった図は一覧の先頭に図名だけの行で出す(押すか Enter で開く)。ステータスバーの図名を押すと、空の検索欄で読み込んだ図の名前を全部並べる(searchListAll)
+// BOM 付きで読んだ図のキー(core/check decodeSbBytes)。「.sb 保存」で同じく BOM を付けて書き出す(sbSaveText)。新規の図・読み込んでいない図は付けない
+let bomFiles=new Set();
 let loadedTexts={},searchHits=[],searchFiles=[],searchHitsOpen=false,searchListAll=false,idNote=null;
 const hasLoaded=p=>Object.prototype.hasOwnProperty.call(includeFiles,p);
 function syncLoaded(){if(dslFile&&hasLoaded(dslFile))includeFiles[dslFile]=dsl;}
@@ -1014,10 +1016,7 @@ function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type===
 function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;
   const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
   const p=L.placeBeside([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parentsNow()[ref.id];
-  pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`
-${blockLine(id,p,ref)}
-`+from.map(f=>`${f} -> ${id}
-`).join('');
+  pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
   if(pid){parsed=parseDoc();const gr=parsed.groupMap[pid];if(gr)L.growGroupFor([...parsed.blocks,...parsed.groups].filter(x=>x.id!==id),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});}
   lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();revealAndEdit('block',id);}
 // 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
@@ -1137,7 +1136,7 @@ function commitFileRename(value,keep){if(!fileEdit)return;syncLoaded();const SC=
   if(own){const remap=o=>{const next={};Object.keys(o).forEach(k=>{next[k===own?plan.key:k]=o[k];});return next;};
     const next=remap(includeFiles);plan.changes.forEach(c=>{next[c.path]=c.text;});Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,next);
     if(Object.prototype.hasOwnProperty.call(impactBase,own)){const bp=SC.planFileRename(impactBase,own,value,sbFileName);impactBase=remap(impactBase);(bp.changes||[]).forEach(c=>{impactBase[c.path]=c.text;});}
-    impactCache.clear();dslFile=plan.key;if(loadedTexts[plan.key]===undefined)loadedTexts[plan.key]=null;}
+    impactCache.clear();if(bomFiles.delete(own))bomFiles.add(plan.key);dslFile=plan.key;if(loadedTexts[plan.key]===undefined)loadedTexts[plan.key]=null;}
   setSbFileName(plan.name);
   fileNote={text:`名前を ${plan.name} にした`+(plan.changes.length?`・@include を書き換えた図: ${plan.changes.map(c=>`${baseName(c.path)}(${c.lines.length} 行)`).join('、')}`:'')+'。「.sb 保存」で書き出す'};
   refresh(true);const b=document.getElementById('status-file');if(b)b.focus();}
@@ -1163,8 +1162,8 @@ function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbF
 // 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)の名前: .sb 保存と同じ図の名前から「一括」と同じ関数で付ける(新規の図は diagram.*)
 function exportName(ext,suffix){return window.StableBlockCheck.bulkFileName(sbFileName,ext,suffix);}
 // 一緒に読み込んだほかの図も、変わっていれば(図をまたぐ改名など)続けて同じファイル名で書き出す
-function exportSB(){fileNote=null;download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
-  rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text)),200*(i+1));});
+function exportSB(){fileNote=null;const SC=window.StableBlockCheck;download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(SC.sbSaveText(dsl,!!dslFile&&bomFiles.has(dslFile))));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
+  rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(SC.sbSaveText(r.text,bomFiles.has(r.k)))),200*(i+1));});
   if(rest.length){const el=document.getElementById('export-report');el.innerHTML=`<b>.sb 保存: ${rest.length+1} 枚</b><ul>${[sbFileName,...rest.map(r=>r.k)].map(n=>`<li>${esc(n)}</li>`).join('')}</ul><div class="hint">一緒に読み込んだ図のうち変わったものも書き出した。クリックで閉じる</div>`;el.hidden=false;}
   renderStatus();}
 // 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
@@ -1178,7 +1177,8 @@ function exportPNG(){pngCanvas(false).then(c=>{if(c){download(exportName('png'),
 function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
 async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
-function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
+// バイト列で読み、UTF-8 の本文と先頭の BOM の有無に分ける(core/check decodeSbBytes)。読めなければ null
+function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(window.StableBlockCheck.decodeSbBytes(new Uint8Array(ev.target.result)));rd.onerror=()=>r(null);rd.readAsArrayBuffer(file);});}
 // .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
 // どちらも @include を読込んだパスからの相対で解き、ほかの読んだ図から include されていない図が本文になる(core/check の pickMainDiagram)
 function openOpenMenu(btn){const m=document.getElementById('open-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
@@ -1188,9 +1188,9 @@ async function importSB(input,folder){const files=[...(input.files||[])];input.v
   const C=window.StableBlockCheck,list=files.map(f=>({path:(f.webkitRelativePath||f.name).split('\\').join('/'),file:f})),inFolder=folder?C.folderSbEntries(list):list;
   await loadSbEntries(folder?C.trimCommonDir(inFolder):list,folder,folder?C.pickedFolderName(inFolder):'');}
 async function loadSbEntries(list,folder,folderName){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
-  const texts=await Promise.all(list.map(d=>readFileText(d.file)));if(texts.every(t=>t===null))return;
+  const reads=await Promise.all(list.map(d=>readFileText(d.file))),texts=reads.map(r=>r?r.text:null);if(texts.every(t=>t===null))return;
   const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
-  closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});loadedFolder=folderName||'';
+  closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});loadedFolder=folderName||'';bomFiles=new Set(list.filter((d,i)=>reads[i]&&reads[i].bom).map(d=>d.path));
   dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
 // プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
 // フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む

@@ -664,6 +664,19 @@ export function bulkDrops(list) {
 }
 
 // ─── 「.sb 読込 ▾」: ファイルを選ぶ・フォルダを選ぶ・ドロップ ───
+// 読み込んだファイルのバイト列(Uint8Array)を UTF-8 で読み、先頭の BOM(EF BB BF)の有無を返す。text には BOM を含めない
+// (BOM の後ろにもう 1 つ U+FEFF があれば本文の文字として残す)。BOM 付きで読んだ図は「.sb 保存」で sbSaveText が BOM を戻す
+export function decodeSbBytes(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+  const bom = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF;
+  return { text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(bom ? b.subarray(3) : b), bom };
+}
+
+// 保存する本文: BOM 付きで読んだ図(bom)は先頭に BOM を付ける。開いて何もせず保存すれば元のファイルと 1 バイトも変わらない
+export function sbSaveText(text, bom) {
+  return (bom ? '\uFEFF' : '') + String(text ?? '');
+}
+
 // 読み込める図か: .sb / .stableblock(じかに選んだ・落としたファイルは .txt も)。フォルダの中は隠しフォルダ(.git など)の下を読まない
 export function sbLoadable(path, inFolder) {
   const p = String(path).split('\\').join('/');
