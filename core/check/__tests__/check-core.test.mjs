@@ -698,3 +698,36 @@ test('badAttrValues: 数の属性(round / 接続の width / @canvas の width・
   assert.deepEqual(badAttrValues('conn', ' width=2.5'), []);
   assert.deepEqual(badAttrValues('canvas', ' width=0960 height=640 grid=20'), []);
 });
+
+// 一括書き出しの zip 名(BLK-junior-20260929-0605-wish): 形式だけの固定名だと、別の図の組を続けて書き出すと前の zip を上書きする
+import { bulkZipName, pickedFolderName } from '../check-core.mjs';
+
+test('bulkZipName: 主図が 1 枚ならその図名、共通部は数えない。別の組を続けて書き出すと別の名前になる', () => {
+  const common = 'block rte "RTE" at 8,1 size 4x2';
+  const swc = { 'uart_swc.sb': '@include "shared/common.sb"\nblock UartDrv "UART" at 1,1 size 4x2', 'common.sb': common };
+  const flow = { 'uart_dataflow.sb': '@include "shared/common.sb"\nblock tx "TX" at 1,1 size 4x2', 'common.sb': common };
+  assert.equal(bulkZipName(swc, 'xlsx'), 'uart_swc-xlsx.zip');
+  assert.equal(bulkZipName(flow, 'xlsx'), 'uart_dataflow-xlsx.zip');
+  assert.notEqual(bulkZipName(swc, 'xlsx'), bulkZipName(flow, 'xlsx'));
+  assert.equal(bulkZipName(swc, 'png-transparent'), 'uart_swc-png-transparent.zip');
+  assert.equal(bulkZipName({ 'sets/a.stableblock': 'block a "A" at 1,1 size 2x2' }, 'svg'), 'a-svg.zip');   // フォルダのパスは名前に入れない
+  assert.equal(bulkZipName(swc, 'xlsx', 'uart'), 'uart_swc-xlsx.zip');                                     // 主図 1 枚なら図名が先
+});
+
+test('bulkZipName: 主図が 2 枚以上ならフォルダ名、フォルダで読んでいなければ図名から組を区別する名前', () => {
+  const two = { 'uart_swc.sb': 'block a "A" at 1,1 size 2x2', 'uart_dataflow.sb': 'block b "B" at 1,1 size 2x2' };
+  assert.equal(bulkZipName(two, 'xlsx', 'uart-set'), 'uart-set-xlsx.zip');
+  assert.equal(bulkZipName(two, 'xlsx'), 'uart_swc+uart_dataflow-xlsx.zip');
+  const many = { 'spi_swc.sb': '@include "shared/common.sb"', 'can_swc.sb': '@include "shared/common.sb"', 'adc_swc.sb': '', 'common.sb': '' };
+  assert.equal(bulkZipName(many, 'svg'), 'spi_swc_他2枚-svg.zip');
+  assert.notEqual(bulkZipName(many, 'svg'), bulkZipName({ 'can_swc.sb': '', 'adc_swc.sb': '', 'gpio_swc.sb': '' }, 'svg'));
+  assert.equal(bulkZipName({ 'a.sb': '@include "b.sb"', 'b.sb': '@include "a.sb"' }, 'mermaid'), 'a-mermaid.zip');   // 循環は先頭の図名
+  assert.equal(bulkZipName({}, 'svg'), 'diagrams-svg.zip');
+});
+
+test('pickedFolderName: 全部の図のパスの先頭のフォルダが同じならその名前、ばらばら・フォルダ無しなら空', () => {
+  assert.equal(pickedFolderName([{ path: 'uart-set/uart_swc.sb' }, { path: 'uart-set/shared/common.sb' }]), 'uart-set');
+  assert.equal(pickedFolderName([{ path: 'a/x.sb' }, { path: 'b/y.sb' }]), '');
+  assert.equal(pickedFolderName([{ path: 'x.sb' }]), '');
+  assert.equal(pickedFolderName([]), '');
+});
