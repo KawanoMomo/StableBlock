@@ -9,9 +9,15 @@ import { inlineScripts, buildSingleHtml } from '../scripts/build-single-html.mjs
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// ツール欄の「操作とキー」に、ラベルの改行キー(Shift+Enter)が、その場編集の行の近くにほかのキーと同じ書式で載る(BLK-owner-20260930-0608-2)
+test('操作とキー: その場編集の行の近くに Shift+Enter でラベルを改行する行がある', () => {
+  const src = readFileSync(join(ROOT, 'stableblock.html'), 'utf8');
+  const help = src.slice(src.indexOf('id="help-keys"'), src.indexOf('</details>', src.indexOf('id="help-keys"')));
+  assert.match(help, /ラベルをその場で編集[^<]*<br><span style="color:var\(--muted\)">Shift\+Enter<\/span> ラベルを改行\(block・group・note・接続\)/);
+});
+
 test('build-single-html: stableblock.html が読む core/ の script は全部埋め込まれ、外のファイルを読む <script src> が残らない', () => {
   const src = readFileSync(join(ROOT, 'stableblock.html'), 'utf8');
-  assert.match(src, /<span style="color:var\(--muted\)">Shift\+Enter<\/span> ラベルを改行\(block・group・note・接続\)/);
   const wanted = [...src.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]);
   assert.ok(wanted.length >= 10, 'script src が見つからない: ' + wanted.length);
   const r = buildSingleHtml(ROOT);
