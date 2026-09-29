@@ -401,7 +401,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, growGroupFor };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -851,21 +851,23 @@ function setCP(a,b,prop,val){pushH();dsl=window.StableBlockLabel.setConnPropInDs
 function setCC(a,b,col){setCP(a,b,"color",col);}
 
 // Add
-function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot(parsed.blocks.concat(parsed.groups,parsed.notes),w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
+function freeSlot(w,h,minW){return window.StableBlockLayout.findFreeSlot(parsed.blocks.concat(parsed.groups,parsed.notes),w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid),minW:minW});}
 function blockLine(id,p,src){var w=src?src.w:8,h=src?src.h:3;var l='block '+id+' "New Block" at '+p.x+','+p.y+' size '+w+'x'+h+' color='+(src?src.color:'#3B82F6')+' text='+(src?src.textColor:'#FFFFFF')+' round='+(src?src.round:4);if(src&&src.borderColor)l+=' border='+src.borderColor;if(src&&src.style&&src.style!=='solid')l+=' style='+src.style;return l;}
 function groupOf(r,skip){return parsed.groups.filter(function(g){return !(skip&&skip[g.id])&&isIn(r,g)}).sort(function(a,b){return a.w*a.h-b.w*b.h})[0]||null;}
 function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.concat(parsed.groups,parsed.notes);if(!gr)return L.placeNext(all,w,h,{prev:prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});var p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();return p;}
 function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
 function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
-function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size 20x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
+function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8,12);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+(p.w||20)+'x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 // Link-add (core/select linkAddKey): with 1 block selected, Tab adds a block linked from it (column to its right, core/layout placeBeside),
 // Ctrl+Enter a sibling linked from the same sources (below it); same size / colors, then its label is edited in place. In a group it joins that group (core/layout growGroupFor)
 function linkAdd(kind){var s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;var L=window.StableBlockLayout;
   var from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
-  var p=L.placeBeside(parsed.blocks.concat(parsed.groups,parsed.notes),ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parNow()[ref.id];
+  var pid=parNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
+  var fixed=new Set(parsed.blocks.concat(parsed.groups,parsed.notes).filter(function(it){var o=EXP&&EXP.origin[it.line-1];return o&&o.file!==EXP.file;}).map(function(it){return it.id;}));
+  var p=L.placeBesideFit(parsed.blocks.concat(parsed.groups,parsed.notes),ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxIt(),fixed:fixed});
   pushH();var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,ref)+"\\n"+from.map(function(f){return f+' -> '+id+"\\n";}).join('');
-  if(pid){parsed=parseDoc();var gr=parsed.groupMap[pid];if(gr)L.growGroupFor(boxIt().filter(function(x){return x.id!==id;}),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});}
+  p.changes.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id:id}];selClk=false;go();notify();pendLk=kind;revealEdit('block',id);}
 // A new item outside the visible area: scroll it into view, then edit its label (this scroll does not commit the edit)
 var revealScr=false;

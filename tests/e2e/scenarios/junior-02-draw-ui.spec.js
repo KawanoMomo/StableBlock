@@ -1832,3 +1832,58 @@ test('junior-02: 警告行を押すと横切られた block・重なった 2 つ
   expect(text).toContain('block e "E" at 12,1 size 6x3');
   expect(text).toMatch(/^a -> c$/m);
 });
+
+// 先輩の図(共通部 rte.sb / hal.sb を @include)を見本に「新規」で起こす: 共通部だけの図に「+ グループ追加」すると、既定の幅 20 が
+// 入らなくても図の脇の空き(左上)に幅を詰めて置き、図の下端より下へ送らない。group の中の block から Tab で足した block は、
+// 右へ広げると共通部(この図からは動かせない)に掛かるので下に置く。X・Y・W・H を打たずに警告 0 で描ける(BLK-junior-20260929-1747-friction)
+test('junior-02: 共通部を取り込んだ新規の図で group は脇の空きに置かれ、中の block の Tab は共通部に掛からず、X・Y を打たずに警告 0 で描ける', async ({ page }) => {
+  const WDT = path.join(FIXTURES, 'junior-wdt');
+  await bootPlain(page);
+  await importSb(page, [path.join(WDT, 'wdg_swc.sb'), path.join(WDT, 'shared', 'rte.sb'), path.join(WDT, 'shared', 'hal.sb')]);
+  const props = page.locator('#prop-content');
+  await page.getByRole('button', { name: '新規' }).click();
+  await props.getByRole('button', { name: '取り込む', exact: true }).click();
+  await props.getByRole('button', { name: '取り込む', exact: true }).click();
+  await expect.poll(async () => (await getEditorText(page)).match(/^@include /gm)?.length).toBe(2);
+
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  // RTE(20,2)の左の空きに幅 18 で置く(以前は 20x8 が入らず、共通部の HAL の下 1,18 へ送られていた)
+  expect(await getEditorText(page)).toMatch(/^group __new_\d+ "New Group" at 1,1 size 18x8 /m);
+  await page.keyboard.type('Watchdog');
+  await page.keyboard.press('Enter');
+  await props.locator('[data-term=add-block-in-group]').click();
+  await page.keyboard.type('WdtMgr');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('WdtDrv');
+  await page.keyboard.press('Enter');
+  const all = boxes(await getEditorText(page));
+  expect(all.WdtDrv.x).toBe(all.WdtMgr.x);                               // 右の列は共通部の RTE に掛かるので WdtMgr の下
+  expect(all.WdtDrv.y).toBeGreaterThan(all.WdtMgr.y + all.WdtMgr.h);
+  expect(parentOf(all, 'WdtDrv')).toBe('Watchdog');
+  expect(all.Watchdog.w).toBe(18);                                       // group は下へだけ広がる
+  expect(await getEditorText(page)).toMatch(/^WdtMgr -> WdtDrv$/m);
+  await expect(status(page)).not.toContainText('Warn');
+
+  // 共通部へは右ボタンのドラッグで結ぶ(クリック 1 回で 1 本)
+  const center = async id => { const bb = await block(page, id).locator('rect').first().boundingBox(); return { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 }; };
+  for (const [a, b] of [['WdtDrv', 'rte'], ['rte', 'hal'], ['rte', 'os']]) {
+    const p = await center(a), q = await center(b);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(q.x, q.y, { steps: 5 });
+    await page.mouse.up({ button: 'right' });
+    await expect(page.locator('#conn-label-input')).toBeFocused();
+  }
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ 注釈追加' }).click();
+  await page.keyboard.type('WDT service period 10ms');
+  await page.keyboard.press('Enter');
+  const t = await getEditorText(page);
+  for (const c of ['WdtDrv -> rte', 'rte -> hal', 'rte -> os']) expect(t).toContain(c);
+  expect(t).toMatch(/^note WDT_service_period_10ms "WDT service period 10ms" at \d+,\d+ size 8x2 /m);
+  expect(t).not.toContain('__new_');
+  await expect(status(page)).toContainText('Conn: 4');
+  await expect(status(page)).not.toContainText('Warn');
+  await expect(status(page)).not.toContainText('Err');
+});

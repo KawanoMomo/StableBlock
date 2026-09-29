@@ -1028,7 +1028,7 @@ function removeConnProp(a,b,prop){pushHistory();dsl=window.StableBlockLabel.remo
 // groupSelected() creates a group from bounding box of selected blocks
 // ═══════════════════════════════════════════════
 // 新しい要素は既存の要素と重ならない空き位置に、上の行から左詰めで並べる
-function freeSlot(w,h){return window.StableBlockLayout.findFreeSlot([...parsed.blocks,...parsed.groups,...parsed.notes],w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});}
+function freeSlot(w,h,minW){return window.StableBlockLayout.findFreeSlot([...parsed.blocks,...parsed.groups,...parsed.notes],w,h,{cols:Math.floor(parsed.canvas.width/parsed.canvas.grid),minW});}
 // New block: same size / colors as the block placed before it, right next to it (wraps at the canvas / group edge)
 function blockLine(id,p,src){const w=src?src.w:8,h=src?src.h:3;let l=`block ${id} "New Block" at ${p.x},${p.y} size ${w}x${h} color=${src?src.color:'#3B82F6'} text=${src?src.textColor:'#FFFFFF'} round=${src?src.round:4}`;if(src&&src.borderColor)l+=` border=${src.borderColor}`;if(src&&src.style&&src.style!=='solid')l+=` style=${src.style}`;return l;}
 // Where the next block / paste goes (core/layout placeNext): right of prev, wrapping at the canvas edge — or, inside a group,
@@ -1048,7 +1048,8 @@ function addBlock(){pushHistory();const id=`__new_${addCounter++}`,prev=lastAdde
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
-function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+// group は既定 20x8。その行に入らなければ幅を 12 まで詰めて既存の図の脇の空きに置く(図の下端より下へ送らない。中に足す block で広がる)
+function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8,12);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size ${p.w||20}x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 // 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
 // 選んでいない要素が間に挟まっていれば、選んだ block だけを空きへ寄せて囲む(選んでいない要素の所属は変えない)。寄せられなければ囲まずに理由を出す
 function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;const L=window.StableBlockLayout;
@@ -1064,12 +1065,15 @@ function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type===
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
 // つないで追加(core/select linkAddKey): block を 1 つ選んで Tab で、その block から線を引いた先(右の列)に、Ctrl+Enter で同じ元から
 // 線を引いた兄弟(下)に、同じ大きさ・色の block を置いて結び(本文は定義行と接続行だけ)、そのままラベルのその場編集へ(名前を打って Enter)。
-// 置き場所は core/layout placeBeside。group の中の block からなら同じ group に入り、足りなければ group が広がる(core/layout growGroupFor)
+// 置き場所は core/layout placeBesideFit。group の中の block からなら同じ group に入り、足りなければ group が広がる。右へ広がると
+// @include の共通部(本文に無く動かせない)に掛かるなら ref の下に置く(線は同じ)
+function includedIds(){return new Set([...parsed.blocks,...parsed.groups,...parsed.notes].filter(it=>{const o=expanded&&expanded.origin[it.line-1];return o&&o.file!==expanded.file;}).map(it=>it.id));}
 function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;
   const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
-  const p=L.placeBeside([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below'),pid=parentsNow()[ref.id];
+  const pid=parentsNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
+  const p=L.placeBesideFit([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxItems(),fixed:includedIds()});
   pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
-  if(pid){parsed=parseDoc();const gr=parsed.groupMap[pid];if(gr)L.growGroupFor([...parsed.blocks,...parsed.groups].filter(x=>x.id!==id),gr,{x:p.x,y:p.y,w:ref.w,h:ref.h}).forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});}
+  p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();pendingLink=kind;revealAndEdit('block',id);}
 // 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
 let revealScroll=false;

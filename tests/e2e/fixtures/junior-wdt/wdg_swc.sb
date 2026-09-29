@@ -1,0 +1,7 @@
+@canvas width=960 height=520 grid=20
+@include "shared/rte.sb"
+@include "shared/hal.sb"
+block wdgdrv "WdgDrv" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4
+wdgdrv -> rte
+rte -> os
+rte -> hal

@@ -140,15 +140,26 @@ function overlaps(a, b, gap) {
 
 // w x h の要素を、既存の要素と gap グリッド以上離して置ける位置を読み順(上の行から、左から)で探す。
 // 横は cols(グリッド)に収まる範囲で探し、収まる所が無ければ既存の要素の下に置く。
+// opts.minW(「+ グループ追加」): その行に w の幅で置ける所が無ければ、幅を minW まで詰めて置ける所をその行で探す
+// (返り値に詰めた幅 w が付く)。既存の図の脇が空いているのに、図の下端より下へ送らないため。
 function findFreeSlot(items, w, h, opts = {}) {
   const x0 = opts.x0 ?? 1, y0 = opts.y0 ?? 1, gap = opts.gap ?? 1;
   const list = (items || []).filter(Boolean);
   const cols = Math.max(opts.cols ?? 48, x0 + w);
+  const minW = Math.min(w, opts.minW ?? w);
   const { bottom } = contentExtent(list);
+  const fits = r => !list.some(it => overlaps(r, it, gap));
   for (let y = y0; y <= bottom + gap; y++) {
     for (let x = x0; x + w <= cols; x++) {
-      const r = { x, y, w, h };
-      if (!list.some(it => overlaps(r, it, gap))) return { x, y };
+      if (fits({ x, y, w, h })) return { x, y };
+    }
+    if (minW < w) {
+      for (let x = x0; x + minW <= cols; x++) {
+        if (!fits({ x, y, w: minW, h })) continue;
+        let nw = minW;
+        while (nw < w && x + nw + 1 <= cols && fits({ x, y, w: nw + 1, h })) nw++;
+        return { x, y, w: nw };
+      }
     }
   }
   return { x: x0, y: Math.max(y0, bottom + gap) };
@@ -192,6 +203,21 @@ function placeBeside(items, ref, w, h, side, opts = {}) {
     if (!list.some(it => overlaps(r, it, gap))) return { x, y };
   }
   return { x, y: last };
+}
+
+// 「つないで追加」の置き場所と、ref を囲む group gr の広がり(placeBeside + growGroupFor)を 1 つで決める。
+// 右の列(side 'right')に置くと gr が広がって fixed(動かせない要素の id。@include の共通部など)を押し出すなら、
+// ref の下('below')に置き直す(線は同じ。group は下へ広がる)。下でも押し出すなら右のまま。返り値 { x, y, changes }
+function placeBesideFit(items, ref, w, h, side, opts = {}) {
+  const gr = opts.group || null, boxes = opts.boxes || items, fixed = opts.fixed || new Set();
+  const at = s => {
+    const p = placeBeside(items, ref, w, h, s);
+    const changes = gr ? growGroupFor(boxes, gr, { x: p.x, y: p.y, w, h }) : [];
+    return { x: p.x, y: p.y, changes, pushesFixed: changes.some(c => c.id !== gr.id && fixed.has(c.id)) };
+  };
+  let r = at(side);
+  if (r.pushesFixed && side === 'right') { const b = at('below'); if (!b.pushesFixed) r = b; }
+  return { x: r.x, y: r.y, changes: r.changes };
 }
 
 // 新しい子 child(items にまだ無い矩形)を group gr の中に入れる: gr を child が margin 以上内側に来るまで広げ、広がった gr が
@@ -515,4 +541,4 @@ function placeInGroupFit(items, gr, w, h, prev, margin = 1) {
   return { x: p.x, y: p.y, changes };
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, placeBeside, growGroupFor, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, placeBeside, placeBesideFit, growGroupFor, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };

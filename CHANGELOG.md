@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-junior-20260929-1747-friction: 「+ グループ追加」は既定の幅 20 が入らなくても、既存の図(共通部など)の脇の空きに幅を 12 まで詰めて置き、図の下端より下へ送らない。group の中の block から Tab で足す block は、右へ group を広げると @include の共通部(この図から動かせない)に掛かるなら下に置く(線は同じ・警告が出ない)。共通部を取り込んだ新規の図で group 1・block 2・注釈 1・接続 4 本を X・Y・W・H を打たずにクリック 9・キー入力 49 で描ける。VSCode 拡張も同じ
 - BLK-owner-20260930-0208-2: block・group・note・接続のラベルは、キャンバス上のその場編集でもプロパティ欄・接続パネルのラベル欄でも Shift+Enter で改行が入り、本文は改行の印 1 つになる(欄の中でも画面と同じ位置で改行して見える)。group の名前も 2 行で描く。Enter の確定・Tab・Ctrl+Enter の働きは変わらない。VSCode 拡張も同じ
 - BLK-owner-20260930-0208-1: ツール欄の「+ ブロック追加」・group の「+ 中にブロック」で足した block に名前を打って Tab でも、確定して右につないだ次の block を足す(名前 → Tab → 名前 → Tab → 名前 → Enter で鎖 3 個・接続 2 本)。読み順で次の既存 block の編集へ移ってそのラベルを黙って書き換えない。移る先の無い block の Tab も右につないで足し、空の図でも名前が 1 つのラベルに連ならない。既存 block の名付け直し(F2・ダブルクリック)の Tab は読み順の次へ移るまま。VSCode 拡張も同じ
 - BLK-porter-20260930-0109: 接続ラベルの `\n` を block・note と同じく改行して描く(`a -> b "要求\n(非同期)"` が 2 行)。画面・SVG・PNG・Excel で同じ行割りで、白地は 2 行を覆い、自動配置は複数行の大きさで block の名前・他のラベルを避ける。Mermaid は `<br/>`
