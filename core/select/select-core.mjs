@@ -104,12 +104,24 @@ export function linkAddKey(key, sel, mods = {}) {
 }
 
 // ── ラベルのその場編集中の Tab ──
-// Tab / Ctrl+Enter で足したばかりの block の名前を打っている間(link = 'child' | 'sibling')は、確定して同じ向きに次の block を足す
-// (Tab → 名前 → Tab → 名前 → Enter で鎖。XMind・MindManager と同じ)。ダブルクリック・F2 で始めた編集は読み順の次(Shift+Tab は前)の要素へ移る。
-// 返り値: 'child' | 'sibling' | 'next' | 'prev'
-export function inlineTabAction(link, shift) {
-  if (shift) return 'prev';
-  return link === 'child' || link === 'sibling' ? link : 'next';
+// Tab / Ctrl+Enter で足したばかりの block、「+ ブロック追加」・group の「+ 中にブロック」で足してまだ名前の無い block の名前を打っている間
+// (link = 'child' | 'sibling')は、確定して同じ向きに次の block を足す(Tab → 名前 → Tab → 名前 → Enter で鎖。XMind・MindManager と同じ)。
+// 既存の要素をダブルクリック・F2・文字打ちで始めた編集は読み順の次(Shift+Tab は前)の要素へ移る。
+// 移る先が無いとき(opts.hasNext / hasPrev が false)、block の Tab はプロパティ欄の案内どおり右につないで足し('child')、
+// それ以外は読み順の反対の端へ回る('first' | 'last')。続けて打った文字が今のラベルの後ろに黙って連なる形にしない。
+// 返り値: 'child' | 'sibling' | 'next' | 'prev' | 'first' | 'last'
+export function inlineTabAction(link, shift, opts = {}) {
+  if (shift) return opts.hasPrev === false ? 'last' : 'prev';
+  if (link === 'child' || link === 'sibling') return link;
+  if (opts.hasNext !== false) return 'next';
+  return opts.type === 'block' ? 'child' : 'first';
+}
+
+// その場編集を始めるときの Tab の向き: つないで追加(linkAdd)が渡した向きがあればそれ。無ければ、ツール欄の「+ ブロック追加」・group の
+// 「+ 中にブロック」で直前に足した block(freshId)がまだ仮の ID(名前が無い)なら 'child'。それ以外(既存の要素の名付け直し)は null
+export function inlineEditLink(pending, type, id, freshId, placeholder) {
+  if (pending === 'child' || pending === 'sibling') return pending;
+  return type === 'block' && id != null && id === freshId && !!placeholder ? 'child' : null;
 }
 
 // ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
