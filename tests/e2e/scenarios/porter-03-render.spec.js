@@ -191,4 +191,66 @@ test('porter-03: 負の座標の group / block / note が描かれ、接続も�
   const changed = before.map((l, i) => (l !== after[i] ? i : -1)).filter(i => i >= 0);
   expect(changed).toEqual([2]);
   expect(after[2]).toBe('block a "A" at -1,1 size 5x3');
+
+  // ← で読み込んだときの位置(-2,1)まで戻せ、それより左へは出ない。本文は元とバイト一致に戻る(BLK-owner-20260930-0608-1)
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#editor')).toHaveValue(/block a "A" at -2,1 size 5x3/);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  expect(await page.locator('#editor').inputValue()).toBe(original.toString('utf8'));
+});
+
+// 原点より左に出ている group を動かすと、枠と中身が同じ量だけ動く。左へは読み込んだ位置で枠も中身も止まり、
+// 右へ動かした後は読み込んだ位置まで戻せる。0 以上で読んだ block は負にならない(BLK-owner-20260930-0608-1)
+test('porter-03: 負の座標の group は中身ごと同じ量だけ動き、読み込んだ位置までは戻せ、それより左へは出ない', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'negative-group.sb');
+  const text = [
+    '@canvas width=640 height=320 grid=20',
+    'group g "G" at -2,1 size 12x6',
+    'block k "K" at 3,2 size 4x2',
+    'block m "M" at 16,2 size 4x2',
+    'k -> m',
+  ].join('\n') + '\n';
+  fs.writeFileSync(SRC, text);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  const editor = page.locator('#editor');
+  const lines = async () => (await editor.inputValue()).split('\n');
+  const dragGroup = async grids => {
+    const r = await svg.locator('g[data-type="group"][data-id="g"] rect').first().boundingBox();
+    const zoom = r.width / 240;   // 12 グリッド × 20px
+    const x0 = r.x + 30, y0 = r.y + 8;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + grids * 10 * zoom, y0, { steps: 3 });
+    await page.mouse.move(x0 + grids * 20 * zoom + 2 * zoom, y0, { steps: 3 });
+    await page.mouse.up();
+  };
+
+  // 見出しを掴んで左へ 3: 枠は読み込んだ位置(-2)より左へ出ないので、中身も動かない
+  await dragGroup(-3);
+  expect(await editor.inputValue()).toBe(text);
+  // 選んだまま ← を 5 回: 何も動かない(k だけが原点より左へ出ない)
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowLeft');
+  expect(await editor.inputValue()).toBe(text);
+
+  // 右へ 2: 枠と中身が同じ量だけ動き、変わるのは g と k の行だけ
+  await dragGroup(2);
+  let now = await lines();
+  expect(now[1]).toBe('group g "G" at 0,1 size 12x6');
+  expect(now[2]).toBe('block k "K" at 5,2 size 4x2');
+  expect(now.filter((l, i) => l !== text.split('\n')[i]).length).toBe(2);
+
+  // ← を 3 回: 2 回で読み込んだ位置へ戻り、3 回目は動かない。本文は元と一致
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
+  expect(await editor.inputValue()).toBe(text);
+
+  // 0 以上で読んだ k だけを選んで ← を 5 回: 0 で止まり、負にならない
+  await svg.locator('g[data-type="block"][data-id="k"]').click();
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowLeft');
+  now = await lines();
+  expect(now[2]).toBe('block k "K" at 0,2 size 4x2');
+  expect(now[1]).toBe('group g "G" at -2,1 size 12x6');
 });

@@ -21,6 +21,44 @@ export function keepPos(v, from) {
   return Math.max(Math.min(0, from === undefined ? 0 : from), v);
 }
 
+// GUI で動かせる下限(グリッド)の控え。本文(読み込み・本文欄の書換・元に戻す)に一度でも出た原点より左・上の位置を
+// 要素ごとに覚える({ 'block:a': { x, y } }。負の軸だけ。0 以上の要素は載せない)。GUI で動かしてもこの下限より左・上へは
+// 行かないので、控えは「読み込んだときの位置」のまま残り、右・下へ動かした後でもそこまでは戻せる。floors は書き換えずに新しい控えを返す
+export function noteFloors(floors, parsed) {
+  let out = floors || {};
+  const kinds = [['block', parsed && parsed.blocks], ['group', parsed && parsed.groups], ['note', parsed && parsed.notes]];
+  for (const [type, list] of kinds) {
+    for (const it of list || []) {
+      if (!it || !(it.x < 0 || it.y < 0)) continue;
+      const k = type + ':' + it.id, f = out[k] || { x: 0, y: 0 };
+      const x = Math.min(f.x, it.x), y = Math.min(f.y, it.y);
+      if (x === f.x && y === f.y && out[k]) continue;
+      if (out === floors) out = { ...floors };
+      out[k] = { x, y };
+    }
+  }
+  return out;
+}
+
+// 要素の下限(グリッド)。控えに無い要素は原点(0,0)。今の位置がそれより左・上なら今の位置(本文で書いた位置からは押し戻さない)
+export function posFloor(floors, type, id, x, y) {
+  const f = (floors && floors[type + ':' + id]) || { x: 0, y: 0 };
+  return { x: Math.min(0, f.x, x === undefined ? 0 : x), y: Math.min(0, f.y, y === undefined ? 0 : y) };
+}
+
+// 一緒に動かす要素(group とその中身、複数選択)を dx,dy(グリッド)動かすときの、全員に共通の量。どれかが下限より左・上へ
+// 出るなら、全員がその手前で止まる(枠だけ・中身だけが動かない)。items: [{ type, id, x, y }](動かし始めの位置)
+export function clampShift(items, dx, dy, floors) {
+  let mx = dx, my = dy;
+  for (const it of items || []) {
+    if (!it) continue;
+    const f = posFloor(floors, it.type, it.id, it.x, it.y);
+    mx = Math.max(mx, f.x - it.x);
+    my = Math.max(my, f.y - it.y);
+  }
+  return { dx: mx, dy: my };
+}
+
 // 要素が全部収まるキャンバス寸法(px)。広げるだけで縮めない。広げるときは右・下に margin グリッドの余白を残す。
 export function grownCanvasSize(canvas, items, margin = 1) {
   const g = canvas.grid || 20;

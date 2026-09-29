@@ -523,7 +523,16 @@ function openLoaded(path,id){if(!hasLoaded(path))return;
 function loadedKey(p){if(hasLoaded(p))return p;const b=baseName(p),hit=otherLoaded().filter(k=>baseName(k)===b);return hit.length===1?hit[0]:null;}
 function openIncluded(id){const it=[...parsed.blocks,...parsed.groups,...parsed.notes].find(x=>x.id===id),o=it&&window.StableBlockCheck.includeOrigin(expanded,it.line),k=o&&loadedKey(o.file);if(k)openLoaded(k,id);}
 // 本文を include 先ごと展開して parse する(parsed と expanded はいつも同じ本文から作る)
-function parseDoc(){expanded=window.StableBlockCheck.expandIncludes(dsl,readInclude,dslFile);return parseDSL(expanded.text);}
+function parseDoc(){expanded=window.StableBlockCheck.expandIncludes(dsl,readInclude,dslFile);const p=parseDSL(expanded.text);posFloorsBy[dslFile]=window.StableBlockLayout.noteFloors(posFloorsBy[dslFile],p);return p;}
+// GUI で動かせる下限(core/layout noteFloors): 図ごとに、本文に出た原点より左・上の位置を覚える。図を読む・新規で忘れる
+const posFloorsBy={};
+function floorsNow(){return posFloorsBy[dslFile]||{};}
+function forgetFloors(){Object.keys(posFloorsBy).forEach(k=>delete posFloorsBy[k]);}
+// 一緒に動かす要素: 選んだ要素と、選んだ group の中の block・group(重複は 1 つ)。[{type,id,x,y}](今の位置)
+function moveSet(list){const m=new Map(),put=(type,x)=>{const k=type+':'+x.id;if(!m.has(k))m.set(k,{type,id:x.id,x:x.x,y:x.y});};
+  list.forEach(si=>{const it=getItem(si);if(!it)return;put(si.type,it);if(si.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>put('block',b));ch.childGroups.forEach(g=>put('group',g));}});return[...m.values()];}
+// 全員を同じ量だけ動かす(core/layout clampShift: どれかが下限に当たれば全員その手前で止まる)。動かした量を返す
+function shiftSet(set,dx,dy){const m=window.StableBlockLayout.clampShift(set,dx,dy,floorsNow());set.forEach(it=>updatePos(it.type,it.id,it.x+m.dx,it.y+m.dy));return m;}
 function includeDrops(){return window.StableBlockCheck.includeDrops(expanded);}
 
 // ═══════════════════════════════════════════════
@@ -569,16 +578,16 @@ function setupInteractions(){
       pushHistory();
       const{sx,sy}=getSvgScale();
       const mx0=e.clientX, my0=e.clientY;
-      const ox=item.x, oy=item.y, ow=item.w, oh=item.h, before=parentsNow();
+      const ox=item.x, oy=item.y, ow=item.w, oh=item.h, before=parentsNow(), fl=window.StableBlockLayout.posFloor(floorsNow(),type,id,ox,oy);
 
       function onMove(ev){
         const dxg=Math.round((ev.clientX-mx0)*sx/g), dyg=Math.round((ev.clientY-my0)*sy/g);
         let nx=ox, ny=oy, nw=ow, nh=oh;
         if(edge.includes('e')){nw=Math.max(1,ow+dxg);}
-        if(edge.includes('w')){nw=Math.max(1,ow-dxg);nx=ox+ow-nw;}
+        if(edge.includes('w')){nw=Math.max(1,ow-dxg);nx=Math.max(fl.x,ox+ow-nw);nw=ox+ow-nx;}   // 左端は下限で止め、右端は動かさない
         if(edge.includes('s')){nh=Math.max(1,oh+dyg);}
-        if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=oy+oh-nh;}
-        updatePos(type,id,window.StableBlockLayout.keepPos(nx,ox),window.StableBlockLayout.keepPos(ny,oy));
+        if(edge.includes('n')){nh=Math.max(1,oh-dyg);ny=Math.max(fl.y,oy+oh-nh);nh=oy+oh-ny;}
+        updatePos(type,id,nx,ny);
         updateSize(type,id,nw,nh);growCanvas();
         parsed=parseDoc(); renderSVG(); syncEditor();
       }
@@ -604,26 +613,15 @@ function setupInteractions(){
       // Now drag ALL selected items
       const{sx,sy}=getSvgScale();
       const mx0=e.clientX, my0=e.clientY;
-      // Collect all items to move (including children of selected groups)
-      const dragSet=new Map();
-      sel.forEach(si=>{
-        const it=getItem(si); if(!it)return;
-        dragSet.set(si.id,{type:si.type,id:si.id,sx:it.x,sy:it.y,w:it.w,h:it.h});
-        if(si.type==="group"){
-          const ch=findChildren(it);
-          ch.childBlocks.forEach(b=>{if(!dragSet.has(b.id))dragSet.set(b.id,{type:"block",id:b.id,sx:b.x,sy:b.y});});
-          ch.childGroups.forEach(cg=>{if(!dragSet.has(cg.id))dragSet.set(cg.id,{type:"group",id:cg.id,sx:cg.x,sy:cg.y});});
-        }
-      });
-      const items=[...dragSet.values()], before=parentsNow();
+      // Collect all items to move (including children of selected groups). All move by the same amount (shiftSet)
+      const items=moveSet(sel), before=parentsNow();
       let moved=false, histPushed=false, lastDx=0, lastDy=0;
 
       function onMove(ev){
         const dx=Math.round((ev.clientX-mx0)*sx/g), dy=Math.round((ev.clientY-my0)*sy/g);
         if(!moved&&!dx&&!dy)return;   // a click with hand jitter below one grid is not a drag
         if(!histPushed){pushHistory();histPushed=true;}
-        moved=true;lastDx=dx;lastDy=dy;
-        items.forEach(it=>updatePos(it.type,it.id,window.StableBlockLayout.keepPos(it.sx+dx,it.sx),window.StableBlockLayout.keepPos(it.sy+dy,it.sy)));growCanvas();
+        moved=true;const m=shiftSet(items,dx,dy);lastDx=m.dx;lastDy=m.dy;growCanvas();
         parsed=parseDoc(); renderSVG(); syncEditor();
       }
       function onUp(ev){
@@ -956,11 +954,12 @@ function fieldKey(e,el){const S=window.StableBlockSelect,a=S.fieldKeyAction(e.ke
   const fs=[...document.querySelectorAll('#prop-content [data-field]')],next=fs[fs.indexOf(el)+(a==='next'?1:-1)];
   if(!next)return;e.preventDefault();const nf=next.dataset.field;fieldCommitEl(el);refocusField(nf);}
 const axisSides=(axis,d)=>window.StableBlockLayout.moveSides(axis==='x'?d:0,axis==='y'?d:0);
-function setPos(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
+function setPos(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v),s=t||sel[0],it=getItem(s);if(isNaN(n)||!it||n<window.StableBlockLayout.posFloor(floorsNow(),s.type,s.id,it.x,it.y)[axis])return;pushHistory();const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
 function setSz(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
-function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();
-  if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
-  updatePos(s.type,s.id,window.StableBlockLayout.keepPos(it.x+(axis==='x'?delta:0),it.x),window.StableBlockLayout.keepPos(it.y+(axis==='y'?delta:0),it.y));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
+// 矢印キー・▲▼で動かす: group は中身ごと同じ量だけ。下限(読み込んだ位置・原点)で止まるなら何もしない(履歴も積まない)
+function nudgeSet(list,axis,delta){const set=moveSet(list),dx=axis==='x'?delta:0,dy=axis==='y'?delta:0,m=window.StableBlockLayout.clampShift(set,dx,dy,floorsNow());
+  if(!m.dx&&!m.dy)return;pushHistory();const before=parentsNow();shiftSet(set,m.dx,m.dy);growParents(before,list.map(si=>({id:si.id,sides:axisSides(axis,m.dx+m.dy)})));refresh();}
+function nudge(axis,delta){if(!sel.length)return;nudgeSet([sel[0]],axis,delta);}
 function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',delta)}]);refresh();}
 // プロパティ欄の X / Y / W / H の ▲▼(core/select stepDelta): ▲ は値を増やす。1 つ選択と複数選択で同じ向き
 function stepField(field,button){const d=window.StableBlockSelect.stepDelta(button);if(!sel.length||!d)return;
@@ -972,14 +971,7 @@ function deleteItem(){if(!sel.length)return;pushHistory();const{type,id}=sel[0];
 // ═══════════════════════════════════════════════
 // Actions: batch (multi-select)
 // ═══════════════════════════════════════════════
-function batchNudge(axis,delta){
-  pushHistory();const before=parentsNow();
-  sel.forEach(si=>{
-    const it=getItem(si);if(!it)return;
-    if(si.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,window.StableBlockLayout.keepPos(b.x+(axis==='x'?delta:0),b.x),window.StableBlockLayout.keepPos(b.y+(axis==='y'?delta:0),b.y)));ch.childGroups.forEach(g=>updatePos('group',g.id,window.StableBlockLayout.keepPos(g.x+(axis==='x'?delta:0),g.x),window.StableBlockLayout.keepPos(g.y+(axis==='y'?delta:0),g.y)));}
-    updatePos(si.type,si.id,window.StableBlockLayout.keepPos(it.x+(axis==='x'?delta:0),it.x),window.StableBlockLayout.keepPos(it.y+(axis==='y'?delta:0),it.y));
-  }); growParents(before,sel.map(si=>({id:si.id,sides:axisSides(axis,delta)}))); refresh();
-}
+function batchNudge(axis,delta){nudgeSet(sel,axis,delta);}
 function batchNudgeSz(axis,delta){
   pushHistory();const before=parentsNow();
   sel.forEach(si=>{const it=getItem(si);if(!it)return;updateSize(si.type,si.id,axis==='w'?Math.max(1,it.w+delta):it.w,axis==='h'?Math.max(1,it.h+delta):it.h);});growParents(before,sel.map(si=>({id:si.id,sides:axisSides(axis==='w'?'x':'y',delta)})));refresh();
@@ -1248,7 +1240,7 @@ const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){syncLoaded();const others=Object.keys(includeFiles).length>0;let key='';
   if(others){const dir=dslFile.includes('/')?dslFile.slice(0,dslFile.lastIndexOf('/')+1):'';key=window.StableBlockCheck.newLoadedKey(includeFiles,dir);}
   if(others)pushHistoryAll();else pushHistory();
-  dsl=EMPTY_DSL;dslFile=key;if(key){includeFiles[key]=dsl;loadedTexts[key]=null;}
+  dsl=EMPTY_DSL;dslFile=key;delete posFloorsBy[key];if(key){includeFiles[key]=dsl;loadedTexts[key]=null;}
   sel=[];lastAddedId=freshAddId=null;lastPaste=null;addCounter=1;setSbFileName(key?baseName(key):'diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
@@ -1272,7 +1264,7 @@ async function loadSbEntries(list,folder,folderName){if(!list.length){if(folder)
   const reads=await Promise.all(list.map(d=>readFileText(d.file))),texts=reads.map(r=>r?r.text:null);if(texts.every(t=>t===null))return;
   const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
   closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});loadedFolder=folderName||'';bomFiles=new Set(list.filter((d,i)=>reads[i]&&reads[i].bom).map(d=>d.path));
-  dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
+  forgetFloors();dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
 // プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
 // フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む
 function droppedEntries(dt){const C=window.StableBlockCheck,items=[...(dt.items||[])].filter(it=>it.kind==='file');
