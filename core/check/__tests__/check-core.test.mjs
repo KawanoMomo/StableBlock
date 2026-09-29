@@ -731,3 +731,49 @@ test('pickedFolderName: 全部の図のパスの先頭のフォルダが同じ�
   assert.equal(pickedFolderName([{ path: 'x.sb' }]), '');
   assert.equal(pickedFolderName([]), '');
 });
+
+// 図の改名(BLK-primary-20260929-1747-friction): ステータスバーの図名から表示中の図の名前を変える。@include している図の行も書き換える
+import { planFileRename } from '../check-core.mjs';
+
+test('planFileRename: 新規の図は名前だけ変わり、拡張子を打たなければ元の拡張子を付ける', () => {
+  assert.deepEqual(planFileRename({}, null, 'i2c_swc', 'diagram.sb'), { name: 'i2c_swc.sb', key: null, changes: [] });
+  assert.deepEqual(planFileRename({}, null, ' i2c_swc.sb ', 'diagram.sb'), { name: 'i2c_swc.sb', key: null, changes: [] });
+  assert.equal(planFileRename({ 'Adc.stableblock': '' }, 'Adc.stableblock', 'Dma').name, 'Dma.stableblock');
+  assert.deepEqual(planFileRename({}, null, 'diagram', 'diagram.sb'), { same: true });
+});
+
+test('planFileRename: 空・使えない文字・同じ名前の図が既にあれば理由を返して変えない', () => {
+  const files = { 'uart_swc.sb': 'A', 'spi_swc.sb': 'B' };
+  assert.equal(planFileRename(files, 'uart_swc.sb', '  ').error, '名前が空');
+  assert.match(planFileRename(files, 'uart_swc.sb', 'a/b').error, /使えない文字/);
+  assert.match(planFileRename(files, 'uart_swc.sb', 'x:y').error, /使えない文字/);
+  assert.equal(planFileRename(files, 'uart_swc.sb', 'spi_swc').error, '同じ名前の図「spi_swc.sb」が既に読み込まれている');
+  assert.match(planFileRename(files, 'uart_swc.sb', 'SPI_SWC.sb').error, /同じ名前の図/);   // Windows では大文字小文字だけの違いも同じファイル
+  assert.match(planFileRename(files, null, 'spi_swc', 'diagram.sb').error, /同じ名前の図/);     // 新規の図も読み込んだ図と同じ名前にしない
+  assert.equal(planFileRename(files, 'uart_swc.sb', 'UART_SWC').name, 'UART_SWC.sb');            // 自分の大文字小文字だけの改名はできる
+});
+
+test('planFileRename: 読み込んだ図はフォルダを保ってキーを変え、@include している図の行のファイル名だけを書き換える', () => {
+  const files = {
+    'sys/uart_swc.sb': '@canvas width=400 height=200\n@include "../shared/common.sb"\nblock u "U" at 1,1 size 2x2',
+    'sys/spi_swc.sb': '@include "../shared/common.sb"\r\nblock s "S" at 1,1 size 2x2\r\n',
+    'shared/common.sb': 'block rte "RTE" at 8,1 size 4x2',
+    'shared/other.sb': 'block o "O" at 1,1 size 2x2',
+  };
+  const plan = planFileRename(files, 'shared/common.sb', 'base_common');
+  assert.equal(plan.name, 'base_common.sb');
+  assert.equal(plan.key, 'shared/base_common.sb');
+  assert.deepEqual(plan.changes.map(c => [c.path, c.lines]), [['sys/uart_swc.sb', [2]], ['sys/spi_swc.sb', [1]]]);
+  assert.equal(plan.changes[0].text, '@canvas width=400 height=200\n@include "../shared/base_common.sb"\nblock u "U" at 1,1 size 2x2');
+  assert.equal(plan.changes[1].text, '@include "../shared/base_common.sb"\r\nblock s "S" at 1,1 size 2x2\r\n');   // CRLF はそのまま
+  // 書き換えた行は新しいキーを指す(改名後の files で include のエラーが出ない)
+  const next = { 'sys/uart_swc.sb': plan.changes[0].text, 'sys/spi_swc.sb': plan.changes[1].text, 'shared/base_common.sb': files['shared/common.sb'], 'shared/other.sb': '' };
+  assert.deepEqual(expandIncludes(next['sys/uart_swc.sb'], p => next[p] ?? null, 'sys/uart_swc.sb').missing, []);
+  // 「.sb 読込」でファイルを選んだ図(フォルダを持たない)は名前で当てた include の行も書き換える
+  const picked = { 'uart_swc.sb': '@include "shared/common.sb"', 'common.sb': 'block rte "RTE" at 8,1 size 4x2' };
+  const p2 = planFileRename(picked, 'common.sb', 'i2c_common');
+  assert.equal(p2.key, 'i2c_common.sb');
+  assert.deepEqual(p2.changes, [{ path: 'uart_swc.sb', lines: [1], text: '@include "shared/i2c_common.sb"' }]);
+  // 取り込まれていない図の改名は、ほかの図を変えない
+  assert.deepEqual(planFileRename(files, 'sys/uart_swc.sb', 'i2c_swc'), { name: 'i2c_swc.sb', key: 'sys/i2c_swc.sb', changes: [] });
+});

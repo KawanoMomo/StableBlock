@@ -197,6 +197,9 @@ textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
 #status .status-file:hover { text-decoration:underline; }
 #status .status-dirty { color:var(--amber); }
 #status .status-pos { color:var(--dim); font-weight:400; }
+#status .status-file-name { font:inherit; font-size:10px; font-weight:600; width:180px; padding:0 4px; border:1px solid var(--accent,#6366F1); border-radius:3px; background:var(--bg,#0F172A); color:#E2E8F0; }
+#status .status-file-note { color:var(--dim); }
+#status .status-file-note.err { color:var(--red); }
 #error-bar .diag-file { font:inherit; padding:0; border:0; background:none; color:inherit; text-decoration:underline; cursor:pointer; }
 #prop-content .help-keys { margin-top:16px; font-size:10px; color:var(--dim); line-height:1.5; }
 #prop-content .help-keys summary { cursor:pointer; color:var(--muted); font-size:11px; }
@@ -1089,9 +1092,34 @@ function renderErrors(){const el=document.getElementById('error-bar');lastDiag=d
   if(lastDiag.length||inc.length){el.style.display='block';el.classList.toggle('has-error',lastDiag.some(d=>d.level==='error'));
     el.innerHTML=(inc.length?`<div class="diag-inc" id="impact-head">この図を @include している図: ${inc.map(k=>`<button type="button" class="diag-file" data-path="${esc(k)}" title="その図を開く" onclick="openLoadedAt(this.dataset.path)">${esc(baseName(k))}</button>`).join('、')}${edited&&!oth.length?'(読み込んだ時から増えたエラー・警告は無い)':''}</div>`:'')+lastDiag.map(d=>`<div class="diag diag-${d.level}">L${d.line}: ${diagMsgHtml(d)}</div>`).join('')
       +oth.map((d,i)=>`<button type="button" class="diag diag-${d.level} diag-other" data-path="${esc(d.path)}" data-line="${d.line}" title="その図を開いてその行へ" onclick="openImpact(${i})">ほかの図: ${esc(baseName(d.path))} L${d.line}: ${esc(d.msg)}</button>`).join('');}else{el.style.display='none';}}
-// ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる
+// ステータスバーの先頭は表示中の図の名前(一緒に読み込んだ図が 2 枚以上なら何枚目か、保存していない変更があれば ●)。押すと検索欄で読み込んだ図の名前を並べる。
+// ダブルクリック(フォーカスして F2)でその場の欄になり、表示中の図の名前を変える(fileEdit。Enter 確定・Esc 取消・外を押すと確定)
 function statusFileHtml(){const keys=Object.keys(includeFiles),i=dslFile?keys.indexOf(dslFile):-1,dirty=i>=0&&loadedTexts[dslFile]!==undefined&&dsl!==loadedTexts[dslFile];
-  return `<button type="button" id="status-file" class="status-file" onclick="showLoadedList()" title="表示中の図。押すと検索欄で一緒に読み込んだ図の名前を並べる(名前を打って Enter で開く)">${esc(dslFile?baseName(dslFile):sbFileName)}${dirty?'<span class="status-dirty" title="保存していない変更がある"> ●</span>':''}${keys.length>1&&i>=0?` <span class="status-pos">(${i+1}/${keys.length})</span>`:''}</button>`;}
+  const note=fileNote?`<span id="status-file-note" class="status-file-note${fileNote.err?' err':''}">${esc(fileNote.text)}</span>`:'';
+  if(fileEdit)return `<input type="text" id="status-file-name" class="status-file-name" value="${esc(fileEdit.value)}" spellcheck="false" aria-label="図の名前" title="図の名前(.sb 保存と書き出しの名前)。Enter で確定、Esc で取り消す" oninput="fileEdit&&(fileEdit.value=this.value)" onkeydown="fileRenameKey(event)" onblur="fileRenameBlur(this)">`+note;
+  return `<button type="button" id="status-file" class="status-file" onclick="showLoadedList()" ondblclick="startFileRename()" onkeydown="if(event.key==='F2'){event.preventDefault();event.stopPropagation();startFileRename();}" title="表示中の図。押すと検索欄で一緒に読み込んだ図の名前を並べる(名前を打って Enter で開く)。ダブルクリック(F2)で名前を変える">${esc(dslFile?baseName(dslFile):sbFileName)}${dirty?'<span class="status-dirty" title="保存していない変更がある"> ●</span>':''}${keys.length>1&&i>=0?` <span class="status-pos">(${i+1}/${keys.length})</span>`:''}</button>`+note;}
+let fileEdit=null,fileNote=null;// fileEdit: 図名の欄で編集中({ value })。fileNote: 改名した・しなかった理由の一言(図を読む・開く・新規で消える)
+function startFileRename(){if(fileEdit)return;searchHitsOpen=false;searchListAll=false;renderSearchHits();fileEdit={value:dslFile?baseName(dslFile):sbFileName};fileNote=null;renderStatus();
+  const inp=document.getElementById('status-file-name');if(!inp)return;inp.focus();const m=inp.value.match(/\.(sb|stableblock|txt)$/i);inp.setSelectionRange(0,inp.value.length-(m?m[0].length:0));}
+function fileRenameKey(ev){if(ev.key==='Enter'&&!ev.isComposing){ev.preventDefault();ev.stopPropagation();commitFileRename(ev.target.value,true);}
+  else if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();fileEdit=null;fileNote=null;renderStatus();const b=document.getElementById('status-file');if(b)b.focus();}}
+function fileRenameBlur(inp){if(fileEdit&&!fileEdit.busy)commitFileRename(inp.value,false);}
+// 名前を確定する: core/check の planFileRename。使えない名前・同じ名前の図が既にあれば理由を出して変えない(Enter なら欄に残る)。
+// 変えたら、一緒に読み込んだ図のキーを付け替え、この図を @include している図の @include 行を書き換える(変わった図は「.sb 保存」で書き出す)。Ctrl+Z 1 回で戻る
+function commitFileRename(value,keep){if(!fileEdit)return;syncLoaded();const SC=window.StableBlockCheck,own=dslFile&&hasLoaded(dslFile)?dslFile:null;
+  const plan=SC.planFileRename(includeFiles,own,value,sbFileName);
+  if(plan.error){fileNote={err:true,text:`名前を変えなかった: ${plan.error}`};
+    if(keep){fileEdit.value=value;let n=document.getElementById('status-file-note');if(!n){n=document.createElement('span');n.id='status-file-note';document.getElementById('status-file-name').after(n);}n.className='status-file-note err';n.textContent=fileNote.text;return;}
+    fileEdit=null;renderStatus();return;}
+  fileEdit.busy=true;fileEdit=null;if(plan.same){renderStatus();return;}
+  pushHistoryAll();
+  if(own){const remap=o=>{const next={};Object.keys(o).forEach(k=>{next[k===own?plan.key:k]=o[k];});return next;};
+    const next=remap(includeFiles);plan.changes.forEach(c=>{next[c.path]=c.text;});Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,next);
+    if(Object.prototype.hasOwnProperty.call(impactBase,own)){const bp=SC.planFileRename(impactBase,own,value,sbFileName);impactBase=remap(impactBase);(bp.changes||[]).forEach(c=>{impactBase[c.path]=c.text;});}
+    impactCache.clear();dslFile=plan.key;if(loadedTexts[plan.key]===undefined)loadedTexts[plan.key]=null;}
+  setSbFileName(plan.name);
+  fileNote={text:`名前を ${plan.name} にした`+(plan.changes.length?`・@include を書き換えた図: ${plan.changes.map(c=>`${baseName(c.path)}(${c.lines.length} 行)`).join('、')}`:'')+'。「.sb 保存」で書き出す'};
+  refresh(true);const b=document.getElementById('status-file');if(b)b.focus();}
 // ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」。押すと選択を外し、右のツール欄の「キャンバス (px)」(寸法と「はみ出したら自動で広げる」)を光らせて示す
 function statusCanvasHtml(){const c=parsed.canvas,g=window.StableBlockLayout.canvasGrows(c);return `<button type="button" id="status-canvas" class="status-canvas" onclick="showCanvasSettings()" title="キャンバスの寸法と、はみ出したら自動で広げるかの設定。押すと右のツール欄のその場所を示す">Canvas: ${c.width}×${c.height} ${g?'自動拡張':'固定'}</button>`;}
 function showCanvasSettings(){if(!parsed)return;if(sel.length){sel=[];renderSVG();}renderProps();const s=document.getElementById('canvas-section');if(!s)return;s.scrollIntoView({block:'nearest'});s.classList.remove('flash');void s.offsetWidth;s.classList.add('flash');clearTimeout(showCanvasSettings.t);showCanvasSettings.t=setTimeout(()=>s.classList.remove('flash'),1600);document.getElementById('canvas-grow').focus();}
@@ -1102,7 +1130,7 @@ function renderCanvasBar(){const el=document.getElementById('canvas-bar');if(!el
   el.hidden=false;el.title='はみ出した要素に合わせて @canvas 行を広げた。以後も広げるかは下端の Canvas(ツール欄の「はみ出したら自動で広げる」)で切り替える';
   el.innerHTML=`<span id="canvas-grew">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${c.width}×${c.height}<button type="button" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button><button type="button" class="plain" onclick="keepGrownCanvas()" title="広げた寸法のままにしてこの知らせを閉じる">このまま</button></span>`;}
 function keepGrownCanvas(){grewFrom=null;renderStatus();}
-function renderStatus(){renderCanvasBar();document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));}
+function renderStatus(){renderCanvasBar();const ed=fileEdit&&document.activeElement&&document.activeElement.id==='status-file-name';if(fileEdit)fileEdit.busy=true;document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));if(fileEdit){fileEdit.busy=false;const inp=document.getElementById('status-file-name');if(inp&&ed){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}}}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file
@@ -1110,11 +1138,11 @@ function renderStatus(){renderCanvasBar();document.getElementById('status').inne
 function download(name,data){const a=document.createElement('a');a.href=data;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 // 保存するファイル名: 読み込んだ図はその名前、新規・起動時の見本は diagram.sb。タブの題名にも出す
 let sbFileName='diagram.sb';
-function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbFileName} - StableBlock`;}
+function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbFileName} - StableBlock`;fileEdit=null;fileNote=null;}
 // 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)の名前: .sb 保存と同じ図の名前から「一括」と同じ関数で付ける(新規の図は diagram.*)
 function exportName(ext,suffix){return window.StableBlockCheck.bulkFileName(sbFileName,ext,suffix);}
 // 一緒に読み込んだほかの図も、変わっていれば(図をまたぐ改名など)続けて同じファイル名で書き出す
-function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
+function exportSB(){fileNote=null;download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
   rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text)),200*(i+1));});
   if(rest.length){const el=document.getElementById('export-report');el.innerHTML=`<b>.sb 保存: ${rest.length+1} 枚</b><ul>${[sbFileName,...rest.map(r=>r.k)].map(n=>`<li>${esc(n)}</li>`).join('')}</ul><div class="hint">一緒に読み込んだ図のうち変わったものも書き出した。クリックで閉じる</div>`;el.hidden=false;}
   renderStatus();}
