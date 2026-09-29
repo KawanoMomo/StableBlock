@@ -101,7 +101,7 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 #editor { flex:1; background:transparent; color:var(--text); border:none; outline:none; font-family:'IBM Plex Mono',monospace; font-size:12px; line-height:20px; padding:12px 12px 12px 4px; resize:none; white-space:pre; overflow-x:auto; tab-size:2; }
 
 /* Preview Panel */
-#preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+#preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; position:relative; }
 #canvas-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:11px; line-height:1.6; border-bottom:1px solid #F59E0B; }
 #canvas-bar[hidden] { display:none; }
 #canvas-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
@@ -164,6 +164,29 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 #search-hits code { color:#CBD5E1; font-family:Consolas,monospace; }
 #search-hits .sh-item:focus { background:#334155; outline:1px solid var(--accent); }
 #search-hits .sh-unsaved { color:var(--amber); }
+#search-hits .sh-row { display:flex; align-items:center; gap:4px; }
+#search-hits .sh-row .sh-item { flex:1; min-width:0; }
+#search-hits .sh-compare { flex:none; background:none; border:1px solid #475569; border-radius:4px; color:#FCD34D; font:inherit; padding:2px 6px; cursor:pointer; white-space:nowrap; }
+#search-hits .sh-compare:hover, #search-hits .sh-compare:focus { background:#334155; outline:none; }
+/* 「今の図と比べる」: プレビューを左右 2 面にし、左に選んだ図・右に今の図、下に行の差分(core/diff diffModel・diffLinesHtml と core/render の marks) */
+#compare-view { position:absolute; inset:0; z-index:40; display:flex; flex-direction:column; background:var(--bg); }
+#compare-view[hidden] { display:none; }
+#compare-view .cmp-head { display:flex; align-items:center; gap:12px; padding:6px 10px; font-size:12px; border-bottom:1px solid var(--border); }
+#compare-view .cmp-title { flex:1; min-width:0; font-weight:600; color:#E2E8F0; }
+#compare-view .cmp-count { color:#94A3B8; }
+#compare-view .cmp-panes { flex:1; display:flex; min-height:0; }
+#compare-view .cmp-pane { flex:1; min-width:0; overflow:auto; padding:8px; border-right:1px solid var(--border); }
+#compare-view .cmp-pane:last-child { border-right:0; }
+#compare-view .cmp-label { font-size:11px; font-weight:700; margin-bottom:4px; }
+#compare-view .cmp-old .cmp-label { color:#F87171; }
+#compare-view .cmp-new .cmp-label { color:#34D399; }
+#compare-view .cmp-pane svg { max-width:100%; height:auto; background:#fff; border-radius:6px; }
+#compare-view .cmp-lines { flex:0 0 auto; max-height:35%; overflow:auto; border-top:1px solid var(--border); font:12px/18px Consolas,monospace; padding:4px 0; }
+#compare-view .cmp-lines .l { white-space:pre; padding:0 8px; }
+#compare-view .cmp-lines .n { display:inline-block; width:3.5em; color:#64748B; text-align:right; margin-right:8px; }
+#compare-view .cmp-lines .del { background:#4B1D1D; color:#FCA5A5; }
+#compare-view .cmp-lines .add { background:#14391F; color:#86EFAC; }
+#compare-view .cmp-lines .none { color:#94A3B8; }
 /* キャンバス上のラベル編集(ダブルクリック / F2 / Enter)。#svg-wrap の外に置き、再描画で消えない */
 .inline-label { position:fixed; z-index:40; box-sizing:border-box; margin:0; padding:2px 6px; border:2px solid var(--accent); border-radius:4px; background:#FFFFFF; color:#0F172A; font:600 12px 'IBM Plex Sans','Noto Sans JP',sans-serif; text-align:center; outline:none; box-shadow:0 4px 12px rgba(0,0,0,0.35); resize:none; }
 textarea.inline-label { text-align:left; font-weight:400; line-height:1.4; }
@@ -198,6 +221,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 <script src="core/mermaid/mermaid-core.browser.js"></script>
 <script src="core/terms/terms-core.browser.js"></script>
 <script src="core/render/render-core.browser.js"></script>
+<script src="core/diff/diff-core.browser.js"></script>
 <script>
   // 後方互換: 旧コードが window.StableBlockExcelReady を見ているため設定
   window.StableBlockExcelReady = true;
@@ -264,6 +288,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
     <div id="drop-hint" hidden>ここに離すと読み込む(.sb・フォルダ)</div>
+    <div id="compare-view" hidden></div>
   </div>
   <div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="prop-panel" tabindex="0" title="ドラッグでプレビューとツール欄の幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="prop-panel">
@@ -444,7 +469,7 @@ function renderSearchHits(){const el=document.getElementById('search-hits');if(!
   searchHits=q?window.StableBlockLabel.searchIdsInFiles(others.map(k=>({path:k,text:includeFiles[k]})),searchQuery):[];const n=new Set(searchHits.map(h=>h.path)).size,un=new Set(unsavedOthers());
   const how=searchEnterOpensFile()?'押すか Enter で開く':'押すか ↓ で選んで Enter で開く';
   const fileHead=q?`図名で当たった図 ${searchFiles.length} 枚(${how})`:`読み込んだ図 ${others.length+1} 枚・表示中は ${esc(baseName(dslFile)||sbFileName)}(${how})`;
-  el.innerHTML=(searchFiles.length?`<div class="sh-head sh-files-head">${fileHead}</div>`+searchFiles.map((k,i)=>`<button type="button" class="sh-item sh-file" data-path="${esc(k)}" onclick="openSearchFile(${i})"><b>${esc(baseName(k))}</b>${un.has(k)?' <span class="sh-unsaved" title="保存していない変更がある">●</span>':''}${k!==baseName(k)?` <span class="sh-line">${esc(k)}</span>`:''}</button>`).join(''):'')
+  el.innerHTML=(searchFiles.length?`<div class="sh-head sh-files-head">${fileHead}</div>`+searchFiles.map((k,i)=>`<div class="sh-row"><button type="button" class="sh-item sh-file" data-path="${esc(k)}" onclick="openSearchFile(${i})"><b>${esc(baseName(k))}</b>${un.has(k)?' <span class="sh-unsaved" title="保存していない変更がある">●</span>':''}${k!==baseName(k)?` <span class="sh-line">${esc(k)}</span>`:''}</button>${k!==dslFile?`<button type="button" class="sh-compare" data-path="${esc(k)}" onclick="openCompare(${i})" title="この図を左、今の図を右に並べ、変わった要素に印を付ける(Esc か「閉じる」で戻る)">今の図と比べる</button>`:''}</div>`).join(''):'')
     +(q&&(searchHits.length||!searchFiles.length)?`<div class="sh-head">ほかに読み込んだ図 ${others.length} 枚のうち ${n} 枚・${searchHits.length} 行${searchHits.length?'(クリックでその図を開く)':''}</div>`+searchHits.map((h,i)=>`<button type="button" class="sh-item" data-path="${esc(h.path)}" data-line="${h.line}" onclick="openSearchHit(${i})"><b>${esc(baseName(h.path))}</b> <span class="sh-line">L${h.line} ${h.kind==='def'?'定義':'接続'}</span> <code>${esc(h.text.trim())}</code></button>`).join(''):'');
   const r=document.getElementById('search-input').getBoundingClientRect();el.style.top=Math.round(r.bottom+4)+'px';el.style.right=Math.max(8,Math.round(window.innerWidth-r.right))+'px';el.hidden=false;}
 // 検索欄の Enter: 図名で当たった図があり、表示中の図に当たりが無ければ(空の欄で図名を並べているときも)先頭の図を開く。ほかは当たりを 1 つずつ選ぶ
@@ -460,6 +485,18 @@ function searchKey(ev){
 function searchHitsKey(ev){const items=[...document.querySelectorAll('#search-hits .sh-item')],i=items.indexOf(document.activeElement),inp=document.getElementById('search-input');
   if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ev.preventDefault();const j=i+(ev.key==='ArrowDown'?1:-1);if(j<0)inp.focus();else if(items[j])items[j].focus();}
   else if(ev.key==='Escape'){ev.preventDefault();searchHitsOpen=false;searchListAll=false;renderSearchHits();inp.focus();}}
+// 図名の一覧の「今の図と比べる」: プレビューを左右 2 面にし、左に選んだ図・右に今の図(どちらも @include を展開して描く)、
+// 変わった要素に印、下に行の差分(行差分は展開しない本文で取る。VSCode 拡張の Visual Diff と同じ core/diff・core/render)。Esc か「閉じる」で 1 面に戻る
+function openCompare(i){const k=searchFiles[i];if(!k||!hasLoaded(k))return;syncLoaded();searchHitsOpen=false;searchListAll=false;renderSearchHits();
+  const SC=window.StableBlockCheck,files={...includeFiles},right=dslFile||sbFileName;
+  const md=window.StableBlockDiff.diffModel(files[k],dsl,null,{oldDraw:SC.expandIncludes(files[k],SC.loadedReader(files,k),k).text,newDraw:expanded?expanded.text:dsl},{left:k,right});
+  const svg=(t,m)=>window.StableBlockRender.renderSvg(parseDSL(t),{zoom:1,marks:m,interactive:false,grid:false,font:SVG_FONT},window.StableBlockLabel,measureLabel);
+  const el=document.getElementById('compare-view');
+  el.innerHTML=`<div class="cmp-head"><span class="cmp-title" id="compare-title">${esc(md.title)}</span><span class="cmp-count" id="compare-count">-${md.removed} +${md.added}</span><button type="button" class="tb" id="compare-close" onclick="closeCompare()" title="元の 1 面に戻る(Esc)">閉じる</button></div>`
+    +`<div class="cmp-panes"><div class="cmp-pane cmp-old"><div class="cmp-label">${esc(md.left)}</div><div id="compare-left">${svg(md.oldDraw,md.marks.old)}</div></div><div class="cmp-pane cmp-new"><div class="cmp-label">${esc(md.right)}(今の図)</div><div id="compare-right">${svg(md.newDraw,md.marks.new)}</div></div></div>`
+    +`<div class="cmp-lines" id="compare-lines">${window.StableBlockDiff.diffLinesHtml(md.ops)}</div>`;
+  el.hidden=false;document.getElementById('compare-close').focus();}
+function closeCompare(){const el=document.getElementById('compare-view');if(!el||el.hidden)return false;el.hidden=true;el.innerHTML='';return true;}
 // ステータスバーの図名を押す: 検索欄へ移り、読み込んだ図の名前を並べる(1 枚だけならフォーカスだけ)
 function showLoadedList(){const inp=document.getElementById('search-input');if(!inp)return;searchListAll=!inp.value.trim();searchHitsOpen=true;inp.focus();renderSearchHits();}
 function openSearchHit(i){const h=searchHits[i];if(!h)return;searchHitsOpen=false;openLoaded(h.path,h.id);}
@@ -1104,7 +1141,7 @@ async function importSB(input,folder){const files=[...(input.files||[])];input.v
 async function loadSbEntries(list,folder){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
   const texts=await Promise.all(list.map(d=>readFileText(d.file)));if(texts.every(t=>t===null))return;
   const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
-  pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});
+  closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});
   dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
 // プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
 // フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む
@@ -1268,6 +1305,8 @@ document.getElementById('export-report').addEventListener('click',e=>{e.currentT
 
 // Keyboard shortcuts
 document.addEventListener('keydown',e=>{
+  // 見比べている間の Esc は 2 面を閉じて元の 1 面に戻す
+  if(e.key==='Escape'&&closeCompare()){e.preventDefault();return;}
   // 文字を打つ欄(本文欄・プロパティ欄・検索欄・キャンバス上のラベル編集)にいる間は、図のショートカットに取らない
   // 欄の onkeydown が先に blur することがあるので、フォーカスだけでなくキーを受けた要素(e.target)も見る
   const ae=document.activeElement,typing=el=>!!(el&&el!==document.body&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.closest?.('#prop-content')));
