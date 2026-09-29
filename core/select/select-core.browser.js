@@ -55,4 +55,58 @@ function arrowNudge(key) {
   }
 }
 
-;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge };
+// ── プロパティ欄の数値・色の欄(X / Y / W / H・角丸・背景色・枠線色)の確定 ──
+// 打っている間は本文に書かない(1 文字目で書くと欄が描き直され、2 文字目以降が入らない)。Enter・Tab・欄から出たときに 1 回だけ書く。
+// 色は # と 6 桁が揃えば打っている間にも書く。▲▼ と欄の中の ↑↓ は今どおり 1 押しで書く(draw.io・Visio・Excel の書式欄と同じ)。
+
+// 欄の種類: 'pos'(0 以上の整数)| 'size'(1 以上の整数)| 'round'(0 以上の整数)| 'color'(#RRGGBB)
+function fieldKind(field) {
+  if (field === 'x' || field === 'y') return 'pos';
+  if (field === 'w' || field === 'h') return 'size';
+  if (field === 'round') return 'round';
+  return 'color';
+}
+
+// 欄の値 raw を本文に書くなら書く値、書かないなら null。trigger: 'input'(打っている間)| 'commit'(Enter・Tab・欄から出た)。
+// current: 今の値(同じなら書かない = 取り消し履歴を増やさない)。書けない値(空・負・文字・桁の足りない色)は null
+function fieldCommit(kind, raw, trigger, current) {
+  const s = String(raw ?? '').trim();
+  let v = null;
+  if (kind === 'color') {
+    if (/^#[0-9A-Fa-f]{6}$/.test(s)) v = s;
+  } else if (trigger === 'commit' && /^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n >= (kind === 'size' ? 1 : 0)) v = n;
+  }
+  if (v === null) return null;
+  if (current !== undefined && current !== null && String(current).toUpperCase() === String(v).toUpperCase()) return null;
+  return v;
+}
+
+// 欄の中のキー: 'commit'(Enter)| 'cancel'(Esc: 打った値を捨てる)| 'up' / 'dn'(↑↓: ▲▼ と同じ)| 'next' / 'prev'(Tab / Shift+Tab)| null
+function fieldKeyAction(key, shift) {
+  switch (key) {
+    case 'Enter': return 'commit';
+    case 'Escape': return 'cancel';
+    case 'ArrowUp': return 'up';
+    case 'ArrowDown': return 'dn';
+    case 'Tab': return shift ? 'prev' : 'next';
+    default: return null;
+  }
+}
+
+// ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
+// 1 つ選んでいるときの文字(IME の変換中 'Process' を含む)は、その文字からラベルのその場編集に入る(Excel・draw.io・Visio と同じ)。
+// 表示だけの切替(H 未接続を薄く・N 注釈・F 全体表示)は 1 つ選んでいないときに効く。本文を書き換える L(線の形)は何も選んでいないときだけ。
+// 返り値: 'label' | 'highlight' | 'annotations' | 'fit' | 'line-mode' | null
+function typedKeyAction(key, selCount, mods = {}) {
+  if (mods.ctrl || mods.meta || mods.alt) return null;
+  const k = String(key || '');
+  if (selCount === 1 && ((k.length === 1 && k !== ' ') || k === 'Process')) return 'label';
+  const c = k.length === 1 ? k.toLowerCase() : '';
+  if (c === 'l') return selCount === 0 ? 'line-mode' : null;
+  if (selCount === 1) return null;
+  return c === 'h' ? 'highlight' : c === 'n' ? 'annotations' : c === 'f' ? 'fit' : null;
+}
+
+;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction };

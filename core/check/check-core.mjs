@@ -8,6 +8,69 @@
 const KEYWORDS = ['block', 'group', 'note', '@canvas', '@include'];
 const BOX_FORM = { block: 'block ID "ラベル" at X,Y size WxH', group: 'group ID "ラベル" at X,Y size WxH', note: 'note ID "テキスト" at X,Y size WxH' };
 
+// 値を列挙から取る属性(core/dsl の ATTRS の style / route / grow / lpos)の取れる値と、知らない値のときに実際にどう描くか。値が数の属性は下の NUM_VALUES
+// (render / label / layout の既定と同じ)。知らない値は本文を書き換えずに読み、その行で警告する(黙って既定に落とさない)
+const ATTR_VALUES = {
+  block: { style: [['solid', 'dashed', 'bold'], '実線で描く'] },
+  note: { style: [['solid', 'dashed', 'bold'], '実線で描く'] },
+  conn: {
+    style: [['solid', 'dashed'], '実線で描く'],
+    route: [['curved', 'straight', 'ortho'], '曲線で描く'],
+    lpos: [['right', 'left', 'top', 'bottom', 'center'], 'ラベルを線の右に置く'],
+  },
+  canvas: {
+    route: [['curved', 'straight', 'ortho'], 'route を書いていない接続を曲線で描く'],
+    grow: [['on', 'off'], 'on と同じく操作ではみ出したら広げる'],
+  },
+};
+
+// 属性を書く部分(block / note は size の後、接続はラベルの後、@canvas は行全体)。parser と同じ切り方
+const REST_RE = {
+  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  conn: /^\S+\s+(?:-->|->)\s+\S+\s*(?:"(?:\\"|[^"])*")?\s*(.*)/,
+  canvas: /^@canvas(.*)/,
+};
+
+// 値が数の属性(core/dsl の ATTRS の round / width / height / grid)。[整数だけか, 既定, 何の値か]。
+// parser は値の先頭の数字だけを読み(round=4px は 4)、数字で始まらなければ既定で描く。警告はそのとおりに言う
+const NUM_VALUES = {
+  block: { round: [true, 4, '角の丸み'] },
+  note: { round: [true, 4, '角の丸み'] },
+  conn: { width: [false, 1.5, '線の太さ'] },
+  canvas: { width: [true, 960, 'キャンバスの幅'], height: [true, 640, 'キャンバスの高さ'], grid: [true, 20, '方眼の間隔'] },
+};
+
+function badNumber(attr, v, [int, def, what]) {
+  if (int ? /^\d+$/.test(v) : /^[\d.]+$/.test(v) && Number.isFinite(+v)) return null;
+  const lead = v.match(int ? /^\d+/ : /^[\d.]+/)?.[0];
+  const drawn = lead === undefined ? `を既定の ${def} で描く` : Number.isFinite(+lead) ? `を ${+lead} で描く` : 'を数字として読めない';
+  return `${attr}=${v} は使えない。${what}${drawn}(使える値: ${int ? '0 以上の整数' : '0 以上の数'})`;
+}
+
+// kind(block / note / conn / canvas)の属性部分 rest に書かれた、取れない値の一覧 [{ attr, value, msg }]。parser と同じく属性ごとに最初の一致だけを見る。
+// 取れない値は警告だけにし、本文は書き換えない(core/dsl の serializeDSL も書いたまま戻す)
+export function badAttrValues(kind, rest) {
+  const out = [];
+  const valueOf = attr => String(rest || '').match(new RegExp(`${attr}=(\\S+)`))?.[1];
+  for (const [attr, [values, fallback]] of Object.entries(ATTR_VALUES[kind] || {})) {
+    const v = valueOf(attr);
+    if (v !== undefined && !values.includes(v)) out.push({ attr, value: v, msg: `${attr}=${v} は使えない。${fallback}(使える値: ${values.join(' / ')})` });
+  }
+  for (const [attr, spec] of Object.entries(NUM_VALUES[kind] || {})) {
+    const v = valueOf(attr);
+    const msg = v === undefined ? null : badNumber(attr, v, spec);
+    if (msg) out.push({ attr, value: v, msg });
+  }
+  return out;
+}
+
+// 本文の 1 行(前後の空白を除いたもの)が kind の行なら、その行の取れない値の一覧。kind の形でない行は []
+export function badAttrValuesInLine(kind, raw) {
+  const m = REST_RE[kind] && String(raw || '').trim().match(REST_RE[kind]);
+  return m ? badAttrValues(kind, m[1]) : [];
+}
+
 function editDistance(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -130,14 +193,29 @@ export function findCrossings(paths, blocks, g, inset = 2) {
 const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 
 // 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)。
-// where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)
+// where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)。
+// 相手のある診断(重なり・またぎ・横切り・2 本目・ラベル・キャンバスの外)は refs に相手の行(本文の行番号)を持つ(どの図とどの図の間の診断かを includeImpact が見る)
 export function checkDiagram(parsed, lines, paths, labelIssues, where) {
   const ref = where || (n => `L${n}`);
   const out = [];
   for (const e of parsed.errors || []) {
     const raw = lines && lines[e.line - 1] !== undefined ? lines[e.line - 1].trim() : null;
     const unread = raw !== null ? raw.substring(0, 40) === e.msg : !/^ID "|^@include /.test(e.msg);
+    // ID の重複は先に定義した行が相手(parser は展開後の行番号で書くので、元の場所で書き直す)
+    const dup = !unread && /^(ID ".*" が重複 )\(L(\d+)\)$/.exec(e.msg);
+    if (dup) { out.push({ line: e.line, level: 'error', msg: `${dup[1]}(${ref(+dup[2])})`, refs: [+dup[2]] }); continue; }
     out.push({ line: e.line, level: 'error', msg: unread ? explainLine(raw !== null ? raw : e.msg) : e.msg });
+  }
+  // @canvas が 2 行以上: 効くのは最後の行(属性ごとに後の行が上書き)。前の行は読んだまま残すが、効いていないことを前の行に知らせる
+  const canvasAt = (lines || []).map((l, i) => /^@canvas\b/.test(String(l).trim()) ? i + 1 : 0).filter(Boolean);
+  for (const n of canvasAt.slice(0, -1)) {
+    out.push({ line: n, level: 'warn', msg: `@canvas が ${canvasAt.length} 行ある。${ref(canvasAt[canvasAt.length - 1])} の値が効く` });
+  }
+  // style= / route= / grow= / lpos= に取れない値(style=dotted など): 本文はそのまま、既定の形で描くことをその行で知らせる
+  if (lines) {
+    const rows = canvasAt.map(n => ['canvas', n]);
+    for (const [kind, list] of [['block', parsed.blocks], ['note', parsed.notes], ['conn', parsed.connections]]) for (const it of list || []) rows.push([kind, it.line]);
+    for (const [kind, n] of rows) for (const b of badAttrValuesInLine(kind, lines[n - 1])) out.push({ line: n, level: 'warn', msg: b.msg });
   }
   const has = id => parsed.blockMap[id] || parsed.noteMap[id];
   const seen = {};
@@ -149,16 +227,18 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     }
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
     if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
-    const key = [c.from, c.to].sort().join('\u0000');
-    if (seen[key]) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[key])} と同じ組の 2 本目` });
-    else seen[key] = c.line;
+    // 同じ向きの 2 本目だけを警告する。行き(a -> b)と戻り(b -> a)は別の線(BLK-owner-20260928-2255-2)。双方向(-->)は両方の向きを持つ
+    const dirs = [c.from + '\u0000' + c.to].concat(c.bidir ? [c.to + '\u0000' + c.from] : []);
+    const dup = dirs.find(k => seen[k]);
+    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]] });
+    else dirs.forEach(k => { seen[k] = c.line; });
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
-    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている` });
+    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line] });
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
-    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる` });
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line] });
   }
   // 追加した要素の仮の ID(`__new_N`)が残っている: ラベルが日本語だけだと ID は自動で付かない。保存・レビューの前に名前を付ける
   for (const [kind, list] of [['block', parsed.blocks], ['group', parsed.groups], ['note', parsed.notes]]) {
@@ -172,13 +252,13 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
     const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
       const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
-      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる` });
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
     }
   }
   if (paths) {
     const g = parsed.canvas.grid;
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
-      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る` });
+      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line] });
     }
   }
   for (const { conn, kind, item } of labelIssues || []) {
@@ -187,7 +267,7 @@ export function checkDiagram(parsed, lines, paths, labelIssues, where) {
       : kind === 'title' ? `${head}が group「${item.id}」(${ref(item.line)})の見出しに重なる`
       : kind === 'note' ? `${head}が note「${item.id}」(${ref(item.line)})の下に隠れる`
       : `${head}が接続「${connText(item)}」(${ref(item.line)})のラベルに重なる`;
-    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)` });
+    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line] });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -263,7 +343,7 @@ export function checkIncluded(parsed, exp, paths, opts = {}) {
     let msg = d.msg;
     if (unread && /という ID の block \/ note が無い$/.test(msg)) msg += unread;
     if (r.file !== exp.file && opts.inline !== false) msg += `(${name(r.file)} L${r.line})`;
-    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line });
+    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -284,6 +364,24 @@ export function includedItemNote(exp, line, name, lang) {
   return lang === 'en'
     ? `Defined in the included file ${f} (line ${o.line}; @include on line ${o.at}). It cannot be moved or changed from this diagram: edit ${f}.`
     : `include 先 ${f} の L${o.line} で定義(本文 L${o.at} の @include)。この図からは動かせない・変えられないので ${f} で直す`;
+}
+
+// include 先の要素のプロパティ欄は値を見せるだけにする(打てる欄・色・削除・「ほかの図の同じ表示名も揃う」を出さない)。
+// この図の本文にはその行が無く、打っても何も変わらないため。直す入口は案内(includedItemNote)の「{ファイル} を開く」の 1 つ。
+// 返り値: 見せる行 [{ key, label, value }]。include 先の要素でなければ null(打てるプロパティ欄を出す)
+export function includedItemRows(exp, item, lang) {
+  if (!item || !includeOrigin(exp, item.line)) return null;
+  const en = lang === 'en', isNote = item.type === 'note', isGroup = item.type === 'group';
+  const rows = [
+    { key: 'label', label: isNote ? (en ? 'Text' : 'テキスト') : (en ? 'Label' : 'ラベル'), value: String(item.label == null ? '' : item.label).split('\\n').join(' / ') },   // 本文の \n(改行)は「 / 」で 1 行に
+    { key: 'id', label: 'ID', value: item.id },
+    { key: 'pos', label: en ? 'Position (grid)' : '位置 (grid)', value: `${item.x}, ${item.y}` },
+    { key: 'size', label: en ? 'Size (grid)' : 'サイズ (grid)', value: `${item.w} x ${item.h}` },
+    { key: 'color', label: en ? 'Color' : '背景色', value: item.color || '' },
+  ];
+  if (isGroup) rows.push({ key: 'border', label: en ? 'Border' : '枠線色', value: item.borderColor || '' });
+  else rows.push({ key: 'text', label: en ? 'Text Color' : 'テキスト色', value: item.textColor || '' });
+  return rows;
 }
 
 // 書き出しの知らせに足す行: 読めない include 先の要素は書き出しにも入っていない
@@ -340,7 +438,9 @@ function loadedFileKey(files, from, p) {
 }
 
 // 図 self の本文を base(読み込んだ時)から今の files[self] に変えた影響。check(files, key) は図 key の診断(checkIncluded の返り値。
-// parse と線の経路は呼び出し側が渡す)。self の中だけで起きた診断(共通部の block 同士の重なり等)は self 自身の欄に出るので数えない。
+// parse と線の経路は呼び出し側が渡す)。self の中だけで起きた診断(発生源も相手(refs)も self の行。共通部の block 同士の重なり等)は
+// self だけを開いても出て self 自身の欄に出るので数えない。発生源が self の行でも相手が取り込み側の行なら(@include が本文の後ろにある図で
+// 共通部の block を取り込み側の block に重ねた等)、取り込み側の図の診断として相手の行で出す。
 // cache(Map、省略可)に編集前の診断を持つ(本文を打つたびに編集前を測り直さない)。
 // 返り値: { includers: [key], added: [{ path, line, level, msg }] }(includers の順、1 枚の中は check の順。line は path の本文の行)
 export function includeImpact(files, self, base, check, cache) {
@@ -353,8 +453,11 @@ export function includeImpact(files, self, base, check, cache) {
     let before = cache && cache.get(ck);
     if (!before) { before = check(was, k); if (cache) cache.set(ck, before); }
     for (const d of addedDiagnostics(before, check(files, k))) {
-      if (loadedFileKey(files, k, d.file === undefined ? k : d.file) === self) continue;
-      added.push({ path: k, line: d.line, level: d.level, msg: d.msg });
+      const inSelf = f => loadedFileKey(files, k, f === undefined ? k : f) === self;
+      if (!inSelf(d.file)) { added.push({ path: k, line: d.line, level: d.level, msg: d.msg }); continue; }
+      const other = (d.refs || []).find(r => !inSelf(r.file));
+      if (!other) continue;
+      added.push({ path: k, line: other.file === k ? other.line : other.at, level: d.level, msg: d.msg });
     }
   }
   return { includers, added };
@@ -464,12 +567,51 @@ export function removeIncludeInDsl(dsl, line) {
   return lines.join('\n');
 }
 
-// 一括書き出しの zip の中のファイル名: 読み込んだ図のパスから .sb / .stableblock / .txt を除いて拡張子 ext を付ける
-export function bulkFileName(path, ext) {
-  return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + '.' + ext;
+// 書き出しのファイル名: 図のパス(または .sb 保存の名前)から .sb / .stableblock / .txt を除き、suffix(透過 PNG の _transparent など)と拡張子 ext を付ける。
+// 一括の zip の中身も 1 枚の書き出し(HTML 版のツールバー・VSCode 拡張の保存ダイアログの既定名)もこれで名付ける。新規の図は diagram.sb なので diagram.{ext}
+export function bulkFileName(path, ext, suffix = '') {
+  return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + (suffix || '') + '.' + ext;
 }
 
 // 一括書き出しの知らせ: 図ごとの知らせ([{ path, dropped }])を、どの図の知らせかを頭に付けて 1 つに並べる
 export function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
+}
+
+// ─── 「.sb 読込 ▾」: ファイルを選ぶ・フォルダを選ぶ・ドロップ ───
+// 読み込める図か: .sb / .stableblock(じかに選んだ・落としたファイルは .txt も)。フォルダの中は隠しフォルダ(.git など)の下を読まない
+export function sbLoadable(path, inFolder) {
+  const p = String(path).split('\\').join('/');
+  if (inFolder && p.split('/').slice(0, -1).some(s => s.startsWith('.'))) return false;
+  return inFolder ? /\.(sb|stableblock)$/i.test(p) : /\.(sb|stableblock|txt)$/i.test(p);
+}
+
+// フォルダから読む図 [{ path, ... }] を、読み込める図だけにしてパスの順に並べる(選んだ・落とした順に左右されない)
+export function folderSbEntries(list) {
+  return (list || []).filter(d => sbLoadable(d.path, true)).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+// 選んだ・落としたフォルダの名前(全部の図に共通するフォルダ)をパスから外す。図どうしの相対パスは変わらず、画面・一括書き出しの名前は
+// フォルダの中のパス(shared/common.sb)になる。共通するフォルダが無ければそのまま
+export function trimCommonDir(list) {
+  const dirs = (list || []).map(d => String(d.path).split('/').slice(0, -1));
+  if (!dirs.length) return [];
+  let n = 0;
+  while (dirs.every(d => d.length > n && d[n] === dirs[0][n])) n++;
+  return n ? list.map(d => ({ ...d, path: String(d.path).split('/').slice(n).join('/') })) : [...list];
+}
+
+// 一緒に読んだ図 [{ path, text }](読めなかった図は text が null)のうち本文に出す図の添字: ほかの図から @include されていない最初の図。
+// 全部が取り込まれている(循環)なら読めた最初の図、読めた図が無ければ -1。include 先はパスでも名前(最後の / の後)でも当てる(loadedReader と同じ)
+export function pickMainDiagram(list) {
+  const ok = d => d.text !== null && d.text !== undefined;
+  const refs = new Set();
+  (list || []).forEach(d => { if (ok(d)) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  const i = list.findIndex(d => ok(d) && !refs.has(d.path) && !refs.has(String(d.path).split('/').pop()));
+  return i >= 0 ? i : list.findIndex(ok);
+}
+
+// 「一括 ▾」の形式の並び: 前回選んだ形式 last を先頭に、残りは元の順(last が無い・知らない形式なら元のまま)
+export function bulkFormatOrder(fmts, last) {
+  return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
 }

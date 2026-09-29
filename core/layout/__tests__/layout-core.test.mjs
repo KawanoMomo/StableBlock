@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom,
-  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths,
+  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -99,6 +99,23 @@ test('stepZoom: 0.25 刻み、端数からは刻みに戻る', () => {
   assert.equal(stepZoom(0.25, -1), 0.25);
   assert.equal(stepZoom(0.1, -1), 0.1);   // 全体表示で 0.25 未満になっていても − で大きくならない
   assert.equal(stepZoom(0.1, 1), 0.25);
+});
+
+test('paneWidths: 境界のドラッグで左右の欄の幅を変え、プレビューに最小幅を残す', () => {
+  const O = { minLeft: 160, minMid: 240, minRight: 200 };
+  // 収まる範囲はそのまま(整数に丸める)
+  assert.deepEqual(paneWidths(1366, 520.4, 300, O), { left: 520, right: 300 });
+  // 最小幅を割らない
+  assert.deepEqual(paneWidths(1366, 40, 50, O), { left: 160, right: 200 });
+  // 左の境界を右へ寄せすぎた: 右は動かさず、左をプレビューの最小幅の手前で止める
+  assert.deepEqual(paneWidths(1366, 1200, 220, { ...O, moved: 'left' }), { left: 906, right: 220 });
+  // 右の境界を左へ寄せすぎた: 左は動かさず、右を止める
+  assert.deepEqual(paneWidths(1366, 410, 1000, { ...O, moved: 'right' }), { left: 410, right: 716 });
+  // 窓が狭くなった(moved なし): 左から削る。左が最小まで来たら右を削る
+  assert.deepEqual(paneWidths(1000, 600, 300, O), { left: 460, right: 300 });
+  assert.deepEqual(paneWidths(600, 600, 300, O), { left: 160, right: 200 });
+  // 左の欄が無い画面(拡張のプレビュー | サイド欄)
+  assert.deepEqual(paneWidths(800, 0, 700, { minLeft: 0, minMid: 200, minRight: 160, moved: 'right' }), { left: 0, right: 600 });
 });
 
 test('placeNext: 直前に置いたものの右隣に、同じ行で並べる', () => {
@@ -230,7 +247,8 @@ test('groupRectFor: 上の段の block をまたがないよう、ラベルの�
 test('groupRectFor: 親の先頭の段では、ラベルの帯を親の内側 1 に収める', () => {
   const swc = G('P', 1, 1, 30, 12);
   const a = B('a', 2, 3, 8), b = B('b', 11, 3, 8);
-  assert.deepEqual(groupRectFor([a, b], [swc], swc), { x: 1, y: 2, w: 19, h: 5 });
+  // 左は 1 だと親の枠(x=1)に重なるので 0 に詰める(親の行を書き換えない。BLK-owner-20260927-0728-4)
+  assert.deepEqual(groupRectFor([a, b], [swc], swc), { x: 2, y: 2, w: 18, h: 5 });
   // 親が無ければ上 2
   assert.deepEqual(groupRectFor([a, b], []), { x: 1, y: 1, w: 19, h: 6 });
 });
@@ -245,6 +263,55 @@ test('groupRectFor → fitParents: 新しい group が親の枠に重なれば�
   const ch = fitParents([...items, ng], { ...before, N: 'P' }, [{ id: 'N', sides: ['l', 't', 'r', 'b'] }]);
   const p = ch.length ? ch[0] : swc;
   assert.ok(ng.x >= p.x + 1 && ng.y >= p.y + 1 && ng.x + ng.w <= p.x + p.w - 1 && ng.y + ng.h <= p.y + p.h - 1, JSON.stringify({ ng, p }));
+});
+
+// 親の中でグループ化しても、触っていない親・兄弟の行は変わらない(BLK-owner-20260927-0728-4)
+const groupInParent = (items, parentId, memberIds) => {
+  const before = parentMap(items), parent = items.find(i => i.id === parentId);
+  const members = items.filter(i => memberIds.includes(i.id)), others = items.filter(i => !memberIds.includes(i.id));
+  const r = groupRectFor(members, others, parent);
+  const ng = { type: 'group', id: 'N', ...r }, after = { ...before, N: parentId };
+  memberIds.forEach(id => { after[id] = 'N'; });
+  const bx = Math.min(...members.map(b => b.x)), by = Math.min(...members.map(b => b.y));
+  const ex = Math.max(...members.map(b => b.x + b.w)), ey = Math.max(...members.map(b => b.y + b.h));
+  const ch = fitParents([...items, ng], after, [{ id: 'N', sides: ['l', 't', 'r', 'b'] }], 1, [{ id: 'N', from: { x: r.x, y: r.y, w: ex - r.x, h: ey - r.y } }]);
+  return { r, ch, bbox: { bx, by, ex, ey } };
+};
+
+test('groupRectFor: 親の左端・上の段の block をグループ化しても親の行が変わらない', () => {
+  const outer = G('Outer', 1, 1, 20, 8);
+  const a = B('A', 2, 3, 8), b = B('B', 11, 3, 8);
+  const { r, ch } = groupInParent([outer, a, b], 'Outer', ['A', 'B']);
+  assert.deepEqual(r, { x: 2, y: 2, w: 18, h: 5 });            // 左は親の内側 1 に詰め、上 1・右 1・下 1
+  assert.deepEqual(ch, []);                                      // 親も何も動かない
+  assert.ok(r.x >= outer.x + 1 && r.y >= outer.y + 1 && r.x + r.w <= outer.x + outer.w - 1 && r.y + r.h <= outer.y + outer.h - 1);
+});
+
+test('groupRectFor: 親の中の 3 段のうち上 2 段をグループ化しても、親も下の段の兄弟も動かない', () => {
+  const ecu = G('ECU', 1, 1, 20, 14);
+  const bs = [[2, 3], [11, 3], [2, 7], [11, 7], [2, 11], [11, 11]].map(([x, y], i) => B(`b${i}`, x, y, 8));
+  const { r, ch } = groupInParent([ecu, ...bs], 'ECU', ['b0', 'b1', 'b2', 'b3']);
+  assert.deepEqual(r, { x: 2, y: 2, w: 18, h: 8 });            // 下は下の段との 1 グリッドの隙間を残す(0)
+  assert.deepEqual(ch, []);
+  for (const o of [bs[4], bs[5]]) assert.ok(!(r.x < o.x + o.w && o.x < r.x + r.w && r.y < o.y + o.h && o.y < r.y + r.h), `${o.id} に重なる`);
+});
+
+test('groupRectFor: 選んだ block が親の枠の内側 1 に無いときだけ、従来どおり余白を取り親が広がる', () => {
+  const p = G('P', 1, 1, 20, 8);
+  const a = B('a', 1, 3, 8), b = B('b', 10, 3, 8);            // a は親の左の枠に接している
+  const { r, ch } = groupInParent([p, a, b], 'P', ['a', 'b']);
+  assert.equal(r.x, 0);                                           // 左は詰めても収まらないので 1 の余白
+  assert.deepEqual(ch.map(c => c.id), ['P']);
+  assert.ok(ch[0].x <= r.x);
+});
+
+test('groupRectFor: 親が無くても、右・下の兄弟との隙間を食わない(兄弟を押し出さない)', () => {
+  const a = B('a', 2, 3, 8), b = B('b', 11, 3, 8), c = B('c', 20, 3, 8), d = B('d', 2, 7, 8);
+  const r = groupRectFor([a, b], [c, d]);
+  assert.deepEqual(r, { x: 1, y: 1, w: 18, h: 5 });             // 右は c と 1、下は d と 1 の隙間を残す
+  const ng = { type: 'group', id: 'N', ...r };
+  const ch = fitParents([a, b, c, d, ng], { a: 'N', b: 'N' }, [{ id: 'N', sides: ['l', 't', 'r', 'b'] }], 1, [{ id: 'N', from: { x: r.x, y: r.y, w: 19 - r.x, h: 6 - r.y } }]);
+  assert.deepEqual(ch, []);
 });
 
 test('lastChildBlock: 子 group の中の block は親の直下の子に数えない', () => {
@@ -306,8 +373,9 @@ test('fitParents: 押し出した要素の型を返す(block は at だけ、gro
 
 test('fitParents(seeds): 新しい group の下・右の余白で兄弟に接するなら、隙間 1 を保って押し出す', () => {
   const ecu = G('ECU', 1, 1, 20, 12), cpu = B('CPU', 2, 3, 8), ram = B('RAM', 11, 3, 8), flash = B('Flash', 2, 7, 8);
-  const r = groupRectFor([cpu, ram], [ecu, flash], ecu);
-  assert.deepEqual(r, { x: 1, y: 2, w: 19, h: 5 });       // 下の余白 1 で Flash(y=7)に接する
+  // groupRectFor はこの矩形を作らない(左は親の枠、下は Flash との隙間を食うので詰める。BLK-owner-20260927-0728-4)。押し出し自体は本文での拡大などでも起きる
+  assert.deepEqual(groupRectFor([cpu, ram], [ecu, flash], ecu), { x: 2, y: 2, w: 18, h: 4 });
+  const r = { x: 1, y: 2, w: 19, h: 5 };                    // 下の余白 1 で Flash(y=7)に接する
   const mcu = { type: 'group', id: 'MCU', ...r };
   const parents = { ...parentMap([ecu, cpu, ram, flash]), MCU: 'ECU', CPU: 'MCU', RAM: 'MCU' };
   const ch = fitParents([ecu, cpu, ram, flash, mcu], parents, [{ id: 'MCU', sides: ['l', 't', 'r', 'b'] }], 1,
@@ -328,6 +396,20 @@ test('setCanvasGrowInDsl / canvasGrows: grow=off を @canvas 行に書く・消�
   assert.equal(setCanvasGrowInDsl('# t\nblock a "A" at 1,1 size 2x2\n', false), '# t\n@canvas grow=off\nblock a "A" at 1,1 size 2x2\n');
   assert.equal(canvasGrows({ width: 400 }), true);
   assert.equal(canvasGrows({ width: 400, grow: 'off' }), false);
+});
+
+// @canvas が 2 行ある図(BLK-porter-20260926-2105): 効くのは最後の行なので GUI の変更も最後の行に書き、前の行は 1 バイトも変えない
+test('setCanvas*InDsl: @canvas が 2 行ある図は最後の行だけを書き換える', () => {
+  const L1 = '@canvas width=480 height=240 grid=20 route=ortho grow=off\n';
+  const src = L1 + '@canvas width=800 height=600 grid=40\nblock a "A" at 2,1 size 6x3\n';
+  assert.equal(setCanvasInDsl(src, 1000, 700), L1 + '@canvas width=1000 height=700 grid=40\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(setCanvasRouteInDsl(src, 'straight'), L1 + '@canvas width=800 height=600 grid=40 route=straight\nblock a "A" at 2,1 size 6x3\n');
+  // 曲線に戻す・自動拡張に戻す: 前の行の route= / grow= が効かないよう、最後の行に既定の値を書く
+  assert.equal(setCanvasRouteInDsl(src, 'curved'), L1 + '@canvas width=800 height=600 grid=40 route=curved\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(setCanvasGrowInDsl(src, true), L1 + '@canvas width=800 height=600 grid=40 grow=on\nblock a "A" at 2,1 size 6x3\n');
+  assert.equal(canvasGrows({ grow: 'on' }), true);
+  // 前の行に無い属性は今までどおり消すだけ
+  assert.equal(setCanvasRouteInDsl('@canvas width=480\n@canvas width=800 route=ortho\n', 'curved'), '@canvas width=480\n@canvas width=800\n');
 });
 
 test('growCanvasInDsl: grow=off の図は要素がはみ出しても広げない', () => {
@@ -367,4 +449,151 @@ test('placeInGroupFit: 広がらなければ何も変えない。親 group の�
   assert.equal(by.MCU.h, 10);                                        // 置いた block が収まるよう MCU が下に広がる
   assert.equal(by.CAN.y, 13);                                        // MCU の下端(12)から元の隙間 1 を空ける
   assert.equal(by.ECU.h, 22);                                        // 押し出した CAN が収まるよう ECU も下に広がる
+});
+
+// 押し出された兄弟が親の枠の外まで出切っても、親の子のまま(親が広がる)(BLK-owner-20260928-2255-1)
+test('placeInGroupFit: 入れ子の子 group に足して兄弟を親の枠の外まで押し出しても、兄弟は元の親の内側に残り、親(と祖先)が広がる', () => {
+  const inside = (c, p) => c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w && c.y + c.h <= p.y + p.h;
+  // 「+ 中にブロック」6 個 →上 4 個を「選択をグループ化」した後のハード接続図(ECU > MCU、Pmic・Wdg は MCU の下の兄弟)
+  const top = G('Top', 0, 0, 40, 30);
+  const ecu = G('ECU', 0, 1, 21, 15), mcu = G('MCU', 1, 2, 19, 9);
+  const cpu = B('Cpu', 2, 3, 8), spi = B('Spi0', 11, 3, 8), can = B('Can0', 2, 7, 8), adc = B('Adc0', 11, 7, 8);
+  const pmic = B('Pmic', 2, 12, 8), wdg = B('Wdg', 11, 12, 8);
+  const items = [cpu, spi, can, adc, pmic, wdg, ecu, mcu];
+  const r = placeInGroupFit(items, mcu, 8, 3, adc);
+  const cur = Object.fromEntries(items.map(i => [i.id, { ...i }]));
+  for (const c of r.changes) Object.assign(cur[c.id], c);
+  assert.equal(cur.MCU.h, 13);                                       // MCU は 19x9 → 19x13
+  assert.deepEqual([cur.Pmic.y, cur.Wdg.y], [16, 16]);               // 兄弟は隙間 1 を保って下がる
+  assert.ok(inside(cur.Pmic, cur.ECU) && inside(cur.Wdg, cur.ECU), `Pmic・Wdg が ECU の外 ${JSON.stringify([cur.ECU, cur.Pmic])}`);
+  assert.ok(inside(cur.MCU, cur.ECU));
+  assert.deepEqual([cur.ECU.x, cur.ECU.y, cur.ECU.w], [0, 1, 21]);   // ECU は下にだけ広がる
+  assert.equal(cur.ECU.y + cur.ECU.h, 20);                           // Wdg の下端(19)+ 余白 1
+  // 祖先まで順に: ECU の外側の group も、広がった ECU を内側に収める
+  const items2 = [...items.map(i => ({ ...i })), { ...top, h: 17 }];
+  const r2 = placeInGroupFit(items2, items2.find(i => i.id === 'MCU'), 8, 3, adc);
+  const cur2 = Object.fromEntries(items2.map(i => [i.id, { ...i }]));
+  for (const c of r2.changes) Object.assign(cur2[c.id], c);
+  assert.ok(inside(cur2.ECU, cur2.Top), `ECU が Top の外 ${JSON.stringify([cur2.Top, cur2.ECU])}`);
+  assert.ok(inside(cur2.Pmic, cur2.ECU));
+});
+
+test('fitParents: 利用者が親の外へ出し切った要素では親を広げない(押し出しだけが親を広げる)', () => {
+  const p = G('P', 0, 0, 20, 10), a = B('A', 25, 2, 4);
+  const parents = { A: 'P' };
+  assert.deepEqual(fitParents([p, a], parents, [{ id: 'A', sides: ['r'] }]), []);
+});
+
+// 枠をまたいだ group(Adc_Stack が Ecu_Sw の右下にはみ出している。Adc_Stack は Ecu_Sw の子ではない)
+const STRADDLE = [
+  { type: 'group', id: 'Ecu_Sw', x: 1, y: 1, w: 20, h: 8 },
+  { type: 'group', id: 'Adc_Stack', x: 2, y: 3, w: 20, h: 15 },
+  { type: 'block', id: 'Adc_Hw', x: 3, y: 10, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_Drv', x: 12, y: 10, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_If', x: 3, y: 14, w: 8, h: 3 },
+  { type: 'block', id: 'Adc_Filter', x: 12, y: 14, w: 8, h: 3 },
+];
+
+test('placeInGroupFit: 枠をまたぐ group がある図で外側に足しても、またいだ group の中身を 1 つずつ押し出さない(動くのは広がる group だけ)', () => {
+  const gr = STRADDLE[0];
+  const p = placeInGroupFit(STRADDLE, gr, 8, 3, null);
+  // 置いた block はまたいだ group と重ならない
+  assert.ok(!(p.x < 22 + 1 && 2 < p.x + 8 + 1 && p.y < 18 + 1 && 3 < p.y + 3 + 1), `at ${p.x},${p.y}`);
+  assert.deepEqual(p.changes.map(c => c.id), ['Ecu_Sw']);
+  const e = p.changes[0];
+  assert.ok(e.y + e.h <= p.y + 3 + 1, `Ecu_Sw は置いた block が収まる分だけ(${e.h})`);
+  // 2 回目も伸び続けない(足した block の高さ + 1 まで)
+  const after = STRADDLE.map(i => (i.id === 'Ecu_Sw' ? { ...i, ...e } : i)).concat([{ type: 'block', id: 'N1', x: p.x, y: p.y, w: 8, h: 3 }]);
+  const p2 = placeInGroupFit(after, { ...gr, ...e }, 8, 3, { x: p.x, y: p.y, w: 8, h: 3 });
+  for (const c of p2.changes) assert.ok(['Ecu_Sw'].includes(c.id), `動いたのは ${c.id}`);
+  const e2 = p2.changes.find(c => c.id === 'Ecu_Sw');
+  if (e2) assert.ok(e2.h - e.h <= 3 + 1, `2 回目の伸び ${e2.h - e.h}`);
+});
+
+test('fitParents: 押し出すのは兄弟(と祖先の兄弟)だけ。枠をまたぐ別の group の子は、その group ごとでなければ動かさない', () => {
+  const parents = parentMap(STRADDLE);
+  assert.equal(parents.Adc_Hw, 'Adc_Stack');
+  const grown = STRADDLE.map(i => (i.id === 'Ecu_Sw' ? { ...i, h: 20 } : i));
+  const ch = fitParents(grown, parents, [{ id: 'Ecu_Sw', sides: ['b'] }], 1, [{ id: 'Ecu_Sw', from: { x: 1, y: 1, w: 20, h: 8 } }]);
+  assert.deepEqual(ch.filter(c => c.type === 'block'), []);
+});
+
+test('fitParents(drop): group を別の group の中へ落として枠をまたげば、外側が(祖先まで)広がって中に収める', () => {
+  // Top > Ecu_Sw。Adc_Stack(外にあった)を Ecu_Sw の中へ落とした: 左上は Ecu_Sw の内側、右下ははみ出す
+  const items = [
+    { type: 'group', id: 'Top', x: 0, y: 0, w: 40, h: 12 },
+    { type: 'group', id: 'Ecu_Sw', x: 1, y: 1, w: 20, h: 8 },
+    { type: 'group', id: 'Adc_Stack', x: 2, y: 3, w: 20, h: 8 },
+    { type: 'block', id: 'Adc_Hw', x: 3, y: 5, w: 8, h: 3 },
+    { type: 'block', id: 'Other', x: 30, y: 2, w: 8, h: 3 },
+  ];
+  const before = { Ecu_Sw: 'Top', Other: 'Top', Adc_Hw: 'Adc_Stack' };   // 落とす前 Adc_Stack は Top の外
+  const ch = fitParents(items, before, [{ id: 'Adc_Stack', sides: ['l'], drop: true }, { id: 'Adc_Hw', sides: ['l'] }]);
+  const cur = items.map(i => ({ ...i, ...(ch.find(c => c.id === i.id) || {}) }));
+  const pm = parentMap(cur);
+  assert.equal(pm.Adc_Stack, 'Ecu_Sw');
+  assert.equal(pm.Ecu_Sw, 'Top');
+  assert.equal(pm.Adc_Hw, 'Adc_Stack');
+  const byId = Object.fromEntries(cur.map(i => [i.id, i]));
+  assert.deepEqual([byId.Adc_Stack.x, byId.Adc_Stack.y, byId.Adc_Stack.w, byId.Adc_Stack.h], [2, 3, 20, 8]);   // 落とした要素は動かさない
+  assert.deepEqual([byId.Adc_Hw.x, byId.Adc_Hw.y], [3, 5]);
+  // drop の無い移動(矢印・数値)では、またいだ group に取り込まない(従来どおり)
+  const ch0 = fitParents(items, before, [{ id: 'Adc_Stack', sides: ['l'] }]);
+  assert.deepEqual(ch0, []);
+});
+
+test('fitParents(drop): 落とした先の左上が group の外なら取り込まない。小さい group には取り込まない', () => {
+  const items = [
+    { type: 'group', id: 'A', x: 10, y: 10, w: 10, h: 6 },
+    { type: 'block', id: 'B', x: 5, y: 12, w: 8, h: 3 },    // 左上が A の外(左)で、右端だけ A に掛かる
+    { type: 'group', id: 'Big', x: 12, y: 11, w: 30, h: 20 }, // 左上は A の内側だが A より大きい
+  ];
+  assert.deepEqual(fitParents(items, {}, [{ id: 'B', sides: ['r'], drop: true }]), []);
+  assert.deepEqual(fitParents(items, {}, [{ id: 'Big', sides: ['r'], drop: true }]), []);
+});
+
+// 選んでいない要素を囲まない「選択をグループ化」(BLK-owner-20260929-0405-2)。動かしてよいのは選んだ要素だけ
+const hitsR = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+test('groupPlanFor: 2 列の読み順で選んだ 4 個の間に選んでいない block があれば、選んだ block を空きへ寄せて、それを囲まない', () => {
+  const swc = G('Spi_Swc', 1, 1, 20, 18);
+  const [api, cfg, diag, hl, ll, irq, dma] = [[2, 3], [11, 3], [2, 7], [11, 7], [2, 11], [11, 11], [2, 15]]
+    .map(([x, y], i) => B(['Spi_Api', 'Spi_Cfg', 'Spi_Diag', 'Spi_Hl', 'Spi_Ll', 'Spi_Irq', 'Spi_Dma'][i], x, y, 8));
+  const members = [hl, ll, irq, dma], others = [swc, api, cfg, diag];
+  const plan = groupPlanFor(members, others, swc);
+  assert.ok(plan.rect, plan.reason);
+  const moved = Object.fromEntries(plan.moves.map(m => [m.id, m]));
+  assert.deepEqual(Object.keys(moved), ['Spi_Hl']);                 // 動くのは 1 個だけ
+  const placed = members.map(m => ({ ...m, ...(moved[m.id] || {}) }));
+  for (const o of others.slice(1)) assert.ok(!hitsR(plan.rect, o), `${o.id} に掛かる ${JSON.stringify(plan.rect)}`);
+  for (const m of placed) assert.ok(m.x >= plan.rect.x && m.y >= plan.rect.y && m.x + m.w <= plan.rect.x + plan.rect.w && m.y + m.h <= plan.rect.y + plan.rect.h, m.id);
+  // 親の内側 1 に収まる(親の行を書き換えない)
+  assert.ok(plan.rect.x >= 2 && plan.rect.y >= 2 && plan.rect.x + plan.rect.w <= 20 && plan.rect.y + plan.rect.h <= 18, JSON.stringify(plan.rect));
+  // 選んだ block 同士は重ならない
+  for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) assert.ok(!hitsR(placed[i], placed[j]));
+  // 結果の所属: 新しい group の子は選んだ 4 個だけ、Spi_Diag は Spi_Swc の直下のまま
+  const pm = parentMap([swc, api, cfg, diag, ...placed, { type: 'group', id: 'N', ...plan.rect }]);
+  assert.equal(pm.Spi_Diag, 'Spi_Swc');
+  for (const m of placed) assert.equal(pm[m.id], 'N');
+});
+
+test('groupPlanFor: 囲んでも選んでいない要素が入らなければ、今までどおり何も動かさない(groupRectFor と同じ矩形)', () => {
+  const ecu = G('ECU', 1, 1, 20, 14);
+  const bs = [[2, 3], [11, 3], [2, 7], [11, 7], [2, 11], [11, 11]].map(([x, y], i) => B(`b${i}`, x, y, 8));
+  const plan = groupPlanFor(bs.slice(0, 4), [ecu, ...bs.slice(4)], ecu);
+  assert.deepEqual(plan.moves, []);
+  assert.deepEqual(plan.rect, groupRectFor(bs.slice(0, 4), [ecu, ...bs.slice(4)], ecu));
+});
+
+test('groupPlanFor: 親の無い図で間に挟まった block も囲まない。空きが無ければ囲まずに理由を返す', () => {
+  const a = B('a', 1, 1, 8), u = B('u', 10, 1, 8), b = B('b', 19, 1, 8);
+  const plan = groupPlanFor([a, b], [u]);
+  assert.ok(plan.rect, plan.reason);
+  assert.equal(plan.moves.length, 1);
+  assert.ok(!hitsR(plan.rect, u));
+  // 親の中で空きが無い: 親 P(1,1 28x5)に a u b が 1 列に詰まっている → 囲めない
+  const p = G('P', 0, 0, 28, 5);
+  const a2 = B('a', 1, 2, 8), u2 = B('u', 10, 2, 8), b2 = B('b', 19, 2, 8);
+  const none = groupPlanFor([a2, b2], [p, u2], p);
+  assert.equal(none.rect, null);
+  assert.match(none.reason, /u/);
 });

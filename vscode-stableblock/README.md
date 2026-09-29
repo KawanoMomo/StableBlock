@@ -30,7 +30,7 @@ Deterministic grid-based block diagram tool — syntax highlighting and interact
 - **SVG / PNG / Transparent PNG** — from toolbar
 - **Copy PNG** — copy PNG to clipboard
 - **Mermaid Export** — convert to flowchart TD format
-- **Git Visual Diff** — side-by-side SVG comparison with HEAD
+- **Git Visual Diff** — pick a version from the file's git history (latest first) and compare it side by side with the current text (SVG + line diff, changed elements marked)
 
 ### Keyboard Shortcuts (in preview)
 | Key | Action |
@@ -80,7 +80,7 @@ Your `.sb` file is always the source of truth.
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-2.0.0.vsix
+code --install-extension stableblock-3.0.0.vsix
 ```
 
 ## License

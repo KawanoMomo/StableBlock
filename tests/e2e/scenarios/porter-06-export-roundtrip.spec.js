@@ -34,13 +34,17 @@ test('porter-06: SVG / PNG は画面の選択・グリッド・表示倍率を�
   const take = async (tag) => {
     const d = path.join(dir, tag);
     fs.mkdirSync(d, { recursive: true });
+    const files = { svg: await download(page, 'SVG', d), png: await download(page, 'PNG', d), tpng: await download(page, '透過PNG', d) };
     return {
-      svg: fs.readFileSync(await download(page, 'SVG', d), 'utf8'),
-      png: pngSize(await download(page, 'PNG', d)),
-      tpng: pngSize(await download(page, '透過PNG', d)),
+      names: Object.values(files).map(f => path.basename(f)),
+      svg: fs.readFileSync(files.svg, 'utf8'),
+      png: pngSize(files.png),
+      tpng: pngSize(files.tpng),
     };
   };
   const plain = await take('plain');
+  // 1 枚の書き出しも「.sb 保存」「一括」と同じ図の名前で出る(BLK-owner-20260927-0728-3)
+  expect(plain.names).toEqual(['owner-critique-swc.svg', 'owner-critique-swc.png', 'owner-critique-swc_transparent.png']);
   expect(plain.svg).toMatch(/^<svg width="960" height="520" /);           // @canvas の寸法
   expect(plain.svg).not.toMatch(/data-resize|url\(#gd\)|<pattern/);      // ハンドル・グリッドの点が無い
   expect(plain.png).toEqual({ w: 1920, h: 1040 });                         // @canvas × 2
@@ -56,12 +60,17 @@ test('porter-06: SVG / PNG は画面の選択・グリッド・表示倍率を�
   expect(zoomed.svg).toBe(plain.svg);
   expect(zoomed.png).toEqual(plain.png);
   expect(zoomed.tpng).toEqual(plain.png);
+
+  // 「新規」の図は今どおり diagram.*
+  await page.getByRole('button', { name: '新規', exact: true }).click();
+  expect(path.basename(await download(page, 'SVG', dir))).toBe('diagram.svg');
 });
 
 test('porter-06: Mermaid に note・色・ラベルが残り、表せないものは画面に出る', async ({ page }, testInfo) => {
   await bootPlain(page);
   await importSb(page, SRC);
   const file = await download(page, 'Mermaid', saveDir(testInfo));
+  expect(path.basename(file)).toBe('owner-critique-swc.mmd');
   const mmd = fs.readFileSync(file, 'utf8');
 
   expect(mmd.startsWith('flowchart TD\n')).toBe(true);
@@ -88,6 +97,7 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
   await bootPlain(page);
   await importSb(page, SRC);
   const file = await download(page, 'Excel', saveDir(testInfo));
+  expect(path.basename(file)).toBe('owner-critique-swc.xlsx');
   const zip = await JSZip.loadAsync(fs.readFileSync(file));
   const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
 
@@ -122,9 +132,9 @@ test('porter-06: Excel の接続線は図形に接着され、落ちた接続は
   expect(Math.min(...Object.keys(names).map(Number))).toBe(2);
 });
 
-// block の太枠(style=bold)・破線枠(style=dashed)と接続の線の形は Excel でも画面と同じ。Excel で表せない lpos= は接続ごとに画面に出る
-// (BLK-builder-20260926-1230-1 / BLK-porter-20260926-1205-1)
-test('porter-06: block の太枠・破線枠と線の形は Excel でも画面と同じで、表せない lpos= は接続ごとに知らせる', async ({ page }, testInfo) => {
+// block の太枠(style=bold)・破線枠(style=dashed)と接続の線の形は Excel でも画面と同じ(BLK-builder-20260926-1230-1 / BLK-porter-20260926-1205-1)。
+// 接続ラベルの白地も画面と同じ位置・大きさ(lpos= も載る。固定幅で文字からはみ出さない。BLK-owner-20260929-0405-3)
+test('porter-06: block の太枠・破線枠と線の形、接続ラベルの位置(lpos= も)と白地の大きさは Excel でも画面と同じ', async ({ page }, testInfo) => {
   await bootPlain(page);
   await importSb(page, path.join(FIXTURES, 'porter-styles.sb'));
   const svg = page.locator('#svg-wrap svg');
@@ -142,10 +152,14 @@ test('porter-06: block の太枠・破線枠と線の形は Excel でも画面�
   expect(conn(0)).toBe('curvedConnector3');                                // pay -> old: 画面の既定の曲線
   expect(conn(1)).toBe('straightConnector1');                              // api -> pay route=straight
 
-  const report = page.locator('#export-report');
-  await expect(report).toBeVisible();
-  await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
-  await expect(report).toContainText('接続 pay -> old の lpos=top(Excel ではラベルを線の中点に置く)');
+  // 画面のラベルの白地(rect)と Excel の connlabel の位置・大きさ(EMU = px x 9525)が同じ。lpos=top も画面と同じく線の上
+  const screen = await svg.locator('g.conn-label[data-from="pay"][data-to="old"] rect').evaluate(r => ['x', 'y', 'width', 'height'].map(k => +r.getAttribute(k)));
+  const m = xml.match(/<xdr:pos x="(-?\d+)" y="(-?\d+)"\/><xdr:ext cx="(\d+)" cy="(\d+)"\/><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="\d+" name="connlabel:0"/);
+  expect(m, 'connlabel:0').not.toBeNull();
+  m.slice(1, 5).map(Number).forEach((v, i) => expect(Math.abs(v / 9525 - screen[i]), `connlabel:0 の ${['x', 'y', 'w', 'h'][i]}(画面 ${screen})`).toBeLessThanOrEqual(0.01));
+  expect(xml).toContain('<a:t>retire</a:t>');
+  // lpos= は載るので、書き出せなかったものの一覧は出ない
+  await expect(page.locator('#export-report')).toBeHidden();
 });
 
 // ラベル中の二重引用符は SVG / Mermaid / Excel に引用符のまま出る(BLK-porter-20260926-0617)

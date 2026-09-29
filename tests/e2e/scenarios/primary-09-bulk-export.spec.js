@@ -56,7 +56,7 @@ test('primary-09: 12 枚 + 共通部を読み込むと、SVG と Excel を「一
   await expect(report).not.toContainText('書き出せなかったもの');
   await report.click();
 
-  // Excel: 13 枚の .xlsx。表せないもの(lpos=)は図の名前付きで知らせる
+  // Excel: 13 枚の .xlsx。接続ラベルの lpos= も画面と同じ所に載るので、書き出せなかったものは出ない(BLK-owner-20260929-0405-3)
   const xlsx = await exportAll(page, 'export-xlsx-all', dir);
   expect(xlsx.name).toBe('diagrams-xlsx.zip');
   expect(Object.keys(xlsx.zip.files).sort()).toEqual([...NAMES.map(n => `${n}.xlsx`), 'common.xlsx'].sort());
@@ -66,12 +66,21 @@ test('primary-09: 12 枚 + 共通部を読み込むと、SVG と Excel を「一
   expect(drawing).toContain('name="block:rte"');
   await expect(report).toBeVisible();
   await expect(report).toContainText('Excel: 13 枚を diagrams-xlsx.zip に書き出した');
-  await expect(report).toContainText('Excel に書き出せなかったもの(1 件)');
-  await expect(report).toContainText('uart_dataflow.sb: 接続 uartdata -> rte の lpos=top');
+  await expect(report).not.toContainText('書き出せなかったもの');
+  const uart = await JSZip.loadAsync(await xlsx.zip.file('uart_dataflow.xlsx').async('uint8array'));
+  expect(await uart.file('xl/drawings/drawing1.xml').async('string')).toMatch(/name="connlabel:\d+"/);
 
-  // 選択は Esc と外側のクリックで閉じ、何も書き出さない
+  // 次に開くと前回の形式(Excel)が印付きで先頭に出てフォーカスがあり、残りは元の順(BLK-junior-20260926-1705-wish)
   await page.locator('[data-term="export-all"]').click();
   await expect(page.locator('#export-menu')).toBeVisible();
+  const items = page.locator('#export-menu [role="menuitem"]');
+  await expect(items.first()).toHaveAttribute('data-term', 'export-xlsx-all');
+  await expect(items.first()).toBeFocused();
+  await expect(items.first().locator('.em-mark')).toHaveText('前回');
+  await expect(page.locator('#export-menu .em-mark')).toHaveCount(1);
+  expect(await items.evaluateAll(bs => bs.map(b => b.dataset.fmt))).toEqual(['xlsx', 'svg', 'png', 'png-transparent', 'mermaid']);
+
+  // 選択は Esc と外側のクリックで閉じ、何も書き出さない
   await page.keyboard.press('Escape');
   await expect(page.locator('#export-menu')).toBeHidden();
   await page.locator('[data-term="export-all"]').click();

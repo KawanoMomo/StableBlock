@@ -16,7 +16,7 @@ const SB_TERMS_TABLE = {
   'fit': { ja: ['全体表示', '図の全体を画面に収める(F キー)'], en: ['Fit', 'Fit the whole diagram (F key)'] },
   'undo': { ja: ['↩', '元に戻す(Ctrl+Z)'], en: ['↩', 'Undo (Ctrl+Z)'] },
   'redo': { ja: ['↪', 'やり直す(Ctrl+Y)'], en: ['↪', 'Redo (Ctrl+Y)'] },
-  'line-mode': { ja: ['⌇ 曲線', '線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)'] },
+  'line-mode': { ja: ['⌇ 曲線', '線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。何も選んでいないときの L キー)'] },
   'highlight': { ja: ['◎ 未接続', '接続の無いブロックを薄く表示する/戻す(H キー)'], en: ['◎ Dim unlinked', 'Dim blocks without connections / restore (H key)'] },
   'anno': { ja: ['◇ 注釈', '注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる'], en: ['◇ Show notes', 'Show / hide notes (N key). Click a shown note to select it'] },
   // 仮の ID(__new_)のまま残った要素に、ラベルから ID を一括で付ける(プロパティ欄の ID 欄は 1 つずつの改名)
@@ -42,7 +42,10 @@ const SB_TERMS_TABLE = {
   'remove-include': { ja: ['外す', 'この @include 行を本文から消す(取り込んでいた要素は図から消える)'] },
   'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
   'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
-  'open-sb': { ja: ['.sb 読込', '.sb ファイルを読み込む'] },
+  // 「.sb 読込 ▾」は 1 つの入口: 開くと「ファイルを選ぶ」(複数可)と「フォルダを選ぶ」(配下の .sb を全部)。ファイル・フォルダをプレビューへドロップしても同じ
+  'open-sb': { ja: ['.sb 読込 ▾', '.sb を読み込む。ファイルを選ぶか、フォルダを選んで配下の .sb を全部読む(プレビューへファイル・フォルダをドロップしても読める)'] },
+  'open-sb-files': { ja: ['ファイルを選ぶ', '.sb ファイルを選んで読み込む(本体と include 先を一緒に選べる)'] },
+  'open-sb-folder': { ja: ['フォルダを選ぶ', 'フォルダを選び、配下の .sb を全部読み込む。@include を相対パスで解き、ほかの図から取り込まれていない図を開く'] },
   'search': { ja: ['🔍 検索', 'ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く'], en: ['Search ID / label', 'Filter by ID / label and dim the rest. Enter selects the matches one by one in reading order (Shift+Enter: back)'] },
   // プロパティ欄
   'add-block': { ja: ['+ ブロック追加', '直前に足したブロックの右隣に、同じ大きさ・色で追加する'], en: ['+ Block', 'Add a block right of the last one added (same size and color)'] },

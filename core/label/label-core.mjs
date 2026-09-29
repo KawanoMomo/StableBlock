@@ -77,35 +77,93 @@ export function quoteLabel(label) {
 }
 
 // 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。ラベル中の " は \" で書く
+// 同じ 2 つの間に向き違いの接続があれば from → to の行を直す(無ければ逆の書き順の行。connLineIndex)
 export function setConnLabelInDsl(dsl, from, to, label) {
   const clean = String(label);
-  const lines = dsl.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
-    if (!m) continue;
-    if (!((m[1] === from && m[3] === to) || (m[1] === to && m[3] === from))) continue;
-    const line = lines[i];
+  return editConnLine(dsl, from, to, line => {
     const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/.test(line);
-    if (hasLabel && clean) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/, (_, head) => head + quoteLabel(clean));
-    } else if (hasLabel) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"(?:\\"|[^"])*"/, (_, head) => head);
-    } else if (clean) {
-      lines[i] = line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' ' + quoteLabel(clean));
-    }
-    break;
+    if (hasLabel && clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/, (_, head) => head + quoteLabel(clean));
+    if (hasLabel) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"(?:\\"|[^"])*"/, (_, head) => head);
+    if (clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' ' + quoteLabel(clean));
+    return line;
+  });
+}
+
+// ── 同じ 2 つの間の向き違いの接続(BLK-owner-20260928-2255-2) ──
+// 行き(A -> B "req")と戻り(B -> A "notify")は別の接続。双方向(A --> B)は両方の向きを持つ。
+// 接続パネルは 2 つの間の接続を向きごとに並べ、各行の編集はその向きの行だけを直す(HTML 版・VSCode 拡張共用)。
+
+// connections(parse 済み)に from → to の向きの接続があるか(双方向は逆の書き順でも持つ)
+export function hasConnDir(connections, from, to) {
+  return (connections || []).some(c => (c.from === from && c.to === to) || (c.bidir && c.from === to && c.to === from));
+}
+
+// 2 つの間の接続を向きを問わず全部(本文の順)
+export function connsBetween(connections, a, b) {
+  return (connections || []).filter(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
+}
+
+// 本文の行のうち from → to の接続の行番号(0 始まり)。向きが一致する行を先に探し、無ければ逆の書き順の行。無ければ -1
+export function connLineIndex(lines, from, to) {
+  let rev = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = String(lines[i]).trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);
+    if (!m) continue;
+    if (m[1] === from && m[3] === to) return i;
+    if (rev < 0 && m[1] === to && m[3] === from) rev = i;
   }
+  return rev;
+}
+
+// from → to の行を fn(行) で置き換える。fn が null を返せば行を消す。行が無ければ本文はそのまま
+function editConnLine(dsl, from, to, fn) {
+  const lines = String(dsl).split('\n');
+  const i = connLineIndex(lines, from, to);
+  if (i < 0) return dsl;
+  const next = fn(lines[i]);
+  if (next === null) lines.splice(i, 1); else lines[i] = next;
   return lines.join('\n');
 }
 
+// 反転・双方向化で同じ向きが 2 本にならないか。逆向きの片方向が別にあれば false(パネルはそのボタンを押せなくする)
+export function canFlipConn(connections, from, to) {
+  const list = connections || [];
+  const c = list.find(x => x.from === from && x.to === to);
+  return !!c && (c.bidir || !list.some(x => x !== c && x.from === to && x.to === from));
+}
+
+export function flipConnInDsl(dsl, from, to) {
+  return editConnLine(dsl, from, to, line => line.replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/, (_, sp, f, s1, ar, s2, t) => sp + t + s1 + ar + s2 + f));
+}
+
+export function toggleBidirInDsl(dsl, from, to) {
+  return editConnLine(dsl, from, to, line => line.replace(/^(\s*\S+\s+)(-->|->)/, (_, head, ar) => head + (ar === '-->' ? '->' : '-->')));
+}
+
+// 属性(color / width / style / route / lpos …)を置き換えるか末尾に足す
+export function setConnPropInDsl(dsl, from, to, prop, val) {
+  const re = new RegExp(prop + '=\\S+');
+  return editConnLine(dsl, from, to, line => re.test(line) ? line.replace(re, () => `${prop}=${val}`) : line.trimEnd() + ` ${prop}=${val}`);
+}
+
+export function removeConnPropInDsl(dsl, from, to, prop) {
+  const re = new RegExp('\\s*' + prop + '=\\S+');
+  return editConnLine(dsl, from, to, line => line.replace(re, ''));
+}
+
+// from → to の行だけを消す(逆向きの接続は残す)
+export function removeConnInDsl(dsl, from, to) {
+  return editConnLine(dsl, from, to, () => null);
+}
+
 // 選んだ順の ID を鎖状に結ぶ(a -> b、b -> c …。Mermaid の a --> b --> c と同じ)。本文の末尾に接続の行を本数ぶん足すだけ。
-// connections(parse 済み)に同じ組の接続が向きを問わず既にあれば足さない。返り値 { dsl, added: [{ from, to }] }
+// connections(parse 済み)に同じ向きの接続(双方向を含む)が既にあれば足さない。逆向きしか無ければ足す(行きと戻りを別の線にする)。
+// 返り値 { dsl, added: [{ from, to }] }
 export function chainConnectInDsl(dsl, ids, connections) {
-  const has = (a, b) => (connections || []).some(c => (c.from === a && c.to === b) || (c.from === b && c.to === a));
   const added = [];
   for (let i = 0; i + 1 < (ids || []).length; i++) {
     const from = ids[i], to = ids[i + 1];
-    if (from === to || has(from, to) || added.some(c => (c.from === from && c.to === to) || (c.from === to && c.to === from))) continue;
+    if (from === to || hasConnDir(connections, from, to) || added.some(c => c.from === from && c.to === to)) continue;
     added.push({ from, to });
   }
   if (!added.length) return { dsl, added };
@@ -459,20 +517,27 @@ export function nextCanvasRoute(route) {
   return order[(order.indexOf(canvasRoute({ route })) + 1) % order.length];
 }
 
-// block 同士の接続(note が端の注釈線を除く)の経路と、ラベルを置く中点(描画の connPathInfo と同じ)。線の形は connRoute(接続の route → `@canvas` の route)。
-// mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)
+// 接続の経路と、ラベルを置く中点(描画の connPathInfo と同じ)。線の形は connRoute(接続の route → `@canvas` の route)。
+// mode は `@canvas` 行に route が無いときだけ使う(省略時は曲線)。
+// block 同士の接続に続けて、note が端の注釈線(描画の注釈レイヤーと同じく、注釈線どうしでポートを分けた経路)を anno: true で返す。
+// 横切りの検査は両方を数え、ラベルの置き場所(placeLabels)は block 同士の接続だけを見る(注釈線のラベルは描画どおり中点に置く)
 export function connectionPaths(parsed, mode) {
   const g = parsed.canvas.grid;
-  const conns = parsed.connections.filter(c => !(parsed.noteMap[c.from] || parsed.noteMap[c.to]));
-  const ports = computePorts(conns, parsed.blockMap, g);
+  const nm = parsed.noteMap || parsed.nm || {};
+  const isAnno = c => !!(nm[c.from] || nm[c.to]);
   const canvas = parsed.canvas.route ? parsed.canvas : { route: mode };
   const out = [];
-  conns.forEach((c, i) => {
-    const p = ports[i];
-    if (!p) return;
-    const m = connRoute(c, canvas);
-    out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, m), mid: connPathInfo(p.fp, p.tp, p.fs, p.ts, m).mid });
-  });
+  const add = (conns, items, anno) => {
+    const ports = computePorts(conns, items, g);
+    conns.forEach((c, i) => {
+      const p = ports[i];
+      if (!p) return;
+      const m = connRoute(c, canvas);
+      out.push({ conn: c, pts: pathPoints(p.fp, p.tp, p.fs, p.ts, m), mid: connPathInfo(p.fp, p.tp, p.fs, p.ts, m).mid, ...(anno ? { anno: true } : {}) });
+    });
+  };
+  add(parsed.connections.filter(c => !isAnno(c)), parsed.blockMap, false);
+  add(parsed.connections.filter(isAnno), Object.assign({}, parsed.blockMap, nm), true);
   return out;
 }
 
@@ -541,15 +606,15 @@ function isAutoLpos(c) {
   return c.lposAuto === true || (c.lposAuto === undefined && !c.lpos);
 }
 
-// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px) }](描画と同じ中点)。measure(text) は文字幅(px)
+// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は文字幅(px)
 // 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
 export function placeLabels(items, parsed, measure) {
   const obstacles = labelObstacles(parsed);
   const bounds = { x: 0, y: 0, w: parsed.canvas.width, h: parsed.canvas.height };
   const width = measure || (t => estimateTextWidth(t, 10));
   const out = [];
-  for (const { conn, mid } of items) {
-    if (!conn.label || !mid) continue;
+  for (const { conn, mid, anno } of items) {
+    if (anno || !conn.label || !mid) continue;
     const L = placeLabel(mid, conn.lpos, width(conn.label), obstacles, isAutoLpos(conn), bounds);
     out.push({ conn, mid, tx: L.tx, ty: L.ty, anchor: L.anchor, bg: L.bg, lpos: L.lpos });
     obstacles.push({ ...L.bg, weight: 10, kind: 'label', item: conn });

@@ -78,8 +78,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
           $setup = "dist\StableBlock-$env:APP_VERSION-setup.exe"
           if (-not (Test-Path $setup)) { throw "$setup ができていない" }
+          # 読み取った版は固定幅の空白で埋まって出る(「2.0      」)。比較は scripts/version-match.mjs(前後の埋めを除き、
+          # 2.0 / 2.0.0 / 2.0.0.0 の違いを吸収して先頭 2 要素で比べる。unit は tests/version-match.test.mjs)
           $pv = (Get-Item $setup).VersionInfo.ProductVersion
-          if ($pv -ne $env:APP_VERSION) { throw "setup.exe の版 $pv がタグ $env:APP_VERSION と食い違う" }
+          node scripts/version-match.mjs "$pv" "$env:APP_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw "setup.exe の版 '$pv' がタグ $env:APP_VERSION と食い違う" }
 
       # zip の直下に exe を裸で並べると、展開せずに叩いたとき _internal が付いてこず落ちる。フォルダごと詰め、展開の手順を同じ階層に置く
       - name: Zip the portable build

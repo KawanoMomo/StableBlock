@@ -41,7 +41,7 @@ build-vscode.bat
 cd vscode-stableblock
 npm install
 npx vsce package --allow-missing-repository
-code --install-extension stableblock-2.0.0.vsix
+code --install-extension stableblock-3.0.0.vsix
 ```
 
 `.sb` ファイルを開いて `Ctrl+Shift+V` でプレビュー。
@@ -68,7 +68,7 @@ E2E(ペルソナ台本の手順 = `tests/e2e/scenarios/{persona}-{手順}.spec.j
 
 ### 図の検査(開かずに)
 
-`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・group の枠をまたぐ block や group・線が別の block の上を横切る)を
+`npm run check -- <file.sb | フォルダ> ...` で、画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・group の枠をまたぐ block や group・線が別の block の上を横切る・`style=` / `route=` / `grow=` / `lpos=` に取れない値)を
 `ファイル:行: error|warn: 内容` で出す。`@include` 先の block を横切る線も include 元の図の行で示す。error があれば終了コード 1。
 
 ### ID の参照元探しと全図の改名(開かずに)
@@ -146,7 +146,7 @@ memo -> ui color=#F59E0B    # 注釈からブロックへ
 ### VSCode拡張
 - **シンタックスハイライト** — キーワード、ID、ラベル、座標、色、矢印
 - **双方向同期** — プレビューのGUI操作がエディタに書き戻される
-- **Git Visual Diff** — HEADとのサイドバイサイドSVG差分表示
+- **Git Visual Diff** — ファイルの Git の履歴から版を選び(新しい順)、今の本文と SVG・行差分で並べる(変わった要素に印)
 - **Ctrl+Z/Y/C/X/V/A** — ショートカットキー対応
 
 ## ファイル構成

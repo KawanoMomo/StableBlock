@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDSL, ATTRS } from '../dsl-core.mjs';
 import { buildDrawingXml, listXlsxDrops } from '../../excel/emitter.js';
+import * as LabelCore from '../../label/label-core.mjs';
 import { toMermaid } from '../../mermaid/mermaid-core.mjs';
 
 const BASE = {
@@ -17,18 +18,18 @@ const BASE = {
 };
 const REST = ['block b "B" at 12,1 size 6x3'];
 
-// 既定と見た目が違う値(既定と同じ見た目の値は入れない: route=curved は既定の曲線、lpos=center は Excel の中点と同じ)
+// 既定と見た目が違う値(既定と同じ見た目の値は入れない: route=curved は既定の曲線、lpos=right は避ける物が無ければ既定(自動)の最初の候補と同じ所)
 const SAMPLES = {
   block: { color: ['#FF0000'], textColor: ['#00FF00'], borderColor: ['#0000FF'], round: ['0', '20'], style: ['dashed', 'bold'] },
   group: { color: ['#FF0000'], borderColor: ['#0000FF'] },
   note: { color: ['#FF0000'], textColor: ['#00FF00'], borderColor: ['#0000FF'], round: ['0', '20'], style: ['solid', 'bold'] },   // style を書いていない note は破線(dashed と同じ線種)
-  conn: { color: ['#FF0000'], style: ['dashed'], width: ['3'], route: ['straight', 'ortho'], lpos: ['right', 'left', 'top', 'bottom'] },
+  conn: { color: ['#FF0000'], style: ['dashed'], width: ['3'], route: ['straight', 'ortho'], lpos: ['left', 'top', 'bottom', 'center'] },
   canvas: { width: ['500'], height: ['300'], grid: ['10'], route: ['straight', 'ortho'], grow: ['off'] },
 };
 
 const EXPORTERS = {
   Excel: {
-    run: p => ({ out: buildDrawingXml(p), dropped: listXlsxDrops(p) }),
+    run: p => ({ out: buildDrawingXml(p, { L: LabelCore }), dropped: listXlsxDrops(p) }),   // 画面・書き出しと同じく core/label を渡す
     same: {
       'canvas.width': 'Excel のシートに画布の枠は無い(図形の位置・大きさはそのまま)',
       'canvas.height': 'Excel のシートに画布の枠は無い(図形の位置・大きさはそのまま)',

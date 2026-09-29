@@ -4,6 +4,28 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+## v3.0 (2026-09-29)
+
+- BLK-porter-20260929-0511: 接続の lpos=diagonal など取れない値を書いた図を無変更で保存しても本文の値がそのまま残る(core の往復もバイト一致)。block の round=、接続の width=、@canvas の width / height / grid= に数でない値を書くと、その行に「実際に描く値」がエラー欄に出る
+- BLK-owner-20260929-0405-4: note から出る接続(注釈の破線)が block の上を横切っても、block 同士の線と同じにエラー欄・`npm run check`・VSCode 拡張が「接続「…」の線が block「…」の上を横切る」と知らせる
+- BLK-owner-20260929-0405-3: Excel に書き出した接続ラベルの白地が画面と同じ位置・大きさ(文字の幅に合う。lpos= も画面と同じ所)になり、長いラベルが白地からはみ出して block の名前に掛からない
+- BLK-owner-20260929-0405-2: 「選択をグループ化」で選んだ block の間に選んでいない block があっても、選んだ block だけを空きへ寄せて囲み、選んでいない block は元の group の直下に残る(寄せる空きが無ければ囲まずに理由を出す)
+- BLK-owner-20260929-0405-1: group を別の group の中へドラッグで落とすと外側の group が(祖先まで)広がって中に収め、枠をまたいだ group がある図で外側に「+ 中にブロック」を押しても、またいだ group の中の block が飛ばない
+- BLK-porter-20260929-0530: 取れない属性値(`style=dotted` など、style / route / grow / lpos)を書いた行に「style=dotted は使えない。実線で描く(使える値: …)」の警告がエラー欄・ステータスバー・`npm run check`・VSCode 拡張に出る(本文は書き換えない)
+- BLK-owner-20260928-2255-2: 同じ 2 つの block の間に向きの違う接続(行き A → B「req」と戻り B → A「notify」)を作図 UI だけで結べる。B → A の順に選ぶと既存の接続の上に「B → A」ボタンが出る(Enter・右ボタンのドラッグでも。同じ向きは今どおり足さない)。2 つを選んだ接続パネルは向きごとに行を並べ、ラベル・色・太さ・形・削除をその向きの線だけに効かせる。逆向きが別にあるときの「⇄ 反転」「↔ 双方向」は押せない。行きと戻りは「同じ組の 2 本目」の警告を出さず、同じ向きの 2 本目だけを警告する(HTML 版・VSCode 拡張、core/label の hasConnDir・connsBetween ほか、core/check)
+- BLK-owner-20260927-0728-5: 取り込んだ共通部(@include 先)の block・group・注釈を選ぶと、プロパティ欄は値(ラベル・ID・位置・サイズ・色)を見せるだけになり、打っても何も変わらない欄・色・削除と「Enter でほかの図の同じ表示名も揃う」を出さない。直す入口は「common.sb を開く」の 1 つ。選んだまま文字を打ってもその場編集は開かない(HTML 版・VSCode 拡張、core/check の includedItemRows)
+- BLK-owner-20260927-0728-4: group の中で「選択をグループ化」しても、触っていない親 group と兄弟の行が変わらない。新しい子 group の余白は親の内側 1 と兄弟との隙間に収まるよう辺ごとに 0 まで詰め、選んだ block が親の枠に接しているときだけ今どおり親が広がる(HTML 版・VSCode 拡張、core/layout の groupRectFor)
+- BLK-owner-20260927-0728-3: 読み込んだ図の 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)が「.sb 保存」「一括」と同じ図の名前で出る(critique3-swc.svg、透過は critique3-swc_transparent.png。新規の図は今どおり diagram.*)。VSCode 拡張の保存ダイアログの既定名も .sb の隣のその図の名前(core/check の bulkFileName)
+- BLK-owner-20260927-0728-2: block・group・注釈を 1 つ選んだまま文字(IME を含む)を打つと、その文字からラベルのその場編集になる(追加した直後に名前を打てる)。単キーの L(線の形。本文の @canvas 行を書く)は何も選んでいないときだけ、H・N・F は 1 つ選んでいないときだけ効き、Filter・Logger・Nvm のような名前を打っても本文や表示が変わらない(HTML 版・VSCode 拡張、core/select の typedKeyAction)
+- BLK-owner-20260927-0728-1: プロパティ欄の X/Y/W/H・角丸・背景色・枠線色の欄にキーボードで 2 桁以上(34、#FF0000)を打てる。打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ確定(色は # と 6 桁が揃った時点でも)し、Ctrl+Z 1 回で戻る。Esc は打った値を捨て、欄の中の ↑↓ は ▲▼ と同じ(HTML 版・VSCode 拡張、core/select の fieldCommit)
+- BLK-owner-20260928-2255-1: 入れ子の group(ECU > MCU)の子 group に「+ 中にブロック」や Ctrl+C → Ctrl+V で足して子 group が広がり、兄弟の block を押し出しても、押し出された block は外側の group の外へ出ず、外側の group(と祖先)が下へ広がる(core/layout の fitParents)
+- BLK-human-20260928-2310: Windows アプリの CI で setup.exe の版とタグを突き合わせるとき、読み取った版の空白の埋めと 2.0 / 2.0.0 の違いで落ちなくなる(scripts/version-match.mjs、先頭 2 要素で比べる)
+- BLK-owner-20260926-2005-1: 共通部の block を取り込み側の block に重ねると、@include が本文の後ろにある図(primary の 12 枚の形)でもエラー欄に「ほかの図: adc_swc.sb L14: block「os」が block「adcdrv」(L14)に重なっている」と出て、「増えたものは無い」と言わなくなる。取り込み側のキャンバスの外に出た・ID が重なった場合も同じ
+- BLK-junior-20260926-1705-wish: ツールバー「.sb 読込 ▾」から「フォルダを選ぶ」を 1 回押すと、配下の .sb を全部読み(@include を相対パスで解き、取り込まれていない図を開く)、本体と共通部を毎回選び直さずに済む。プレビューへファイル・フォルダを落としても同じに読む。「一括 ▾」は前回の形式を印付きで先頭に出す
+- BLK-primary-20260926-1605-wish: VSCode 拡張の「Visual Diff」で比較相手の版をファイルの Git の履歴(新しい順、改名もたどる)から選べる。見出しに選んだ版(hash・日時・件名)が出て、左右の絵(@include 展開後)で変わった要素に印、下に .sb の行差分が並ぶ。サブフォルダの .sb で HEAD も読めなかったのも直る
+- BLK-porter-20260926-2105: @canvas が 2 行ある図を開くと、効かない前の行がエラー欄に「@canvas が 2 行ある。L{n} の値が効く」と出る(ステータスバーの Warn にも数える)。ツール欄のキャンバスの寸法・線の形・自動拡張の変更は効いている最後の行だけに書き、前の行は 1 バイトも変えない
+- BLK-human-20260926-2105-1: DSL 欄・プレビュー・ツール欄の境界をドラッグ(または ←/→ キー)で幅を変えられる。幅はブラウザに覚え、ダブルクリックで元に戻る(VSCode 拡張はプレビューとサイド欄の境界)
+
 ## v2.0 (2026-09-27)
 
 - BLK-porter-20260926-2105: 重複した `@canvas` 行を無変更で保存しても先行行の値が保たれる(最後の行が有効・先行行に警告)

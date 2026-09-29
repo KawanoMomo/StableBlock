@@ -40,7 +40,7 @@ test('porter-05: @include の図を include 先と一緒に読込むと描かれ
 
   // 選ぶ順が逆でも、ほかのファイルから include されていない方が本体になる
   await bootPlain(page);
-  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: '.sb 読込' }).click()]);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: '.sb 読込' }).click().then(() => page.getByRole('menuitem', { name: 'ファイルを選ぶ' }).click())]);
   await chooser.setFiles([INC_COMMON, INC_MAIN]);
   await expect(page.locator('#editor')).toHaveValue(original.toString('utf8'));
   await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
@@ -51,7 +51,7 @@ test('porter-05: include 先を選ばずに読込むと、@include の行と参�
   await importSb(page, INC_MAIN);
   const bar = page.locator('#error-bar');
   await expect(bar).toBeVisible();
-  await expect(bar).toContainText('L4: include 先「shared/common.sb」を読めない(「.sb 読込」で本体と一緒に選ぶ)');
+  await expect(bar).toContainText('L4: include 先「shared/common.sb」を読めない(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)');
   await expect(bar).toContainText('L3: 接続「ui -> shared_db」: 「shared_db」という ID の block / note が無い(読めていない include 先: L4「shared/common.sb」)');
   await expect(page.locator('#status')).toContainText('Err: 2');
 
@@ -122,4 +122,28 @@ test('porter-05: note の style=solid は実線で描かれ、無変更で Expor
   await page.keyboard.press('Escape');
   await expect(page.locator('#status')).toContainText('Selected: 0');   // 選択の太枠でなく style=bold の太さを見る
   await expect(svg.locator('g[data-type="note"][data-id="memo"] rect')).toHaveAttribute('stroke-width', '2.5');
+});
+
+// @canvas が 2 行ある図(部署の図を結合して見出しが 2 行残った): 無変更保存でバイト一致、効かない前の行にエラー欄で知らせ、
+// GUI で寸法を変えると効いている最後の行だけが変わる(BLK-porter-20260926-2105)
+test('porter-05: @canvas が 2 行ある図は黙らずエラー欄に出て、無変更で Export → バイト一致、寸法の変更は最後の行だけ', async ({ page }, testInfo) => {
+  const SRC2 = path.join(FIXTURES, 'porter-canvas-dup.sb');
+  const original = fs.readFileSync(SRC2);
+  await bootPlain(page);
+  await importSb(page, SRC2);
+  const bar = page.locator('#error-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('L1: @canvas が 2 行ある。L2 の値が効く');
+  await expect(page.locator('#canvas-w')).toHaveValue('800');   // 効いているのは 2 行目
+
+  const { bytes } = await exportSb(page, saveDir(testInfo));
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+
+  // ツール欄のキャンバスの幅を変える: 1 行目は 1 バイトも変わらない
+  await page.locator('#canvas-w').fill('1000');
+  await page.locator('#canvas-w').press('Enter');
+  const lines = (await getEditorText(page)).split('\n');
+  expect(lines[0]).toBe('@canvas width=480 height=240 grid=20');
+  expect(lines[1]).toBe('@canvas width=1000 height=600 grid=40');
+  await expect(bar).toContainText('L1: @canvas が 2 行ある。L2 の値が効く');
 });

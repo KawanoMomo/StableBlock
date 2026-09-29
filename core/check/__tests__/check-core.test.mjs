@@ -31,6 +31,15 @@ test('explainLine: 接続の書き方', () => {
   assert.match(explainLine('hello'), /書式にない行/);
 });
 
+// BLK-porter-20260926-2105: @canvas が 2 行あっても黙らない。効かない前の行に、どの行の値が効くかを出す
+test('checkDiagram: @canvas が 2 行あれば前の行に警告(最後の行の値が効く)', () => {
+  const d = check('@canvas width=480 height=240 grid=20\n@canvas width=800 height=600 grid=40\nblock a "A" at 2,1 size 6x3\n');
+  assert.deepEqual(d.map(x => [x.line, x.level, x.msg]), [[1, 'warn', '@canvas が 2 行ある。L2 の値が効く']]);
+  const three = check('@canvas width=480\n# memo\n@canvas width=600\n@canvas width=800 height=600\nblock a "A" at 2,1 size 6x3\n');
+  assert.deepEqual(three.map(x => [x.line, x.msg]), [[1, '@canvas が 3 行ある。L4 の値が効く'], [3, '@canvas が 3 行ある。L4 の値が効く']]);
+  assert.deepEqual(check('@canvas width=800 height=600\nblock a "A" at 2,1 size 6x3\n'), []);
+});
+
 test('checkDiagram: parser が読めない行に理由を付ける(ID の重複はそのまま)', () => {
   const text = '@canvas width=400 height=300 grid=20\nblock a "A" at 1,1 size 4x2\nblok b "B" at 8,1 size 4x2\nblock a "A2" at 1,5 size 4x2\n';
   const d = check(text);
@@ -49,11 +58,18 @@ test('checkDiagram: 存在しない ID への接続はエラー、group への�
   assert.match(d[2].msg, /group への接続は描かれない/);
 });
 
-test('checkDiagram: 同じ組の接続 2 本目を警告', () => {
-  const d = check('block a "A" at 1,1 size 4x2\nblock b "B" at 8,1 size 4x2\na -> b\nb -> a "rev"\n');
+// 行きと戻り(a -> b と b -> a)は別の線なので警告しない。同じ向き・双方向と重なる向きの 2 本目を警告(BLK-owner-20260928-2255-2 で「向きを問わず同じ組」から変えた)
+test('checkDiagram: 同じ向きの接続 2 本目を警告し、逆向きの接続は警告しない', () => {
+  const AB = 'block a "A" at 1,1 size 4x2\nblock b "B" at 8,1 size 4x2\n';
+  assert.deepEqual(check(AB + 'a -> b "req"\nb -> a "notify"\n'), []);
+  const d = check(AB + 'a -> b\na -> b "dup"\n');
   assert.equal(d.length, 1);
   assert.equal(d[0].line, 4);
-  assert.match(d[0].msg, /L3 と同じ組の 2 本目/);
+  assert.match(d[0].msg, /L3 と同じ向きの 2 本目/);
+  const bi = check(AB + 'a --> b\nb -> a\n');
+  assert.equal(bi.length, 1);
+  assert.equal(bi[0].line, 4);
+  assert.match(check(AB + 'b -> a\na --> b\n')[0].msg, /L3 と同じ向きの 2 本目/);
 });
 
 test('findOverlaps / checkDiagram: 同じ座標・一部が重なる block を警告、接するだけは数えない', () => {
@@ -94,6 +110,34 @@ test('findCrossings: owner 批評の 2 列 4 段・3 本で、既定(曲線)の�
   const d = check(text);
   assert.ok(d.some(x => /「b1 -> b7」の線が block「b3」/.test(x.msg)), JSON.stringify(d));
   assert.ok(d.every(x => x.level === 'warn'));
+});
+
+test('findCrossings: note が端の接続(注釈線)も、block 同士の線と同じに横切りを数える', () => {
+  // note n(1,1) → block c(1,9) の真ん中に b(1,5) がある
+  const text = 'note n "N" at 1,1 size 4x2\nblock b "B" at 1,5 size 4x2\nblock c "C" at 1,9 size 4x2\nn -> c "trigger"\n';
+  for (const mode of ['curved', 'straight', 'ortho']) {
+    const d = check(text, mode);
+    assert.equal(d.length, 1, mode + JSON.stringify(d));
+    assert.equal(d[0].line, 4);
+    assert.match(d[0].msg, /接続「n -> c」の線が block「b」\(L2\)の上を横切る/);
+    assert.deepEqual(check(text.replace('at 1,5', 'at 8,5'), mode), [], mode);
+  }
+  // block → note の向きも同じ
+  assert.match(check(text.replace('n -> c', 'c -> n'), 'straight')[0].msg, /接続「c -> n」の線が block「b」/);
+});
+
+test('findCrossings: owner 批評の DFD で、note Cycle_10ms -> Adc_Drv の線が Tester と Sensor の上を横切ると言う', () => {
+  const text = [
+    '@canvas width=960 height=520 grid=20',
+    'block Adc_Drv "Adc_Drv" at 11,3 size 8x3',
+    'block Sensor "Sensor" at 22,1 size 8x3',
+    'block Tester "Tester" at 31,1 size 8x3',
+    'note Cycle_10ms "Cycle_10ms" at 40,1 size 8x2',
+    'Cycle_10ms -> Adc_Drv "trigger"',
+  ].join('\n') + '\n';
+  const d = check(text).filter(x => x.line === 6).map(x => x.msg);
+  assert.ok(d.some(m => /接続「Cycle_10ms -> Adc_Drv」の線が block「Tester」\(L4\)の上を横切る/.test(m)), JSON.stringify(d));
+  assert.ok(d.some(m => /接続「Cycle_10ms -> Adc_Drv」の線が block「Sensor」\(L3\)の上を横切る/.test(m)), JSON.stringify(d));
 });
 
 test('findCrossings: 隣り合う block を結ぶだけなら何も言わない', () => {
@@ -313,6 +357,26 @@ test('includedItemNote: include 先の要素には定義の場所と直す先を
   assert.equal(includedItemNote(exp, p.blockMap.swc.line, base), '');
 });
 
+// プロパティ欄の出し分け(BLK-owner-20260927-0728-5): include 先の要素は値を見せる行だけ、本文の要素は null(打てる欄を出す)
+import { includedItemRows } from '../check-core.mjs';
+test('includedItemRows: include 先の要素は値を見せるだけの行、本文の要素は null(打てる欄)', () => {
+  const common = 'block rte "RTE" at 20,2 size 6x3 color=#3B82F6 text=#FFFFFF\ngroup os_grp "OS" at 18,0 size 12x8 color=#F1F5F9 border=#94A3B8\nnote memo "a\\nb" at 1,9 size 8x2\n';
+  const exp = expandIncludes('block swc "SWC" at 1,1 size 6x3\n@include "shared/common.sb"\n', p => (p === 'shared/common.sb' ? common : null), 'spi_swc.sb');
+  const p = parseDSL(exp.text);
+  assert.equal(includedItemRows(exp, p.blockMap.swc), null);
+  assert.equal(includedItemRows(exp, null), null);
+  const rows = includedItemRows(exp, p.blockMap.rte);
+  assert.deepEqual(rows.map(r => r.key), ['label', 'id', 'pos', 'size', 'color', 'text']);
+  assert.deepEqual(Object.fromEntries(rows.map(r => [r.key, r.value])), { label: 'RTE', id: 'rte', pos: '20, 2', size: '6 x 3', color: '#3B82F6', text: '#FFFFFF' });
+  assert.equal(rows[0].label, 'ラベル');
+  const g = includedItemRows(exp, p.groupMap.os_grp);
+  assert.deepEqual(g.map(r => r.key), ['label', 'id', 'pos', 'size', 'color', 'border']);
+  assert.equal(g.find(r => r.key === 'border').value, '#94A3B8');
+  const n = includedItemRows(exp, p.noteMap.memo, 'en');
+  assert.equal(n[0].label, 'Text');
+  assert.equal(n[0].value, 'a / b');                                   // 本文の \n は 1 行に
+});
+
 // 一括書き出し(BLK-primary-20260926-1205): 一緒に読み込んだ図を 1 枚ずつ、表示中の図と同じ探し方で include を解決する
 import { loadedReader, expandLoaded, bulkFileName, bulkDrops } from '../check-core.mjs';
 
@@ -345,6 +409,17 @@ test('bulkFileName / bulkDrops: zip の中の名前は図のパスの拡張子�
   assert.equal(bulkFileName('notes.txt', 'mmd'), 'notes.mmd');
   assert.deepEqual(bulkDrops([{ path: 'a.sb', dropped: ['x', 'y'] }, { path: 'b.sb', dropped: [] }, { path: 'c.sb', dropped: ['z'] }]),
     ['a.sb: x', 'a.sb: y', 'c.sb: z']);
+});
+
+test('bulkFileName: 1 枚の書き出しも .sb 保存と同じ図の名前から付ける(新規の図は diagram、透過 PNG は _transparent を挟む)', () => {
+  assert.equal(bulkFileName('critique3-swc.sb', 'svg'), 'critique3-swc.svg');
+  assert.equal(bulkFileName('critique3-swc.sb', 'png'), 'critique3-swc.png');
+  assert.equal(bulkFileName('critique3-swc.sb', 'png', '_transparent'), 'critique3-swc_transparent.png');
+  assert.equal(bulkFileName('critique3-swc.sb', 'xlsx'), 'critique3-swc.xlsx');
+  assert.equal(bulkFileName('critique3-swc.sb', 'mmd'), 'critique3-swc.mmd');
+  assert.equal(bulkFileName('Adc.Stack.stableblock', 'svg'), 'Adc.Stack.svg');
+  assert.equal(bulkFileName('diagram.sb', 'svg'), 'diagram.svg');
+  assert.equal(bulkFileName('diagram.sb', 'png', '_transparent'), 'diagram_transparent.png');
 });
 
 // 作図 UI から @include を足す・外す(BLK-primary-20260926-1205-friction)
@@ -471,4 +546,129 @@ test('checkDiagram: __new_ の仮の ID が残る block / group / note を、ラ
   assert.match(d[2].msg, /^note「__new_3」/);
   assert.match(d[1].msg, /英数字と _/);
   assert.deepEqual(check('block app "App" at 1,1 size 4x2\nblock new_1 "N" at 6,1 size 4x2\n'), []);
+});
+
+// 「.sb 読込 ▾」のフォルダ選択・ドロップと「一括 ▾」の前回の形式(BLK-junior-20260926-1705-wish)
+import { sbLoadable, folderSbEntries, pickMainDiagram, bulkFormatOrder, trimCommonDir } from '../check-core.mjs';
+
+test('sbLoadable: フォルダの中は .sb / .stableblock だけ、隠しフォルダの下は読まない。じかに選んだファイルは .txt も', () => {
+  assert.equal(sbLoadable('junior/spi_swc.sb', true), true);
+  assert.equal(sbLoadable('junior/shared/common.SB', true), true);
+  assert.equal(sbLoadable('junior/x.stableblock', true), true);
+  assert.equal(sbLoadable('junior/spi_swc.xlsx', true), false);
+  assert.equal(sbLoadable('junior/README.txt', true), false);
+  assert.equal(sbLoadable('primary/.git/x.sb', true), false);
+  assert.equal(sbLoadable('.hidden.sb', true), true);                 // 隠しなのはフォルダだけ見る
+  assert.equal(sbLoadable('notes.txt', false), true);
+  assert.equal(sbLoadable('a\\.git\\b.sb', true), false);
+  assert.equal(sbLoadable('a\\b.sb', true), true);
+});
+
+test('folderSbEntries: 読み込める図だけをパスの順に並べる(ほかの項目はそのまま持つ)', () => {
+  const got = folderSbEntries([
+    { path: 'j/spi_swc.sb', n: 1 }, { path: 'j/spi_swc.png', n: 2 }, { path: 'j/shared/common.sb', n: 3 }, { path: 'j/spi_dataflow.sb', n: 4 },
+  ]);
+  assert.deepEqual(got.map(d => d.n), [3, 4, 1]);
+  assert.deepEqual(folderSbEntries([]), []);
+});
+
+test('pickMainDiagram: ほかの図から @include されていない最初の図を本文にする', () => {
+  const inc = '@canvas width=100 height=100\n@include "shared/common.sb"\n';
+  assert.equal(pickMainDiagram([
+    { path: 'j/shared/common.sb', text: 'block os "OS" at 1,1 size 2x2' },
+    { path: 'j/spi_dataflow.sb', text: inc },
+    { path: 'j/spi_swc.sb', text: inc },
+  ]), 1);
+  // フォルダの無い名前だけでも当てる(「ファイルを選ぶ」で選んだ図)
+  assert.equal(pickMainDiagram([{ path: 'common.sb', text: '' }, { path: 'spi_swc.sb', text: inc }]), 1);
+  // 読めなかった図は選ばない、全部が取り込まれていれば読めた最初の図、読めた図が無ければ -1
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: null }, { path: 'b.sb', text: 'x' }]), 1);
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: '@include "b.sb"' }, { path: 'b.sb', text: '@include "a.sb"' }]), 0);
+  assert.equal(pickMainDiagram([{ path: 'a.sb', text: null }]), -1);
+});
+
+test('bulkFormatOrder: 前回の形式を先頭に、残りは元の順', () => {
+  const f = ['svg', 'png', 'png-transparent', 'xlsx', 'mermaid'];
+  assert.deepEqual(bulkFormatOrder(f, 'xlsx'), ['xlsx', 'svg', 'png', 'png-transparent', 'mermaid']);
+  assert.deepEqual(bulkFormatOrder(f, null), f);
+  assert.deepEqual(bulkFormatOrder(f, 'pdf'), f);
+});
+
+test('trimCommonDir: 選んだフォルダの名前を外し、フォルダの中のパスにする(相対パスは変わらない)', () => {
+  const t = l => trimCommonDir(l.map(path => ({ path, x: 1 }))).map(d => d.path);
+  assert.deepEqual(t(['junior/spi_swc.sb', 'junior/shared/common.sb']), ['spi_swc.sb', 'shared/common.sb']);
+  assert.deepEqual(t(['a/b/x.sb', 'a/b/c/y.sb']), ['x.sb', 'c/y.sb']);
+  assert.deepEqual(t(['a/x.sb', 'b/y.sb']), ['a/x.sb', 'b/y.sb']);
+  assert.deepEqual(t(['x.sb', 'junior/y.sb']), ['x.sb', 'junior/y.sb']);
+  assert.deepEqual(t([]), []);
+  assert.equal(trimCommonDir([{ path: 'j/x.sb', x: 1 }])[0].x, 1);
+});
+
+// @include が本文の後ろにある図(primary の 12 枚の形)では、共通部の block を取り込み側の block に重ねた診断が共通部の行に付く。
+// 相手が取り込み側の行なら取り込み側の図の診断として数え、その行で出す(BLK-owner-20260926-2005-1)
+test('includeImpact: @include が本文の後ろの図で、共通部の block を取り込み側の block に重ねると取り込み側の行で出る', () => {
+  const tail = p => `@canvas width=960 height=520 grid=20\nblock ${p}drv "${p}Drv" at 4,4 size 8x3\n${p}drv -> rte\n@include "shared/common.sb"`;
+  const files = { 'adc_swc.sb': tail('adc'), 'can_swc.sb': tail('can'), 'common.sb': IMP_COMMON };
+  const base = IMP_COMMON;
+  const r = includeImpact({ ...files, 'common.sb': base.replace('block os "OS" at 20,8', 'block os "OS" at 4,4') }, 'common.sb', base, checkLoaded);
+  const overlaps = r.added.filter(d => /重なっている/.test(d.msg));
+  assert.deepEqual(overlaps.map(d => `${d.path}:${d.line}`), ['adc_swc.sb:2', 'can_swc.sb:2']);
+  assert.match(overlaps[0].msg, /block「os」が block「adcdrv」\(L2\)に重なっている\(shared\/common\.sb L3\)/);
+  // 共通部の中だけの重なり(os を rte に重ねる)は、@include が後ろでも数えない
+  const inner = includeImpact({ ...files, 'common.sb': base.replace('block os "OS" at 20,8', 'block os "OS" at 21,3') }, 'common.sb', base, checkLoaded);
+  assert.deepEqual(inner.added.filter(d => /重なっている/.test(d.msg)), []);
+});
+
+test('includeImpact: 取り込み側のキャンバスの外に出た共通部の block は、取り込み側の @canvas 行で出る', () => {
+  const small = '@canvas width=600 height=400 grid=20\n@include "shared/common.sb"\nblock x "X" at 1,1 size 4x2';
+  const files = { 'small.sb': small, 'common.sb': IMP_COMMON };
+  const r = includeImpact({ ...files, 'common.sb': IMP_COMMON.replace('block hal "HAL" at 20,14', 'block hal "HAL" at 26,14') }, 'common.sb', IMP_COMMON, checkLoaded);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}`), ['small.sb:1']);
+  assert.match(r.added[0].msg, /block「hal」がキャンバス\(600×400\)の外に右へ 4 グリッドはみ出している/);
+});
+
+test('includeImpact: 共通部の ID を取り込み側の ID と同じにすると、@include が後ろの図でも取り込み側の定義の行で出る', () => {
+  const tail = '@canvas width=960 height=520 grid=20\nblock adcdrv "AdcDrv" at 4,4 size 8x3\n@include "shared/common.sb"';
+  const files = { 'adc_swc.sb': tail, 'common.sb': IMP_COMMON };
+  const r = includeImpact({ ...files, 'common.sb': IMP_COMMON.replace('block hal "HAL"', 'block adcdrv "HAL"') }, 'common.sb', IMP_COMMON, checkLoaded);
+  assert.deepEqual(r.added.map(d => `${d.path}:${d.line}:${d.level}`), ['adc_swc.sb:2:error']);
+  assert.equal(r.added[0].msg, 'ID "adcdrv" が重複 (L2)(shared/common.sb L4)');
+});
+
+test('checkDiagram: 取れない style 値はその行で warn(画面・check と同じ文)。取れる値は出ない(BLK-porter-20260929-0530)', () => {
+  const d = check('block a "A" at 1,1 size 6x3\nblock b "未対応" at 9,1 size 8x3 color=#EF4444 text=#FFFFFF style=dotted\n');
+  assert.deepEqual(d, [{ line: 2, level: 'warn', msg: 'style=dotted は使えない。実線で描く(使える値: solid / dashed / bold)' }]);
+  assert.deepEqual(check('block a "A" at 1,1 size 6x3 style=bold\nblock b "B" at 9,1 size 6x3 style=dashed\na -> b style=dashed route=ortho lpos=top\n'), []);
+});
+
+test('checkDiagram: 接続・@canvas の取れない値も行ごとに出る。ラベルの中の文字は見ない', () => {
+  const d = check('@canvas grow=maybe\nblock a "A" at 1,1 size 6x3\nblock b "B" at 9,1 size 6x3\na -> b "route=bad" route=spline\n');
+  assert.deepEqual(d.map(x => [x.line, x.msg.split('。')[0]]), [[1, 'grow=maybe は使えない'], [4, 'route=spline は使えない']]);
+});
+
+test('checkIncluded: include 先の取れない値は include 先の場所で出る', () => {
+  const files = { 'main.sb': '@include "common.sb"\nblock a "A" at 1,1 size 6x3\n', 'common.sb': 'block c "C" at 9,1 size 6x3 style=dotted\n' };
+  const exp = expandIncludes(files['main.sb'], p => files[p] ?? null, 'main.sb');
+  const p = parseDSL(exp.text);
+  const d = checkIncluded(p, exp, connectionPaths(p, 'curved'));
+  assert.equal(d.length, 1);
+  assert.equal(d[0].file, 'common.sb');
+  assert.equal(d[0].fileLine, 1);
+  assert.match(d[0].msg, /^style=dotted は使えない。/);
+});
+
+import { badAttrValues } from '../check-core.mjs';
+test('badAttrValues: 数の属性(round / 接続の width / @canvas の width・height・grid)の取れない値は、実際に描く値を言う(BLK-porter-20260929-0511)', () => {
+  assert.deepEqual(badAttrValues('block', ' round=abc').map(b => b.msg), ['round=abc は使えない。角の丸みを既定の 4 で描く(使える値: 0 以上の整数)']);
+  assert.deepEqual(badAttrValues('note', ' round=8px').map(b => b.msg), ['round=8px は使えない。角の丸みを 8 で描く(使える値: 0 以上の整数)']);
+  assert.deepEqual(badAttrValues('conn', ' width=thick lpos=diagonal').map(b => b.msg), [
+    'lpos=diagonal は使えない。ラベルを線の右に置く(使える値: right / left / top / bottom / center)',
+    'width=thick は使えない。線の太さを既定の 1.5 で描く(使える値: 0 以上の数)',
+  ]);
+  assert.deepEqual(badAttrValues('conn', ' width=1.2.3').map(b => b.msg), ['width=1.2.3 は使えない。線の太さを数字として読めない(使える値: 0 以上の数)']);
+  assert.deepEqual(badAttrValues('canvas', ' width=wide height=300px grid=x').map(b => b.attr), ['width', 'height', 'grid']);
+  // 取れる数は警告しない(小数の太さ、先頭 0 の整数も読める)
+  assert.deepEqual(badAttrValues('block', ' round=0'), []);
+  assert.deepEqual(badAttrValues('conn', ' width=2.5'), []);
+  assert.deepEqual(badAttrValues('canvas', ' width=0960 height=640 grid=20'), []);
 });

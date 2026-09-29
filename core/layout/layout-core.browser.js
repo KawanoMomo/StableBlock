@@ -27,12 +27,24 @@ function grownCanvasSize(canvas, items, margin = 1) {
   return { width, height };
 }
 
+// 書き換える `@canvas` 行(0 始まり。無ければ -1)。2 行以上あれば効くのは最後の行なので最後の行(前の行は読んだまま残す)
+function canvasLineIndex(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*@canvas(\s|$)/.test(lines[i])) return i;
+  return -1;
+}
+
+// 最後の行から key= を消しても、前の `@canvas` 行に key= が残っていればそちらが効く。そのときは最後の行に既定の値を書く
+function earlierCanvasHas(lines, idx, key) {
+  const re = new RegExp('\\s' + key + '=\\S+');
+  return lines.slice(0, idx).some(l => /^\s*@canvas(\s|$)/.test(l) && re.test(l));
+}
+
 // 本文の `@canvas` 行の width / height だけを書き換える(ほかの属性・空白・改行コードは触らない)。
 // `@canvas` 行が無ければ、先頭のコメント行の直後に 1 行足す。変える必要が無ければ同じ文字列を返す。
 function setCanvasInDsl(dsl, width, height) {
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     let at = 0;
     while (at < lines.length && /^\s*#/.test(lines[at])) at++;
@@ -60,7 +72,7 @@ function setCanvasRouteInDsl(dsl, route) {
   const r = route === 'straight' || route === 'ortho' ? route : null;
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     if (!r) return dsl;
     let at = 0;
@@ -72,8 +84,10 @@ function setCanvasRouteInDsl(dsl, route) {
   const cr = line.endsWith('\r') ? '\r' : '';
   if (cr) line = line.slice(0, -1);
   const re = /(\s)route=\S+/;
-  if (!r) line = line.replace(/\s+route=\S+/, '');
-  else if (re.test(line)) line = line.replace(re, `$1route=${r}`);
+  if (!r) {
+    line = line.replace(/\s+route=\S+/, '');
+    if (earlierCanvasHas(lines, idx, 'route')) line = line.replace(/\s*$/, '') + ' route=curved';
+  } else if (re.test(line)) line = line.replace(re, `$1route=${r}`);
   else line = line.replace(/\s*$/, '') + ` route=${r}`;
   lines[idx] = line + cr;
   const out = lines.join('\n');
@@ -85,7 +99,7 @@ function setCanvasRouteInDsl(dsl, route) {
 function setCanvasGrowInDsl(dsl, on) {
   const eol = dsl.includes('\r\n') ? '\r\n' : '\n';
   const lines = dsl.split('\n');
-  const idx = lines.findIndex(l => /^\s*@canvas(\s|$)/.test(l));
+  const idx = canvasLineIndex(lines);
   if (idx < 0) {
     if (on) return dsl;
     let at = 0;
@@ -96,8 +110,10 @@ function setCanvasGrowInDsl(dsl, on) {
   let line = lines[idx];
   const cr = line.endsWith('\r') ? '\r' : '';
   if (cr) line = line.slice(0, -1);
-  if (on) line = line.replace(/\s+grow=\S+/, '');
-  else if (/\sgrow=\S+/.test(line)) line = line.replace(/(\s)grow=\S+/, '$1grow=off');
+  if (on) {
+    line = line.replace(/\s+grow=\S+/, '');
+    if (earlierCanvasHas(lines, idx, 'grow')) line = line.replace(/\s*$/, '') + ' grow=on';
+  } else if (/\sgrow=\S+/.test(line)) line = line.replace(/(\s)grow=\S+/, '$1grow=off');
   else line = line.replace(/\s*$/, '') + ' grow=off';
   lines[idx] = line + cr;
   const out = lines.join('\n');
@@ -175,6 +191,22 @@ function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
+// ── 欄の幅(HTML 版の DSL | プレビュー | ツール欄、拡張のプレビュー | サイド欄) ──
+// 境界をドラッグした後の左・右の欄の幅(px、整数)。左右はそれぞれ最小幅を割らず、真ん中(プレビュー)に minMid を残す。
+// 入り切らないときは動かした側(moved: 'left' | 'right')を先に削る。moved 省略(窓の大きさが変わった)は左を先に削る。
+// 左の欄が無い画面は left 0・minLeft 0 で呼ぶ。
+function paneWidths(total, left, right, opts = {}) {
+  const minL = opts.minLeft ?? 160, minM = opts.minMid ?? 240, minR = opts.minRight ?? 200;
+  let L = Math.max(minL, Math.round(Number(left) || 0));
+  let R = Math.max(minR, Math.round(Number(right) || 0));
+  const room = Math.max(0, Math.round(total) - minM);   // 左 + 右の上限
+  if (L + R > room) {
+    if (opts.moved === 'right') { R = Math.max(minR, room - L); L = Math.max(minL, room - R); }
+    else { L = Math.max(minL, room - R); R = Math.max(minR, room - L); }
+  }
+  return { left: L, right: R };
+}
+
 // ── 入れ子の group(親 group は子を内側に収める) ──
 // group の子は座標だけで決まる(子の矩形が親の矩形の内側にある)。GUI の操作(移動・大きさ変更・グループ化・group 内への追加)で
 // 子が親の枠をまたいだら、枠を越えた向きに親を広げる(親の親も同じ)。本文で変わるのは広がった group の行だけ。
@@ -237,16 +269,34 @@ function growToContain(p, c, sides, margin = 1) {
 // 押し出す(group なら中身ごと。押し出した要素がさらに別の要素に掛かれば、それも押す)。広げた group が黙って兄弟を
 // 子に取り込んだり、兄弟の枠をまたいだりしない。押し出した要素が親をはみ出せば、その親も広げる。
 // items: 操作後の block / group の矩形。parents: 操作前の parentMap。moved: [{ id, sides }](sides は枠を越えうる辺)。
-// 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない。親も一緒に動いた要素は相対位置が変わらないので見ない。
+// 親の外へ出切った要素(親と重ならない)は親から出たものとして広げない(押し出した要素は出切っても親を広げる)。親も一緒に動いた要素は相対位置が変わらないので見ない。
 // 返り値: 動いた・広がった要素の [{ type, id, x, y, w, h }](呼び出し側が本文の行の at / size に書く)。
 // seeds: [{ id, from }] 操作で from から今の矩形に広がった要素(新しい group など)。その広がりで掛かる要素を先に押し出す。
+// moved の drop: true(ドラッグで落とした要素): 左上の角が別の group の内側にあってその枠をまたげば、その group(左上を含む最も小さい、
+// 落とした要素以上の大きさのもの)の子として、枠の内側に収まるまでその group を(祖先まで)広げる。落とした要素は動かさない。
+// 押し出すのは広がった要素の兄弟と祖先の兄弟(親の無い要素を含む)だけ。別の group の子は、その group ごと押すときだけ動く
+// (枠をまたいだ group の中身を 1 つずつ押し出して、group から出したり並びを崩したりしない)。
 function fitParents(items, parents, moved, margin = 1, seeds = []) {
   const byId = new Map((items || []).filter(Boolean).map(i => [i.id, { ...i }]));
   const movedIds = new Set((moved || []).map(m => m.id));
-  const queue = (moved || []).filter(m => !movedIds.has(parents[m.id])).map(m => ({ id: m.id, sides: m.sides }));
+  parents = { ...(parents || {}) };
   const changed = new Map();
   const chain = id => { const out = []; for (let p = parents[id], n = 0; p && n < 100; p = parents[p], n++) out.push(p); return out; };
   const isDesc = (id, anc) => chain(id).includes(anc);
+  const dropped = new Set();
+  for (const m of moved || []) {
+    const it = m.drop && byId.get(m.id);
+    if (!it) continue;
+    let best = null;
+    for (const g of byId.values()) {
+      if (g.type !== 'group' || g.id === it.id || movedIds.has(g.id) || isDesc(g.id, it.id)) continue;
+      if (!(g.x <= it.x && it.x < g.x + g.w && g.y <= it.y && it.y < g.y + g.h) || area(g) < area(it)) continue;
+      if (!best || area(g) < area(best)) best = g;
+    }
+    if (best && !inside(it, best) && overlapArea(it, best) > 0) { parents[it.id] = best.id; dropped.add(it.id); }
+  }
+  const queue = (moved || []).filter(m => !movedIds.has(parents[m.id]))
+    .map(m => ({ id: m.id, sides: dropped.has(m.id) ? ['l', 't', 'r', 'b'] : m.sides }));
   const shift = (q, dx, dy) => {
     for (const it of byId.values()) {
       if (it.id !== q.id && !isDesc(it.id, q.id)) continue;
@@ -262,6 +312,7 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
     // 外側の要素から見る: group を押すと中身も一緒に動くので、中身を先に押すと二重に動く
     for (const q of [...byId.values()].sort((a, b) => chain(a.id).length - chain(b.id).length)) {
       if (q.id === owner || movedIds.has(q.id) || anc.has(q.id) || isDesc(q.id, owner)) continue;
+      if (parents[q.id] && !anc.has(parents[q.id])) continue;   // 別の group の子(その group ごと押す)
       if (overlapArea(q, from) > 0) continue;
       // 広がった向きの先にあって、その向きと直交する範囲が重なる要素だけ。元の隙間(1 グリッドまで)を保つ分だけ押す
       const hx = q.x < to.x + to.w && to.x < q.x + q.w, hy = q.y < to.y + to.h && to.y < q.y + q.h;
@@ -275,15 +326,16 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
       const old = { x: q.x, y: q.y, w: q.w, h: q.h };
       shift(q, dx, dy);
       push(old, q, q.id, depth + 1);
-      queue.push({ id: q.id, sides: moveSides(dx, dy) });
+      queue.push({ id: q.id, sides: moveSides(dx, dy), pushed: true });
     }
   };
   for (const sd of seeds || []) { const it = byId.get(sd.id); if (it && sd.from) push(sd.from, it, sd.id, 0); }
   for (let guard = 0; queue.length && guard < 1000; guard++) {
-    const { id, sides } = queue.shift();
+    const { id, sides, pushed } = queue.shift();
     const it = byId.get(id), pid = parents[id], p = pid && byId.get(pid);
     if (!it || !p || !sides || !sides.length) continue;
-    if (overlapArea(it, p) === 0) continue;
+    // 利用者が親の外へ出し切った要素は親から出たもの。押し出した要素は出切っても親の子のまま(親が広がる)
+    if (!pushed && overlapArea(it, p) === 0) continue;
     const n = growToContain(p, it, sides, margin);
     const grew = [];
     if (n.x < p.x) grew.push('l'); if (n.y < p.y) grew.push('t');
@@ -299,8 +351,12 @@ function fitParents(items, parents, moved, margin = 1, seeds = []) {
 }
 
 // 「選択をグループ化」の新しい group の矩形。選んだ要素の外接矩形に、左右下 1・上 2(ラベルの帯)の余白を付ける。
-// 余白が選んでいない要素の枠をまたぐ(一部だけ重なる)なら、その辺の余白を 1、0 と詰める。親 group(parent)があれば、
-// 1 を超える余白は親の内側 1 グリッドに収まる範囲に詰める(親の枠に重ねない。足りない分は fitParents で親が広がる)。
+// 余白は辺ごとに、次を満たす範囲で 0 まで詰める(選んだ要素の外接の内側に収めれば、親も兄弟も動かない):
+// - 選んでいない要素の枠をまたがない(一部だけ重ならない)
+// - 親 group(parent)があれば親の内側 1 グリッドに収まる(親の枠に重ねない。親の行を書き換えない)
+// - 右・下は、選んでいない要素との元の隙間(1 グリッドまで)を食わない(食うと fitParents が兄弟を押し出し、兄弟の行を書き換える)
+// 0 まで詰めても親の内側に収まらない(選んだ要素が親の枠の内側 1 に無い)辺だけは、従来どおり枠をまたがない最大 1 の余白を取り、
+// 足りない分は fitParents で親が広がる。
 // members: 選んだ要素。others: 選んでいない block / group(親 group 自身を含めてよい。選んだ要素を内側に含む group は見ない)。
 function groupRectFor(members, others, parent) {
   const ms = (members || []).filter(Boolean);
@@ -319,16 +375,75 @@ function groupRectFor(members, others, parent) {
   const straddles = r => obs.some(o => overlapArea(r, o) > 0 && !inside(o, r));
   const inParent = (r, side) => !parent || (side === 'l' ? r.x >= parent.x + 1 : side === 't' ? r.y >= parent.y + 1
     : side === 'r' ? r.x + r.w <= parent.x + parent.w - 1 : r.y + r.h <= parent.y + parent.h - 1);
+  // fitParents(seeds の from は外接の右端・下端)が押し出す要素があるか: 広げた向きの先にあり、直交する範囲が重なり、元の隙間(1 まで)を食う
+  const crowds = (r, side) => obs.some(o => {
+    if (overlapArea(r, o) > 0) return false;
+    if (side === 'r') return o.y < r.y + r.h && r.y < o.y + o.h && o.x >= maxX && r.x + r.w + Math.min(1, o.x - maxX) > o.x;
+    if (side === 'b') return o.x < r.x + r.w && r.x < o.x + o.w && o.y >= maxY && r.y + r.h + Math.min(1, o.y - maxY) > o.y;
+    return false;
+  });
+  const ok = (cand, side) => { const r = rectOf(cand); return !straddles(r) && inParent(r, side) && !crowds(r, side); };
   for (const side of ['t', 'l', 'r', 'b']) {
-    for (let k = want[side]; k >= 1; k--) {
-      const cand = { ...m, [side]: k }, r = rectOf(cand);
-      if (straddles(r)) continue;
-      if (k > 1 && !inParent(r, side)) continue;
-      m[side] = k;
-      break;
+    let k = want[side];
+    while (k >= 0 && !ok({ ...m, [side]: k }, side)) k--;
+    if (k < 0) {   // 親の内側に収まらない辺: 枠をまたがない最大 1(親が広がる)
+      for (k = Math.min(1, want[side]); k >= 1 && straddles(rectOf({ ...m, [side]: k })); k--);
+      k = Math.max(0, k);
     }
+    m[side] = k;
   }
+  // 右の余白を決めた後に下の余白で広がった範囲の要素も、右・下の隙間を食わないよう詰める
+  for (const side of ['r', 'b']) while (m[side] > 0 && crowds(rectOf(m), side)) m[side]--;
   return rectOf(m);
+}
+
+// 「選択をグループ化」の置き方。groupRectFor の矩形が選んでいない要素に掛かる(選んだ要素の間に挟まっている)ときは、
+// 選んだ block を動かして、選んでいない要素に掛からない矩形に寄せる(選んでいない要素・親は動かさない。所属も変えない)。
+// 寄せ方: 選んだ要素の辺で決まる矩形のうち選んでいない要素に掛からないものを取り、その外の選んだ block を読み順で矩形の空きへ
+// placeNext で置く(足りなければ矩形を下へ伸ばす。親があれば親の内側 1 まで)。動かす数が少なく、動く距離が短いものを選ぶ。
+// 選んだ group は動かさない(中身ごと動かすと別の行が変わる)。どう寄せても掛かるなら囲まない。
+// 返り値 { rect, moves: [{ id, x, y }] }。囲めなければ { rect: null, moves: [], reason }(reason は画面に出す文)。
+function groupPlanFor(members, others, parent) {
+  const ms = (members || []).filter(Boolean);
+  if (!ms.length) return { rect: null, moves: [], reason: '' };
+  const bx = Math.min(...ms.map(m => m.x)), by = Math.min(...ms.map(m => m.y));
+  const bbox = { x: bx, y: by, w: Math.max(...ms.map(m => m.x + m.w)) - bx, h: Math.max(...ms.map(m => m.y + m.h)) - by };
+  const ids = new Set(ms.map(m => m.id));
+  const mgroups = ms.filter(m => m.type === 'group');
+  // 選んでいない要素のうち、新しい group に入ってはいけないもの(親・祖先と、選んだ group の中身は除く)
+  const outsiders = (others || []).filter(o => o && !ids.has(o.id) && o.type !== 'note' && !inside(bbox, o) && !mgroups.some(g => inside(o, g)));
+  const caught = r => outsiders.filter(o => overlapArea(r, o) > 0);
+  const r0 = groupRectFor(ms, others, parent);
+  if (!caught(r0).length) return { rect: r0, moves: [] };
+  const bottomMax = parent ? parent.y + parent.h - 1 : Infinity;
+  const xs1 = [...new Set(ms.map(m => m.x))], xs2 = [...new Set(ms.map(m => m.x + m.w))];
+  const ys1 = [...new Set(ms.map(m => m.y))], ys2 = [...new Set(ms.map(m => m.y + m.h))];
+  const order = (a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y);
+  let best = null;
+  for (const x1 of xs1) for (const x2 of xs2) for (const y1 of ys1) for (const y2 of ys2) {
+    if (x2 <= x1 || y2 <= y1) continue;
+    let R = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    if (caught(R).length || mgroups.some(g => !inside(g, R))) continue;
+    const stay = ms.filter(m => inside(m, R)), go = ms.filter(m => !inside(m, R)).sort(order);
+    const placed = [...stay], moves = [];
+    let ok = true;
+    for (const m of go) {
+      const p = placeNext(placed, m.w, m.h, { x0: R.x, y0: R.y, cols: R.x + R.w, gap: 1 });
+      if (p.x + m.w > R.x + R.w || p.y + m.h > bottomMax) { ok = false; break; }
+      if (p.y + m.h > R.y + R.h) R = { ...R, h: p.y + m.h - R.y };
+      if (caught(R).length) { ok = false; break; }
+      placed.push({ ...m, x: p.x, y: p.y });
+      moves.push({ id: m.id, x: p.x, y: p.y });
+    }
+    if (!ok) continue;
+    const rect = groupRectFor(placed, others, parent);
+    if (caught(rect).length) continue;
+    const dist = moves.reduce((s, mv) => { const m = ms.find(k => k.id === mv.id); return s + Math.abs(mv.x - m.x) + Math.abs(mv.y - m.y); }, 0);
+    if (!best || moves.length < best.moves.length || (moves.length === best.moves.length && dist < best.dist)) best = { rect, moves, dist };
+  }
+  if (best) return { rect: best.rect, moves: best.moves };
+  const names = caught(r0).map(o => o.id).join('・');
+  return { rect: null, moves: [], reason: `選んだ要素の間に選んでいない ${names} があり、選んだ要素だけを囲む空きが無いのでグループ化しませんでした(選んだ要素を並べ直すか、${names} も選んでください)` };
 }
 
 // group gr の直下の block(子 group の中の block は含まない)のうち、読み順で最後のもの。無ければ null
@@ -366,4 +481,4 @@ function placeInGroupFit(items, gr, w, h, prev, margin = 1) {
   return { x: p.x, y: p.y, changes };
 }
 
-;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };
+;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };

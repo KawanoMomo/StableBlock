@@ -1,0 +1,48 @@
+flowchart TD
+  subgraph SpiDataflow["SpiDataflow"]
+    SpiIrq("SpiIrq")
+    RxBuffer("RxBuffer")
+    TxBuffer("TxBuffer")
+    DmaCtrl("DmaCtrl")
+    FrameParser("FrameParser")
+    ChecksumCalc("ChecksumCalc")
+    Rte("Rte")
+    App("App")
+  end
+  rte("RTE")
+  os("OS")
+  hal("HAL")
+  DMA>"DMA 転送はバッファ満杯時のみ発火"]
+  SpiIrq -->|"irq_flag"| RxBuffer
+  SpiIrq --> TxBuffer
+  RxBuffer -->|"raw_frame"| DmaCtrl
+  TxBuffer --> DmaCtrl
+  DmaCtrl -->|"dma_desc"| FrameParser
+  FrameParser --> ChecksumCalc
+  ChecksumCalc -->|"checksum"| Rte
+  Rte -->|"app_data"| App
+  DmaCtrl --> Rte
+  FrameParser --> App
+  style SpiIrq fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style RxBuffer fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style TxBuffer fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style DmaCtrl fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style FrameParser fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style ChecksumCalc fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style Rte fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style App fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style SpiDataflow fill:#F1F5F9,stroke:#94A3B8
+  style rte fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style os fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style hal fill:#3B82F6,stroke:#3B82F6,color:#FFFFFF
+  style DMA fill:#FEF3C7,stroke:#D97706,color:#92400E,stroke-dasharray:5 3
+  linkStyle 0 stroke:#64748B,stroke-width:1.5px
+  linkStyle 1 stroke:#64748B,stroke-width:1.5px
+  linkStyle 2 stroke:#64748B,stroke-width:1.5px
+  linkStyle 3 stroke:#64748B,stroke-width:1.5px
+  linkStyle 4 stroke:#64748B,stroke-width:1.5px
+  linkStyle 5 stroke:#64748B,stroke-width:1.5px
+  linkStyle 6 stroke:#64748B,stroke-width:1.5px
+  linkStyle 7 stroke:#64748B,stroke-width:1.5px
+  linkStyle 8 stroke:#64748B,stroke-width:1.5px
+  linkStyle 9 stroke:#64748B,stroke-width:1.5px

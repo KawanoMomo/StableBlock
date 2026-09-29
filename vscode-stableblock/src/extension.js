@@ -19,6 +19,14 @@ const vscode = require("vscode");
 function activate(context) {
   let currentPanel = undefined;
   let isUpdatingFromWebview = false;
+  // プレビュー中の .sb のパス。書き出しの保存ダイアログの既定名はその図の名前(HTML 版・一括と同じ core/check の bulkFileName)で、置き場所はその隣
+  let previewDocPath = "";
+  const exportUri = async (ext) => {
+    const path = require("path");
+    if (!previewDocPath) return vscode.Uri.file("diagram." + ext);
+    const check = await loadCore("check");
+    return vscode.Uri.file(path.join(path.dirname(previewDocPath), check.bulkFileName(path.basename(previewDocPath), ext)));
+  };
 
   // Shortcut commands forwarded to webview (VSCode intercepts these before they reach the webview)
   const fwd = (action) => { if (currentPanel) currentPanel.webview.postMessage({ type: action }); };
@@ -53,14 +61,14 @@ function activate(context) {
           }
         }
         if (msg.type === "exportSVG") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "SVG": ["svg"] }, defaultUri: vscode.Uri.file("diagram.svg") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "SVG": ["svg"] }, defaultUri: await exportUri("svg") });
           if (uri) {
             await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.data, "utf-8"));
             vscode.window.showInformationMessage("SVG saved: " + uri.fsPath);
           }
         }
         if (msg.type === "exportPNG") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "PNG": ["png"] }, defaultUri: vscode.Uri.file("diagram.png") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "PNG": ["png"] }, defaultUri: await exportUri("png") });
           if (uri) {
             const buf = Buffer.from(msg.data.replace(/^data:image\/png;base64,/, ""), "base64");
             await vscode.workspace.fs.writeFile(uri, buf);
@@ -70,7 +78,7 @@ function activate(context) {
         if (msg.type === "exportXlsx") {
           const uri = await vscode.window.showSaveDialog({
             filters: { "Excel": ["xlsx"] },
-            defaultUri: vscode.Uri.file("diagram.xlsx")
+            defaultUri: await exportUri("xlsx")
           });
           if (uri) {
             const buf = Buffer.from(msg.data, 'base64');
@@ -79,7 +87,7 @@ function activate(context) {
           }
         }
         if (msg.type === "exportMmd") {
-          const uri = await vscode.window.showSaveDialog({ filters: { "Mermaid": ["mmd", "md"] }, defaultUri: vscode.Uri.file("diagram.mmd") });
+          const uri = await vscode.window.showSaveDialog({ filters: { "Mermaid": ["mmd", "md"] }, defaultUri: await exportUri("mmd") });
           if (uri) {
             await vscode.workspace.fs.writeFile(uri, Buffer.from(msg.data, "utf-8"));
             vscode.window.showInformationMessage("Mermaid saved: " + uri.fsPath);
@@ -99,6 +107,7 @@ function activate(context) {
       if (isUpdatingFromWebview) return;
       const doc = vscode.window.activeTextEditor?.document;
       if (doc && (doc.languageId === "stableblock" || doc.fileName.match(/\.(sb|stableblock)$/))) {
+        previewDocPath = doc.uri.scheme === "file" ? doc.uri.fsPath : "";
         currentPanel.webview.html = getWebviewContent(doc.getText(), doc.uri.fsPath);
       }
     };
@@ -120,20 +129,30 @@ function activate(context) {
     const doc = editor.document;
     if (!doc.fileName.match(/\.(sb|stableblock)$/)) return;
     const currentText = doc.getText();
-    // Get HEAD version via git
+    // このファイルの版(git log --follow)を新しい順に出し、選んだ版と今の本文を並べる。選ばず Enter なら最新の版(HEAD と同じ)
+    const cp = require("child_process"), path = require("path");
+    const dir = path.dirname(doc.uri.fsPath);
+    const core = await loadCore("diff");
+    let versions = [];
     try {
-      const cp = require("child_process");
-      const dir = require("path").dirname(doc.uri.fsPath);
-      const rel = require("path").relative(dir, doc.uri.fsPath).replace(/\\/g, "/");
-      const headText = cp.execSync(`git show HEAD:${rel}`, { cwd: dir, encoding: "utf-8" });
-      const panel = vscode.window.createWebviewPanel(
-        "stableblockDiff", "StableBlock Diff", vscode.ViewColumn.Active,
-        { enableScripts: true }
-      );
-      panel.webview.html = getDiffContent(headText, currentText);
-    } catch (e) {
-      vscode.window.showWarningMessage("No git history found for this file");
-    }
+      versions = core.parseGitLog(cp.execFileSync("git", [...core.GIT_LOG_ARGS, "--", path.basename(doc.uri.fsPath)], { cwd: dir, encoding: "utf-8" }));
+    } catch (e) { versions = []; }
+    if (!versions.length) { vscode.window.showWarningMessage("No git history found for this file"); return; }
+    const picked = await vscode.window.showQuickPick(
+      versions.map((v) => ({ label: `${v.hash}  ${v.subject}`, description: v.date, v })),
+      { placeHolder: "Pick a version to compare with the current text (Enter: the latest commit)", matchOnDescription: true }
+    );
+    if (!picked) return;
+    let oldText;
+    try {
+      oldText = cp.execFileSync("git", ["show", `${picked.v.full}:${picked.v.path}`], { cwd: dir, encoding: "utf-8" });
+    } catch (e) { vscode.window.showWarningMessage(`Could not read ${picked.v.path} at ${picked.v.hash}`); return; }
+    const panel = vscode.window.createWebviewPanel(
+      "stableblockDiff", `StableBlock Diff: ${picked.v.hash}`, vscode.ViewColumn.Active,
+      { enableScripts: true }
+    );
+    const draw = await diffDrawTexts(cp, path, dir, doc, currentText, picked.v, oldText);
+    panel.webview.html = getDiffContent(core.diffModel(oldText, currentText, picked.v, draw));
   });
   context.subscriptions.push(diffCmd);
 
@@ -196,9 +215,41 @@ function loadLabelCore() {
   return labelCorePromise;
 }
 
-function getDiffContent(oldDsl, newDsl) {
-  const oldJson = JSON.stringify(oldDsl);
-  const newJson = JSON.stringify(newDsl);
+// core/{dir}/{dir}-core.mjs(ESM)を拡張ホストで読む(Visual Diff が diff と check を使う)。探し方は loadLabelCore と同じ
+const corePromises = {};
+function loadCore(dir) {
+  if (!corePromises[dir]) {
+    const path = require("path"), fs = require("fs"), { pathToFileURL } = require("url");
+    const roots = [path.resolve(__dirname, "..", ".."), path.resolve(__dirname, "..")];
+    const root = roots.find((r) => fs.existsSync(path.join(r, "core", dir, `${dir}-core.mjs`))) || roots[0];
+    corePromises[dir] = import(pathToFileURL(path.join(root, "core", dir, `${dir}-core.mjs`)).href);
+  }
+  return corePromises[dir];
+}
+
+// Visual Diff の左右の絵に使う本文: @include を展開する(行差分は展開しない本文のまま)。
+// 今の本文は拡張ホストが読んだ include 先、選んだ版はその版の include 先(git show {版}:{パス})で展開する
+async function diffDrawTexts(cp, path, dir, doc, currentText, v, oldText) {
+  const check = await loadCore("check");
+  const slash = (p) => String(p).split(path.sep).join("/");
+  const inc = readIncludes(currentText, doc.uri.fsPath);
+  const newDraw = check.expandIncludes(currentText, (p) => (Object.prototype.hasOwnProperty.call(inc, p) ? inc[p] : null), slash(doc.uri.fsPath)).text;
+  let top = null;
+  try { top = cp.execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir, encoding: "utf-8" }).trim(); } catch (e) { top = null; }
+  if (!top) return { newDraw, oldDraw: oldText };
+  const readAt = (p) => {
+    const rel = path.relative(top, p.split("/").join(path.sep)).split(path.sep).join("/");
+    if (!rel || rel.startsWith("..")) return null;
+    try { return cp.execFileSync("git", ["show", `${v.full}:${rel}`], { cwd: dir, encoding: "utf-8" }).replace(/^﻿/, ""); } catch (e) { return null; }
+  };
+  const oldDraw = check.expandIncludes(oldText, readAt, slash(path.join(top, v.path))).text;
+  return { newDraw, oldDraw };
+}
+
+// model: core/diff diffModel の結果(見出し・左右の本文・行差分・変わった要素の印)
+function getDiffContent(model) {
+  const json = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
+  const escH = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<!DOCTYPE html><html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-direction:column;height:100vh}
@@ -210,12 +261,16 @@ body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-d
 .label{font-size:11px;font-weight:700;padding:4px 8px;margin-bottom:4px}
 .old .label{color:#f87171}
 .new .label{color:#34d399}
+.lines{flex:0 0 auto;max-height:40vh;overflow:auto;border-top:1px solid #444;font:12px/18px Consolas,monospace;padding:4px 0}
+.lines .l{white-space:pre;padding:0 8px}.lines .n{display:inline-block;width:4em;color:#666;text-align:right;margin-right:8px}
+.lines .del{background:#4b1d1d;color:#fca5a5}.lines .add{background:#14391f;color:#86efac}.lines .none{color:#888;padding:4px 8px}
 </style></head><body>
-<div class="header"><span>StableBlock Visual Diff</span><span>HEAD (left) vs Current (right)</span></div>
+<div class="header"><span>StableBlock Visual Diff</span><span id="diff-title">${escH(model.title)}</span><span id="diff-count">-${model.removed} +${model.added}</span></div>
 <div class="container">
-<div class="pane old"><div class="label">HEAD</div><div id="old-svg"></div></div>
+<div class="pane old"><div class="label" id="old-label">${escH(model.left)}</div><div id="old-svg"></div></div>
 <div class="pane new"><div class="label">Current</div><div id="new-svg"></div></div>
 </div>
+<div class="lines" id="diff-lines"></div>
 <script>
 var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
 function esc(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
@@ -233,16 +288,25 @@ function parseDSL(t){
   }
   return{canvas:cv,blocks:bl,groups:gr,connections:cn};
 }
-function renderMiniSVG(p){
+function renderMiniSVG(p,mk){
+  mk=mk||{items:[],conns:[]};
   var g=p.canvas.grid,s='<svg width="100%" viewBox="0 0 '+p.canvas.width+' '+p.canvas.height+'" xmlns="http://www.w3.org/2000/svg" style="background:#0f172a;border-radius:4px">';
   p.groups.forEach(function(x){s+='<rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+x.borderColor+'" stroke-width="1" rx="6" opacity="0.85"/>';s+='<text x="'+(x.x*g+6)+'" y="'+(x.y*g+12)+'" font-size="9" fill="'+x.borderColor+'">'+esc(x.label)+'</text>';});
   var bm={};p.blocks.forEach(function(b){bm[b.id]=b;});
-  p.connections.forEach(function(c){var a=bm[c.from],b=bm[c.to];if(!a||!b)return;var x1=a.x*g+a.w*g/2,y1=a.y*g+a.h*g/2,x2=b.x*g+b.w*g/2,y2=b.y*g+b.h*g/2;s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#64748B" stroke-width="1"/>';});
+  p.connections.forEach(function(c){var a=bm[c.from],b=bm[c.to];if(!a||!b)return;var x1=a.x*g+a.w*g/2,y1=a.y*g+a.h*g/2,x2=b.x*g+b.w*g/2,y2=b.y*g+b.h*g/2;var on=mk.conns.indexOf(c.from+'->'+c.to)>=0;s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+(on?'#F59E0B':'#64748B')+'" stroke-width="'+(on?2.5:1)+'"'+(on?' data-changed="1"':'')+'/>';});
   p.blocks.forEach(function(b){s+='<rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" rx="'+b.round+'" stroke="'+b.color+'" stroke-width="0.5"/>';b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*12;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="9" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central">'+esc(ln)+'</text>';});});
+  // 変わった要素(行差分で消えた・足した・変わった行の block / group)に印の枠
+  p.groups.concat(p.blocks).forEach(function(x){if(mk.items.indexOf(x.id)<0)return;s+='<rect data-changed="'+esc(x.id)+'" x="'+(x.x*g-3)+'" y="'+(x.y*g-3)+'" width="'+(x.w*g+6)+'" height="'+(x.h*g+6)+'" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 3" rx="6"/>';});
   s+='</svg>';return s;
 }
-document.getElementById('old-svg').innerHTML=renderMiniSVG(parseDSL(${oldJson}));
-document.getElementById('new-svg').innerHTML=renderMiniSVG(parseDSL(${newJson}));
+var M={old:${json(model.oldDraw)},cur:${json(model.newDraw)},ops:${json(model.ops)},marks:${json(model.marks)}};
+document.getElementById('old-svg').innerHTML=renderMiniSVG(parseDSL(M.old),M.marks.old);
+document.getElementById('new-svg').innerHTML=renderMiniSVG(parseDSL(M.cur),M.marks.new);
+// .sb の行差分をそのまま(座標の行も除かない)。変わっていない行は前後 2 行だけ残して畳む
+(function(){var h='',ops=M.ops,keep=ops.map(function(o,i){for(var k=Math.max(0,i-2);k<=Math.min(ops.length-1,i+2);k++)if(ops[k].op!==' ')return true;return false;}),gap=false;
+ops.forEach(function(o,i){if(!keep[i]){if(!gap)h+='<div class="l none">…</div>';gap=true;return;}gap=false;
+h+='<div class="l '+(o.op==='-'?'del':o.op==='+'?'add':'')+'"><span class="n">'+(o.a||'')+'</span><span class="n">'+(o.b||'')+'</span>'+esc(o.op+' '+o.text)+'</div>';});
+document.getElementById('diff-lines').innerHTML=ops.some(function(o){return o.op!==' '})?h:'<div class="l none">差分なし(選んだ版と今の本文は同じ)</div>';})();
 </script></body></html>`;
 }
 
@@ -330,7 +394,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const labelCoreAsGlobals = labelCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };';
+    + '\n;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint, parseLpos, labelLayout, setConnLabelInDsl, isValidId, labelToId, uniqueId, idFieldOpen, isPlaceholderId, renameIdInDsl, fixPlaceholderIdsInDsl, unquoteLabel, quoteLabel, getSide, portPos, computePorts, chainConnectInDsl, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, hasLpos, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl };';
 
   // ───── 図の検査(check-core.mjs)をインライン埋め込み。HTML 版・CLI と同じ診断 ─────
   let checkCoreScript = '';
@@ -341,7 +405,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const checkCoreAsGlobals = checkCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote };';
+    + '\n;window.StableBlockCheck = { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote, includedItemRows };';
 
   // ───── キャンバス選択の共有ロジック(select-core.mjs)をインライン埋め込み ─────
   let selectCoreScript = '';
@@ -352,7 +416,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const selectCoreAsGlobals = selectCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge };';
+    + '\n;window.StableBlockSelect = { pressSelect, releaseSelect, pruneSelection, sameSelection, stepDelta, arrowNudge, fieldKind, fieldCommit, fieldKeyAction, typedKeyAction };';
 
   // ───── キャンバスと配置の共有ロジック(layout-core.mjs)をインライン埋め込み ─────
   let layoutCoreScript = '';
@@ -363,7 +427,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, lastChildBlock, placeInGroup, placeInGroupFit };';
+    + '\n;window.StableBlockLayout = { contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -415,7 +479,11 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 #wrap{background:#fff;border-radius:6px;display:inline-block;line-height:0}
 #wrap svg{overflow:visible}
-#propPanel{width:200px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
+#propPanel{width:200px;min-width:160px;border-left:1px solid var(--vscode-widget-border,#444);overflow-y:auto;padding:8px;font-size:11px;flex-shrink:0}
+.pane-split{flex:0 0 6px;margin:0 -6px 0 0;position:relative;z-index:5;cursor:col-resize;touch-action:none;outline:none}
+.pane-split::after{content:'';position:absolute;top:0;bottom:0;left:0;width:3px;background:transparent}
+.pane-split:hover::after,.pane-split.dragging::after,.pane-split:focus-visible::after{background:var(--vscode-focusBorder,#6366F1)}
+body.pane-resizing,body.pane-resizing *{cursor:col-resize!important;user-select:none!important}
 .error{background:var(--vscode-inputValidation-errorBackground,#5a1d1d);color:#f88;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-size:11px}
 .error.warn-only{background:#422006;color:#FDE68A}.error .dg-warn{color:#FDE68A}
 .stats{padding:3px 8px;font-size:10px;color:var(--vscode-descriptionForeground,#888);border-top:1px solid var(--vscode-widget-border,#444);flex-shrink:0}
@@ -435,6 +503,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 .cd.act{border-color:#fff;box-shadow:0 0 0 1px #6366F1}
 .pbtn{padding:4px 8px;font-size:10px;font-weight:600;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#ccc;width:100%;font-family:inherit;margin-bottom:4px}
 .pbtn:hover{background:var(--vscode-button-secondaryHoverBackground,#444)}
+.pbtn:disabled{opacity:.4;cursor:not-allowed}
 .sbtn{padding:2px 8px;font-size:10px;border:1px solid var(--vscode-widget-border,#444);border-radius:3px;cursor:pointer;background:var(--vscode-button-secondaryBackground,#333);color:#999;font-family:inherit}
 .sbtn.act{background:#6366F1;color:#fff;border-color:#6366F1}
 .hl-act{border-color:#F59E0B!important;color:#FDE68A!important;background:#422006!important}
@@ -462,7 +531,7 @@ textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
   <div class="sep"></div><span id="si" style="font-size:10px;color:var(--vscode-descriptionForeground,#888)"></span>
 </div>
 <div id="err"></div>
-<div class="main"><div id="preview"><div id="wrap"></div></div><div id="propPanel"></div></div>
+<div class="main"><div id="preview"><div id="wrap"></div></div><div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="propPanel" tabindex="0" title="Drag to resize the preview and the side panel (double-click to reset; arrow keys also move it)"></div><div id="propPanel"></div></div>
 <div class="stats"><span id="stats"></span> <button class="sbtn" id="cvstat" onclick="cvShow()" title="Canvas size and whether it grows when items overflow. Click to show the setting in the side panel"></button> <span id="cvgrew" style="color:#FDE68A"></span></div>
 
 <script>
@@ -591,7 +660,7 @@ function setupInt(){
       // Snap guides
       snapGuides=[];var thresh=0.5;var selItems=sel.map(function(si){return getIt(si)}).filter(Boolean);var others=parsed.blocks.concat(parsed.groups).concat(parsed.notes).filter(function(o){return !dragIds.has(o.id)});selItems.forEach(function(si){var sx=si.x,sy=si.y,smx=si.x+si.w/2,smy=si.y+si.h/2,sex=si.x+si.w,sey=si.y+si.h;others.forEach(function(o){var ox=o.x,oy=o.y,omx=o.x+o.w/2,omy=o.y+o.h/2,oex=o.x+o.w,oey=o.y+o.h;if(Math.abs(sx-ox)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-oex)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(smx-omx)<=thresh)snapGuides.push({x1:smx*g,y1:0,x2:smx*g,y2:parsed.canvas.height});if(Math.abs(sx-oex)<=thresh)snapGuides.push({x1:sx*g,y1:0,x2:sx*g,y2:parsed.canvas.height});if(Math.abs(sex-ox)<=thresh)snapGuides.push({x1:sex*g,y1:0,x2:sex*g,y2:parsed.canvas.height});if(Math.abs(sy-oy)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oey)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});if(Math.abs(smy-omy)<=thresh)snapGuides.push({x1:0,y1:smy*g,x2:parsed.canvas.width,y2:smy*g});if(Math.abs(sy-oey)<=thresh)snapGuides.push({x1:0,y1:sy*g,x2:parsed.canvas.width,y2:sy*g});if(Math.abs(sey-oy)<=thresh)snapGuides.push({x1:0,y1:sey*g,x2:parsed.canvas.width,y2:sey*g});});});
       render();}
-    function onU(){window.removeEventListener('mousemove',onM);window.removeEventListener('mouseup',onU);snapGuides=[];if(moved){var sds=window.StableBlockLayout.moveSides(lastD.x,lastD.y);growPar(before,items.map(function(it){return{id:it.id,sides:sds}}));go();notify();return;}
+    function onU(){window.removeEventListener('mousemove',onM);window.removeEventListener('mouseup',onU);snapGuides=[];if(moved){var sds=window.StableBlockLayout.moveSides(lastD.x,lastD.y);growPar(before,items.map(function(it){return{id:it.id,sides:sds,drop:sel.some(function(s){return s.id===it.id})}}));go();notify();return;}
       var now=Date.now();if(!shift&&lastClick&&lastClick.id===id&&now-lastClick.t<450){lastClick=null;startInl(tp,id);return;}lastClick=shift?null:{id:id,t:now};
       var nx=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);if(!window.StableBlockSelect.sameSelection(nx,sel)){sel=nx;render();props();}}
     window.addEventListener('mousemove',onM);window.addEventListener('mouseup',onU);});});
@@ -612,6 +681,7 @@ function relFocus(){if(inl)finInl(true);var a=document.activeElement;if(a&&a!==d
 // Enter or a press elsewhere commits, Esc restores the text as it was. Notes are multi-line (Shift+Enter).
 function startInl(tp,id){if(inl)finInl(true);var it=tp==='block'?parsed.blockMap[id]:tp==='group'?parsed.groupMap[id]:parsed.nm[id];if(!it)return;
   sel=[{type:tp,id:id}];render();props();
+  if(window.StableBlockCheck.includeOrigin(EXP,it.line))return;
   var gs=document.querySelectorAll('#wrap g[data-id]'),g=null;for(var k=0;k<gs.length;k++){if(gs[k].dataset.id===id&&gs[k].dataset.type===tp){g=gs[k];break;}}if(!g)return;
   var r=g.querySelector('rect').getBoundingClientRect(),isN=tp==='note',isG=tp==='group';
   var el=document.createElement(isN?'textarea':'input');el.className='inline-label';el.id='inline-label';el.spellcheck=false;
@@ -647,7 +717,7 @@ function propsPanel(){
         '<div class="pl">CANVAS</div><label id="cv-sec" style="display:flex;gap:4px;align-items:center;font-size:10px;cursor:pointer" title="Off writes grow=off on the @canvas line: the size you set for a document page stays fixed and overflowing items are reported"><input type="checkbox" id="cv-grow"'+(parsed&&window.StableBlockLayout.canvasGrows(parsed.canvas)?' checked':'')+' onchange="cvGrow(this.checked)"> Grow when items overflow</label>'+
         '<div class="pl">CONNECT</div>'+
         '<div id="connGuide" style="font-size:9px;color:#888;line-height:1.4">Shift+Click blocks in order, then press "a &rarr; b" (3+: "a &rarr; b &rarr; c"). Flip the direction afterwards"</div>'+
-        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>H: dim unlinked N: show notes</div>';
+        '<div style="margin-top:12px;font-size:9px;color:#888;line-height:1.4">Click: select<br>Shift+Click: multi<br>Drag: move<br>Handles: resize<br>Double-click / F2: edit label (Tab: next)<br>Select 1 and type: edit its label<br>Ctrl+Z/Y: undo/redo<br>Del: delete<br>Nothing selected: H dim unlinked, N show notes</div>';
     }
     return;
   }
@@ -661,22 +731,26 @@ function propsPanel(){
       var sa=sel[0].id,sb=sel[1].id,cns=findCB(sa,sb);
       var CC=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
       mh+='<div class="pl">Connection</div>';
-      if(cns.length===0){
+      // 結ぶ入口: クリックした順の向きがまだ無ければ出す(逆向きだけがあるなら戻りの線を足す)。2 つの間の接続は向きごとに全部並べる(HTML 版と同じ)
+      if(sa!==sb&&!window.StableBlockLabel.hasConnDir(parsed.connections,sa,sb)&&(cns.length===0||selClk)){
         mh+='<button class="pbtn" id="chain-btn" style="width:100%;background:#6366F1;color:#fff;border-color:#6366F1" title="Connect in the order you clicked" onclick="connTwo(\\''+sa+'\\',\\''+sb+'\\')">'+esc(sa)+' &rarr; '+esc(sb)+'</button>';
-        mh+='<div class="pl" style="font-size:9px;margin-top:4px">In the order you clicked. Flip the direction, set color, width and label after connecting</div>';
-      }else{
-        var cn=cns[0],fa=cn.from,ta=cn.to;
+        mh+='<div class="pl" style="font-size:9px;margin-top:4px">'+(cns.length?'A separate line from the reverse one, with its own label':'In the order you clicked. Flip the direction, set color, width and label after connecting')+'</div>';
+      }
+      cns.forEach(function(cn,k){
+        var fa=cn.from,ta=cn.to,cf=window.StableBlockLabel.canFlipConn(parsed.connections,fa,ta),nf=cf?'':' disabled title="A reverse connection exists"';
+        mh+='<div class="conn-row"'+(k?' style="margin-top:8px;padding-top:6px;border-top:1px solid #444"':'')+'>';
         mh+='<div style="padding:4px 6px;background:var(--bg);border-radius:4px;margin-bottom:6px;font-size:11px;color:#ccc;text-align:center">'+esc(fa)+(cn.bidir?' &#x2194; ':' &rarr; ')+esc(ta)+'</div>';
-        mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1" onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1" onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
+        mh+='<div style="display:flex;gap:3px"><button class="pbtn" style="flex:1"'+nf+' onclick="flipC(\\''+fa+'\\',\\''+ta+'\\')">&#x21C4; Flip</button><button class="pbtn" style="flex:1"'+nf+' onclick="togBi(\\''+fa+'\\',\\''+ta+'\\')">'+(cn.bidir?'&rarr; One-way':'&#x2194; Bidir')+'</button></div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label</div><input class="pi" style="width:100%" value="'+esc(cn.label)+'" oninput="sCLb(\\''+fa+'\\',\\''+ta+'\\',this.value)" placeholder="(none)">';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Label Pos</div><div style="display:flex;gap:3px">'+[["right","右"],["left","左"],["top","上"],["bottom","下"],["center","中"]].map(function(pv){return'<button class="sbtn'+(cn.lpos===pv[0]?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'lpos\\',\\''+pv[0]+'\\')">'+pv[1]+'</button>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Line Color</div><div class="cg">'+CC.map(function(c){return'<div class="cd'+(cn.color===c?' act':'')+'" style="background:'+c+'" onclick="setCC(\\''+fa+'\\',\\''+ta+'\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Width</div><div style="display:flex;gap:3px">'+[1,1.5,2,3,4].map(function(w){return'<button class="sbtn'+(cn.width===w?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'width\\',\\''+w+'\\')">'+w+'</button>'}).join('')+'</div>';
         mh+='<div class="pl" style="font-size:9px;margin-top:4px">Style</div><div style="display:flex;gap:3px">'+["solid","dashed"].map(function(st){return'<button class="sbtn'+(cn.style===st?' act':'')+'" onclick="setCP(\\''+fa+'\\',\\''+ta+'\\',\\'style\\',\\''+st+'\\')">'+window.StableBlockTerms.styleName(st,'en')+'</button>'}).join('')+'</div>';
         mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:4px;width:100%" onclick="rmConn(\\''+fa+'\\',\\''+ta+'\\')">Remove Connection</button>';
-      }
+        mh+='</div>';
+      });
     }
-    mh+='<button class="pbtn" style="border-color:#8B5CF6;color:#C4B5FD;margin-top:8px" onclick="grpSel()">Group Selected</button>';
+    mh+='<button class="pbtn" style="border-color:#8B5CF6;color:#C4B5FD;margin-top:8px" onclick="grpSel()">Group Selected</button><div id="grp-msg" hidden style="margin-top:4px;color:#F59E0B;font-size:11px"></div>';
     mh+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:12px" onclick="bDel()">Delete All</button>';
     el.innerHTML=mh;
     return;
@@ -691,12 +765,15 @@ function propsPanel(){
   h+='<div class="pl" id="dup-hint" style="margin-top:4px;font-size:9px">Duplicate: Ctrl+C &rarr; Ctrl+V (same size/colors, next free spot) / Esc: tools</div>';
   var incN=window.StableBlockCheck.includedItemNote(EXP,it.line,function(f){return f.split('/').pop();},'en');
   if(incN)h+='<div class="pl" id="prop-included" style="margin-top:4px;font-size:9px;text-transform:none;color:#FCD34D">'+esc(incN)+'</div>';
+  // include 先の要素(core/check includedItemRows): 打っても本文は変わらないので値を見せるだけ(直すのは include 先のファイル)
+  var roR=window.StableBlockCheck.includedItemRows(EXP,it,'en');
+  if(roR){h+=roR.map(function(r){return '<div class="pl">'+esc(r.label)+'</div><div class="pi prop-ro" id="prop-ro-'+r.key+'" style="border-style:dashed;color:#999;user-select:text">'+esc(String(r.value))+'</div>';}).join('');el.innerHTML=h;return;}
   h+='<div class="pl">'+(isN?'Text':'Label')+'</div>'+(isN?'<textarea class="pi" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="sNLb(this.value)">'+it.label.split("\\\\n").join("\\n")+'</textarea>':'<input class="pi" value="'+esc(it.label)+'" oninput="sLb(this.value)" onkeydown="if(event.key===\\'Enter\\'){this.blur();askId();}">');
   h+='<details id="prop-id-box"'+(window.StableBlockLabel.idFieldOpen(it.id,idOpen)?' open':'')+'><summary class="pl" style="cursor:pointer;text-transform:none" title="Change the ID (connections follow). The ID follows the label automatically" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">'+esc(it.id)+'</span></summary><input class="pi" id="prop-id" value="'+esc(it.id)+'" onchange="sId(this.value)" onkeydown="idKey(event,this)" spellcheck="false"><div id="prop-id-msg" style="font-size:9px;color:#F87171"></div><div id="prop-id-help" style="font-size:9px;color:#888">Letters, digits and _. Connections follow.</div></details>';
   h+=stepperRow("X","stepF(\\'x\\',\\'dn\\')","stepF(\\'x\\',\\'up\\')",it.x)+stepperRow("Y","stepF(\\'y\\',\\'dn\\')","stepF(\\'y\\',\\'up\\')",it.y);
   h+=stepperRow("W","stepF(\\'w\\',\\'dn\\')","stepF(\\'w\\',\\'up\\')",it.w)+stepperRow("H","stepF(\\'h\\',\\'dn\\')","stepF(\\'h\\',\\'up\\')",it.h);
   h+='<div class="pl">Color</div><div class="cg">'+colors.map(function(c){return'<div class="cd'+(it.color===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'color\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
-  h+='<input class="pi" style="width:80px" value="'+it.color+'" oninput="sPr(\\'color\\',this.value)">';
+  h+='<input class="pi" style="width:80px" value="'+it.color+'" data-field="color" onfocus="fFocus(this)" oninput="fInput(this)" onchange="fCommit(this)" onkeydown="fKey(event,this)" placeholder="#RRGGBB">';
   if(isB||isN){
     h+='<div class="pl">Text Color</div><div class="cg">'+["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(function(c){return'<div class="cd'+(it.textColor===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'text\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     h+=stepperRow("Round","sNudgeR(-1)","sNudgeR(1)",it.round);
@@ -713,25 +790,42 @@ function propsPanel(){
 }
 
 function stepperRow(label,decF,incF,val){
-  return '<div class="pl">'+label+'</div><div class="stepper" style="margin-bottom:4px"><input class="pi" type="number" value="'+val+'" oninput="sField(\\''+label.toLowerCase()+'\\',this.value)"><div class="stcol"><button class="stb up" onclick="'+incF+'">&#x25B2;</button><button class="stb dn" onclick="'+decF+'">&#x25BC;</button></div></div>';
+  return '<div class="pl">'+label+'</div><div class="stepper" style="margin-bottom:4px"><input class="pi" type="number" value="'+val+'" data-field="'+label.toLowerCase()+'" onfocus="fFocus(this)" onchange="fCommit(this)" onkeydown="fKey(event,this)"><div class="stcol"><button class="stb up" onclick="'+incF+'">&#x25B2;</button><button class="stb dn" onclick="'+decF+'">&#x25BC;</button></div></div>';
 }
 function stepper2(label,xd,xi,yd,yi){
   return '<div class="pl">'+label+'</div><div class="pr"><div style="flex:1"><div style="font-size:8px;color:#888">X</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+xi+'">&#x25B2;</button><button class="stb dn" onclick="'+xd+'">&#x25BC;</button></div></div></div><div style="flex:1"><div style="font-size:8px;color:#888">Y</div><div class="stepper"><input class="pi" value="" disabled><div class="stcol"><button class="stb up" onclick="'+yi+'">&#x25B2;</button><button class="stb dn" onclick="'+yd+'">&#x25BC;</button></div></div></div></div>';
 }
 
 // Single-item actions
-function sPr(p,v){if(!sel.length)return;pushH();upPr(sel[0].type,sel[0].id,p,v);go();notify();}
+function sPr(p,v,t){if(!t&&!sel.length)return;var s=t||sel[0];pushH();upPr(s.type,s.id,p,v);go();notify();}
 function sLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v);fLbId(v);parsed=parseDoc();render();
   showErr();
   document.getElementById('stats').textContent='Blocks:'+parsed.blocks.length+' Groups:'+parsed.groups.length+' Notes:'+parsed.notes.length+' Conn:'+parsed.connections.length+' Sel:'+sel.length;
   document.getElementById('si').textContent=sel.length?sel.length+' selected':'Click to select';notify();}
 function sCLb(a,b,v){pushH();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();render();notify();}
 function sNLb(v){if(!sel.length)return;pushH();upLb(sel[0].type,sel[0].id,v.replace(/\\n/g,"\\\\n"));fLbId(v);parsed=parseDoc();render();notify();}
-function sField(f,v){if(!sel.length)return;var n=parseInt(v);if(isNaN(n))return;pushH();var it=getIt(sel[0]);if(!it)return;
-  if(f==='x'||f==='y')upP(sel[0].type,sel[0].id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
-  else if(f==='w'||f==='h')upS(sel[0].type,sel[0].id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
-  else if(f==='round')upPr(sel[0].type,sel[0].id,'round',Math.max(0,n));
+function sField(f,v,t){if(!t&&!sel.length)return;var s=t||sel[0],n=parseInt(v);if(isNaN(n))return;var it=getIt(s);if(!it)return;pushH();
+  if(f==='x'||f==='y')upP(s.type,s.id,f==='x'?Math.max(0,n):it.x,f==='y'?Math.max(0,n):it.y);
+  else if(f==='w'||f==='h')upS(s.type,s.id,f==='w'?Math.max(1,n):it.w,f==='h'?Math.max(1,n):it.h);
+  else if(f==='round')upPr(s.type,s.id,'round',Math.max(0,n));
   go();notify();}
+// プロパティ欄の数値・色の欄(core/select fieldCommit): 打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く
+// (色は # と 6 桁が揃えば打っている間にも)。欄の中の ↑↓ は ▲▼ と同じく 1 押しで書く。Esc は打った値を捨てる。書き先は欄に入ったときの要素
+function fFocus(el){if(sel.length===1){el.setAttribute('data-ftype',sel[0].type);el.setAttribute('data-fid',sel[0].id);}}
+function fTarget(el){return el.getAttribute('data-fid')?{type:el.getAttribute('data-ftype'),id:el.getAttribute('data-fid')}:sel[0];}
+function fCur(it,f){return f==='color'?it.color:f==='round'?it.round:it[f];}
+function fCommit(el,trig){var S=window.StableBlockSelect,f=el.getAttribute('data-field'),tr=trig||'commit',t=fTarget(el);if(!t)return false;var it=getIt(t);if(!it)return false;
+  var v=S.fieldCommit(S.fieldKind(f),el.value,tr,fCur(it,f));
+  if(v===null){if(tr==='commit')el.value=fCur(it,f);return false;}
+  if(f==='color')sPr('color',v,t);else sField(f,String(v),t);return true;}
+function fRefocus(f,end){var n=document.querySelector('#propPanel [data-field="'+f+'"]');if(!n)return;n.focus();if(end&&n.type!=='number')n.setSelectionRange(n.value.length,n.value.length);else n.select();}
+function fInput(el){var f=el.getAttribute('data-field');if(window.StableBlockSelect.fieldKind(f)!=='color')return;if(fCommit(el,'input'))fRefocus(f,true);}
+function fKey(e,el){var S=window.StableBlockSelect,a=S.fieldKeyAction(e.key,e.shiftKey),f=el.getAttribute('data-field');if(!a)return;
+  if(a==='cancel'){var t=fTarget(el),it=t&&getIt(t);if(it)el.value=fCur(it,f);return;}
+  if(a==='commit'){e.preventDefault();fCommit(el);fRefocus(f);return;}
+  if(a==='up'||a==='dn'){if(S.fieldKind(f)==='color')return;e.preventDefault();fCommit(el);if(f==='round')sNudgeR(S.stepDelta(a));else stepF(f,a);fRefocus(f);return;}
+  var fs=Array.prototype.slice.call(document.querySelectorAll('#propPanel [data-field]')),nx=fs[fs.indexOf(el)+(a==='next'?1:-1)];
+  if(!nx)return;e.preventDefault();var nf=nx.getAttribute('data-field');fCommit(el);fRefocus(nf);}
 function sNudge(ax,d){if(!sel.length)return;pushH();var s=sel[0],it=getIt(s);if(!it)return;var before=parNow();
   if(s.type==='group'){var ch=fCh(it);ch.cb.forEach(function(b){upP('block',b.id,b.x+(ax==='x'?d:0),b.y+(ax==='y'?d:0))});ch.cg.forEach(function(g){upP('group',g.id,g.x+(ax==='x'?d:0),g.y+(ax==='y'?d:0))});}
   upP(s.type,s.id,Math.max(0,it.x+(ax==='x'?d:0)),Math.max(0,it.y+(ax==='y'?d:0)));growPar(before,[{id:s.id,sides:axSides(ax,d)}]);go();notify();}
@@ -759,15 +853,15 @@ function cutSel(){if(!sel.length)return;copySel();pushH();delItems(sel);sel=[];g
 function pasteSel(){if(!clipboard||!clipboard.length)return;var rects=clipboard.map(function(ci){var m=ci.line.match(/at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)/);return m?{x:+m[1],y:+m[2],w:+m[3],h:+m[4]}:null;}).filter(Boolean);if(!rects.length)return;var bx=Math.min.apply(null,rects.map(function(r){return r.x})),by=Math.min.apply(null,rects.map(function(r){return r.y}));var bw=Math.max.apply(null,rects.map(function(r){return r.x+r.w}))-bx,bh=Math.max.apply(null,rects.map(function(r){return r.y+r.h}))-by;pushH();var skip={};clipboard.forEach(function(ci){skip[ci.id]=1});var src={x:bx,y:by,w:bw,h:bh};var p=areaSlot(bw,bh,lastPaste||src,groupOf(src,skip));var dx=p.x-bx,dy=p.y-by;var ns=[],idMap={};clipboard.forEach(function(ci){var nid="__new_"+(addC++);idMap[ci.id]=nid;var ln=ci.line.replace(new RegExp("^("+ci.type+"\\\\s+)"+ci.id),"$1"+nid);ln=ln.replace(/at\\s+([\\d.]+),([\\d.]+)/,function(m,x,y){return"at "+(+x+dx)+","+(+y+dy)});dsl=dsl.trimEnd()+"\\n"+ln+"\\n";ns.push({type:ci.type,id:nid});});clipConns.forEach(function(l){var nl=window.StableBlockLabel.remapConnLine(l,idMap);if(nl)dsl=dsl.trimEnd()+"\\n"+nl+"\\n";});lastPaste={x:p.x,y:p.y,w:bw,h:bh};sel=ns;go();notify();}
 
 // Connection management (two-select)
-function findCB(a,b){return parsed.connections.filter(function(c){return(c.from===a&&c.to===b)||(c.from===b&&c.to===a)});}
+function findCB(a,b){return window.StableBlockLabel.connsBetween(parsed.connections,a,b);}
 function connTwo(a,b){pushH();dsl=dsl.trimEnd()+"\\n"+a+" -> "+b+"\\n";go();notify();}
-// 鎖状に結ぶ: クリックした順に block / note を選んだとき。既にある組は足さない(core/label chainConnectInDsl。HTML 版と同じ)
+// 鎖状に結ぶ: クリックした順に block / note を選んだとき。同じ向きの接続は足さない・逆向きしか無ければ足す(core/label chainConnectInDsl。HTML 版と同じ)
 function chainIds(){if(!selClk||sel.length<2||sel.some(function(x){return x.type==='group'}))return null;var ids=sel.map(function(x){return x.id});return window.StableBlockLabel.chainConnectInDsl('',ids,parsed.connections).added.length?ids:null;}
 function connChain(){var ids=chainIds();if(!ids)return;var r=window.StableBlockLabel.chainConnectInDsl(dsl,ids,parsed.connections);pushH();dsl=r.dsl;go();notify();}
-function rmConn(a,b){pushH();var lines=dsl.split("\\n");dsl=lines.filter(function(l){var m=l.trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\\n");go();notify();}
-function flipC(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\\s*)(\\S+)(\\s+)(-->|->)(\\s+)(\\S+)/,function(_,sp,f,s1,ar,s2,t){return sp+t+s1+ar+s2+f;});break;}}dsl=lines.join("\\n");go();notify();}
-function togBi(a,b){pushH();var lines=dsl.split("\\n");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\\n");go();notify();}
-function setCP(a,b,prop,val){pushH();var lines=dsl.split("\\n"),pr=new RegExp(prop+"=\\\\S+");for(var i=0;i<lines.length;i++){var m=lines[i].trim().match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=pr.test(lines[i])?lines[i].replace(pr,prop+"="+val):lines[i].trimEnd()+" "+prop+"="+val;break;}}dsl=lines.join("\\n");go();notify();}
+function rmConn(a,b){pushH();dsl=window.StableBlockLabel.removeConnInDsl(dsl,a,b);go();notify();}
+function flipC(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushH();dsl=window.StableBlockLabel.flipConnInDsl(dsl,a,b);go();notify();}
+function togBi(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushH();dsl=window.StableBlockLabel.toggleBidirInDsl(dsl,a,b);go();notify();}
+function setCP(a,b,prop,val){pushH();dsl=window.StableBlockLabel.setConnPropInDsl(dsl,a,b,prop,val);go();notify();}
 function setCC(a,b,col){setCP(a,b,"color",col);}
 
 // Add
@@ -801,7 +895,7 @@ function idKey(e,inp){if(e.key==='Enter'){e.preventDefault();sId(inp.value);var 
 function fLbId(label){var s=sel[0];if(!s||!(s.id.indexOf('__new_')===0||autoIds.has(s.id)))return;var SL=window.StableBlockLabel;var base=SL.labelToId(label);if(!base)return;var nid=SL.uniqueId(base,usedEx(s.id));if(nid===s.id)return;if(!applyRn(s,nid))return;autoIds.delete(s.id);autoIds.add(nid);var inp=document.getElementById('prop-id');if(inp)inp.value=nid;var now=document.getElementById('prop-id-now');if(now)now.textContent=nid;}
 
 // Group selected blocks
-function grpSel(){var its=sel.map(function(si){return getIt(si)}).filter(function(x){return x&&x.type!=='note'});if(its.length<2)return;pushH();var L=window.StableBlockLayout;var bx=Math.min.apply(null,its.map(function(b){return b.x})),by=Math.min.apply(null,its.map(function(b){return b.y}));var box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};var pid=L.parentMap(parsed.groups.concat([box]))[box.id],parent=pid?parsed.groupMap[pid]:null;var r=L.groupRectFor(its,boxIt().filter(function(x){return its.indexOf(x)<0}),parent);var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "Group" at '+r.x+','+r.y+' size '+r.w+'x'+r.h+' color=#F1F5F9 border=#94A3B8\\n';parsed=parseDoc();var after=parNow();if(pid)after[id]=pid;its.forEach(function(b){after[b.id]=id;});growPar(after,[{id:id,sides:['l','t','r','b']}],[{id:id,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);go();notify();}
+function grpSel(){var its=sel.map(function(si){return getIt(si)}).filter(function(x){return x&&x.type!=='note'});if(its.length<2)return;var L=window.StableBlockLayout;var bx=Math.min.apply(null,its.map(function(b){return b.x})),by=Math.min.apply(null,its.map(function(b){return b.y}));var box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};var pid=L.parentMap(parsed.groups.concat([box]))[box.id],parent=pid?parsed.groupMap[pid]:null;var plan=L.groupPlanFor(its,boxIt().filter(function(x){return its.indexOf(x)<0}),parent);if(!plan.rect){var gm=document.getElementById('grp-msg');if(gm){gm.textContent=plan.reason;gm.hidden=false;}return;}pushH();var r=plan.rect;if(plan.moves.length){plan.moves.forEach(function(mv){upP('block',mv.id,mv.x,mv.y);});parsed=parseDoc();its=its.map(function(b){return parsed.blockMap[b.id]||parsed.groupMap[b.id]||b;});bx=Math.min.apply(null,its.map(function(b){return b.x}));by=Math.min.apply(null,its.map(function(b){return b.y}));box={type:'block',id:' sel',x:bx,y:by,w:Math.max.apply(null,its.map(function(b){return b.x+b.w}))-bx,h:Math.max.apply(null,its.map(function(b){return b.y+b.h}))-by};}var id="__new_"+(addC++);dsl=dsl.trimEnd()+"\\ngroup "+id+' "Group" at '+r.x+','+r.y+' size '+r.w+'x'+r.h+' color=#F1F5F9 border=#94A3B8\\n';parsed=parseDoc();var after=parNow();if(pid)after[id]=pid;its.forEach(function(b){after[b.id]=id;});growPar(after,[{id:id,sides:['l','t','r','b']}],[{id:id,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);go();notify();}
 
 // Search / Filter
 function matchSearch(item){if(!searchQ)return true;var q=searchQ.toLowerCase();if(item.id&&item.id.toLowerCase().indexOf(q)>=0)return true;if(item.label&&item.label.toLowerCase().indexOf(q)>=0)return true;if(item.from&&item.from.toLowerCase().indexOf(q)>=0)return true;if(item.to&&item.to.toLowerCase().indexOf(q)>=0)return true;return false;}
@@ -816,7 +910,7 @@ function searchStep(dir){var t=window.StableBlockRender.nextMatch(searchNow(),se
 function exportMmd(){if(!parsed)return;var r=window.StableBlockMermaid.toMermaid(parsed),dr=incDrops().concat(r.dropped);vscodeApi.postMessage({type:'exportMmd',data:r.text});if(dr.length)vscodeApi.postMessage({type:'exportDrops',format:'Mermaid',items:dr});}
 
 // Refresh
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check
 var lastDiag=[];
 function showErr(){var p={canvas:parsed.canvas,blocks:parsed.blocks,groups:parsed.groups,notes:parsed.notes,connections:parsed.connections,errors:parsed.errors,blockMap:parsed.blockMap,groupMap:parsed.groupMap,noteMap:parsed.nm};var SBL=window.StableBlockLabel,paths=SBL.connectionPaths(p);lastDiag=window.StableBlockCheck.checkIncluded(p,EXP,paths,{hint:'(ファイルが無い)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});var hasErr=lastDiag.some(function(d){return d.level==='error'});document.getElementById('err').innerHTML=lastDiag.length?'<div class="error'+(hasErr?'':' warn-only')+'">'+lastDiag.map(function(d){return '<div class="dg-'+d.level+'">L'+d.line+': '+esc(d.msg)+'</div>'}).join('')+'</div>':'';}
 function go(){parsed=parseDoc();render();props();
@@ -842,7 +936,7 @@ function exportXlsx(){
   try{
     if(!parsed){vscodeApi.postMessage({type:'info',text:'図がパースされていません'});return;}
     if(!window.StableBlockExcel||!window.JSZip){vscodeApi.postMessage({type:'info',text:'Excel エクスポート用モジュール未ロード'});return;}
-    window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}).then(function(bytes){
+    window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel}).then(function(bytes){
       var binary='';for(var i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
       var b64=btoa(binary);
       vscodeApi.postMessage({type:'exportXlsx',data:b64});
@@ -859,9 +953,12 @@ document.addEventListener('keydown',function(e){
   var inInput=document.activeElement&&(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA');
   if(e.key==='Escape'){closePngMenu();if(inInput)document.activeElement.blur();clrSel();return;}
   if(inInput)return;
-  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHL();return;}
-  if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnno();return;}
-  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitV();return;}
+  // 1 キー(core/select typedKeyAction): 1 つ選んで文字を打つと、その文字からラベルのその場編集。H・N・F(表示だけ)は 1 つ選んでいないとき
+  var ta=window.StableBlockSelect.typedKeyAction(e.key,sel.length,{ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});
+  if(ta==='label'&&!(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))){startInl(sel[0].type,sel[0].id);return;}
+  if(ta==='highlight'){e.preventDefault();toggleHL();return;}
+  if(ta==='annotations'){e.preventDefault();toggleAnno();return;}
+  if(ta==='fit'){e.preventDefault();fitV();return;}
   var tg=e.target&&e.target.tagName;if((tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT'))return;
   if((e.key==='F2'||(e.key==='Enter'&&!(document.activeElement&&document.activeElement.tagName==='BUTTON')&&tg!=='BUTTON'))&&sel.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();startInl(sel[0].type,sel[0].id);return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();selClk=false;var an=showAnno?parsed.notes.map(function(n){return{type:'note',id:n.id}}):[];sel=parsed.blocks.map(function(b){return{type:'block',id:b.id}}).concat(parsed.groups.map(function(g){return{type:'group',id:g.id}})).concat(an);render();props();return;}
@@ -904,6 +1001,26 @@ document.getElementById('preview').addEventListener('mousedown',function(e){
   relFocus();clrSel();
 });
 document.getElementById('preview').addEventListener('scroll',function(){if(inl)finInl(true);});
+
+// Drag the preview | side panel border to resize the side panel (core/layout paneWidths keeps a minimum preview width).
+// Double-click resets. The width survives hiding the webview (vscodeApi state)
+(function(){
+  var main=document.querySelector('.main'),pp=document.getElementById('propPanel'),sp=document.getElementById('split-right');
+  var OPT={minLeft:0,minMid:200,minRight:160,moved:'right'};
+  function apply(w){var r=window.StableBlockLayout.paneWidths(main.clientWidth,0,w,OPT);pp.style.width=r.right+'px';return r.right;}
+  function save(){try{var st=vscodeApi.getState()||{};st.propW=pp.getBoundingClientRect().width;vscodeApi.setState(st);}catch(e){}}
+  try{var st0=vscodeApi.getState();if(st0&&st0.propW>0)apply(st0.propW);}catch(e){}
+  sp.addEventListener('pointerdown',function(e){if(e.button!==0)return;e.preventDefault();sp.focus();
+    try{sp.setPointerCapture(e.pointerId);}catch(_){}
+    var x0=e.clientX,w0=pp.getBoundingClientRect().width;sp.classList.add('dragging');document.body.classList.add('pane-resizing');
+    function mv(ev){apply(w0-(ev.clientX-x0));}
+    function up(){sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up);sp.removeEventListener('pointercancel',up);
+      sp.classList.remove('dragging');document.body.classList.remove('pane-resizing');save();}
+    sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up);sp.addEventListener('pointercancel',up);});
+  sp.addEventListener('dblclick',function(e){e.preventDefault();pp.style.width='';try{var st=vscodeApi.getState()||{};delete st.propW;vscodeApi.setState(st);}catch(_){}});
+  sp.addEventListener('keydown',function(e){var d=e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0;if(!d)return;e.preventDefault();e.stopPropagation();apply(pp.getBoundingClientRect().width-d);save();});
+  window.addEventListener('resize',function(){if(pp.style.width)apply(pp.getBoundingClientRect().width);});
+})();
 
 parsed=parseDoc();go();fitV();
 <\/script></body></html>`;

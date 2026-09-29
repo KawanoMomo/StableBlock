@@ -50,13 +50,21 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #header .toolbar > .sep { margin:0 2px; }
 .tb-accent { border-color:var(--accent); color:#A5B4FC; }
 .tb-more[hidden] { display:none; }
-#export-menu, #png-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
-#export-menu[hidden], #png-menu[hidden] { display:none; }
+#export-menu, #png-menu, #open-menu { position:fixed; z-index:60; padding:4px; background:var(--bg2); border:1px solid var(--accent); border-radius:5px; box-shadow:0 4px 16px rgba(0,0,0,0.4); }
+#export-menu[hidden], #png-menu[hidden], #open-menu[hidden] { display:none; }
 /* PNG と ▾ は 1 つの入口(押せば PNG を保存、▾ で透過・コピーを選ぶ)。見た目は隣り合う 1 組 */
 .tb-split-l { border-top-right-radius:0; border-bottom-right-radius:0; }
 .tb-split-r { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:-4px; border-left-width:0; padding:4px 6px; }
-#export-menu .tb, #png-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
-#export-menu .em-head, #png-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
+#export-menu .tb, #png-menu .tb, #open-menu .tb { display:block; width:100%; margin-top:4px; text-align:left; white-space:nowrap; }
+#export-menu .em-head, #png-menu .em-head, #open-menu .em-head { font-size:10px; color:#A5B4FC; padding:0 2px; white-space:nowrap; }
+#open-menu { border-color:var(--green); }
+#open-menu .em-head { color:#86EFAC; }
+/* 「一括 ▾」の前回選んだ形式(先頭に並び、印が付く) */
+#export-menu .em-mark { display:none; margin-left:8px; font-size:9px; font-weight:400; color:#A5B4FC; }
+#export-menu .em-last .em-mark { display:inline; }
+/* ファイル・フォルダをプレビューへドラッグしている間の案内(離すと「.sb 読込」と同じに読む) */
+#drop-hint { position:fixed; z-index:55; display:flex; align-items:center; justify-content:center; border:2px dashed var(--green); border-radius:8px; background:rgba(15,23,42,0.72); color:#86EFAC; font-size:13px; font-weight:600; pointer-events:none; }
+#drop-hint[hidden] { display:none; }
 .tb-green { border-color:var(--green); color:#86EFAC; }
 .tb-hl-active { border-color:var(--amber); color:#FDE68A; background:#422006; }
 .tb-anno-active { border-color:#F59E0B; color:#FDE68A; background:#422006; }
@@ -66,8 +74,18 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 /* Body */
 #body { flex:1; display:flex; overflow:hidden; }
 
+/* 欄の境界: ドラッグで左右の欄の幅を変える(ダブルクリックで元の幅)。つかめる幅は 6px で、欄の幅は食わない(既存の 1px の線と、
+   スクロールバーの無い側の余白に重ねる: 左の境界はプレビューの左の余白、右の境界はツール欄の左の余白) */
+.pane-split { flex:0 0 6px; position:relative; z-index:5; cursor:col-resize; touch-action:none; outline:none; }
+#split-left { margin:0 -5px 0 -1px; }
+#split-right { margin:0 -6px 0 0; }
+.pane-split::after { content:''; position:absolute; top:0; bottom:0; width:3px; background:transparent; }
+#split-left::after { left:0; } #split-right::after { left:0; }
+.pane-split:hover::after, .pane-split.dragging::after, .pane-split:focus-visible::after { background:var(--accent); }
+body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-select:none !important; }
+
 /* Editor Panel */
-#editor-panel { width:30%; min-width:240px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
+#editor-panel { width:30%; min-width:160px; display:flex; flex-direction:column; border-right:1px solid var(--bg2); }
 .panel-label { padding:4px 10px; font-size:10px; font-weight:600; color:var(--muted); border-bottom:1px solid var(--bg2); display:flex; align-items:center; gap:4px; }
 .panel-label .dot { font-size:10px; }
 #error-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:10px; display:none; max-height:30%; overflow-y:auto; line-height:1.5; }
@@ -93,7 +111,7 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 #svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
 
 /* Property Panel */
-#prop-panel { width:220px; min-width:220px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
+#prop-panel { width:220px; min-width:200px; border-left:1px solid var(--bg2); display:flex; flex-direction:column; overflow:hidden; }
 #prop-content { flex:1; overflow-y:auto; padding:12px; }
 .prop-section { margin-bottom:12px; }
 .prop-label { font-size:10px; color:var(--muted); font-weight:600; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em; }
@@ -103,12 +121,17 @@ body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans','
 .inc-row .inc-remove { flex:none; height:22px; padding:0 8px; font-size:10px; border-radius:4px; }
 .prop-input { background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:4px 8px; font-size:12px; width:100%; outline:none; font-family:'IBM Plex Mono',monospace; }
 .prop-input:focus { border-color:var(--accent); }
+/* include 先の要素の値(打てない。枠を点線にして欄と見分ける) */
+.prop-ro { border:1px dashed var(--border); border-radius:4px; color:var(--muted); padding:4px 8px; font-size:12px; font-family:'IBM Plex Mono',monospace; overflow-wrap:anywhere; user-select:text; }
+.prop-ro-dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; border:1px solid var(--border); }
 .prop-sub { font-size:9px; color:var(--dim); }
 .prop-id-box > summary { cursor:pointer; text-transform:none; }
 .prop-id-box > summary #prop-id-now { font-family:monospace; color:var(--text,#E2E8F0); }
 .prop-id-box[open] > summary { margin-bottom:4px; }
 .prop-btn { padding:6px 12px; font-size:11px; font-weight:600; border:1px solid var(--border); border-radius:5px; cursor:pointer; background:var(--bg2); color:#94A3B8; width:100%; font-family:inherit; }
 .prop-btn:hover { background:#334155; }
+.prop-btn:disabled { opacity:.4; cursor:not-allowed; }
+.prop-btn:disabled:hover { background:var(--bg2); }
 .prop-btn-accent { border-color:var(--accent); color:#A5B4FC; }
 .prop-btn-red { border-color:var(--red); color:#FCA5A5; background:#1C1017; }
 .color-grid { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
@@ -186,7 +209,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
   <div class="logo">
     <div class="logo-icon">◆</div>
     <span class="logo-text">StableBlock</span>
-    <span class="badge">v2.0</span>
+    <span class="badge">v3.0</span>
   </div>
   <div class="toolbar">
     <button class="tb" data-term="zoom-out" onclick="setZoom(-1)" title="縮小する">−</button>
@@ -197,7 +220,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb" data-term="undo" onclick="undo()" title="元に戻す(Ctrl+Z)">↩</button>
     <button class="tb" data-term="redo" onclick="redo()" title="やり直す(Ctrl+Y)">↪</button>
     <div class="sep"></div>
-    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。L キー)">⌇ 曲線</button>
+    <button class="tb" data-term="line-mode" id="line-mode-btn" onclick="cycleLineMode()" title="線の形を切り替える: 曲線 → 直線 → 直角(図全体の既定。route を書いていない接続に効き、本文の @canvas 行に書く。何も選んでいないときの L キー)">⌇ 曲線</button>
     <button class="tb" data-term="highlight" id="hl-btn" onclick="toggleHighlight()" title="接続の無いブロックを薄く表示する/戻す(H キー)">◎ 未接続</button>
     <div class="sep"></div>
     <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
@@ -213,8 +236,10 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <div class="sep"></div>
     <button class="tb tb-green" data-term="new-sb" onclick="newDiagram()" title="空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる">新規</button>
     <button class="tb tb-green" data-term="save-sb" onclick="exportSB()" title=".sb ファイルに保存する(読み込んだ図は同じファイル名で)">.sb 保存</button>
-    <button class="tb tb-green" data-term="open-sb" onclick="document.getElementById('file-input').click()" title=".sb ファイルを読み込む">.sb 読込</button>
+    <button class="tb tb-green" data-term="open-sb" id="open-sb-btn" aria-haspopup="menu" onclick="openOpenMenu(this)" title=".sb を読み込む。ファイルを選ぶか、フォルダを選んで配下の .sb を全部読む(プレビューへファイル・フォルダをドロップしても読める)">.sb 読込 ▾</button>
+    <div id="open-menu" role="menu" hidden><div class="em-head">.sb 読込</div><button class="tb tb-green" role="menuitem" data-term="open-sb-files" onclick="openMenuPick('file-input')" title=".sb ファイルを選んで読み込む(本体と include 先を一緒に選べる)">ファイルを選ぶ</button><button class="tb tb-green" role="menuitem" data-term="open-sb-folder" onclick="openMenuPick('folder-input')" title="フォルダを選び、配下の .sb を全部読み込む。@include を相対パスで解き、ほかの図から取り込まれていない図を開く">フォルダを選ぶ</button></div>
     <input type="file" id="file-input" accept=".sb,.stableblock,.txt" multiple style="display:none" onchange="importSB(this)">
+    <input type="file" id="folder-input" webkitdirectory multiple style="display:none" onchange="importSB(this,true)">
     <div class="sep"></div>
     <span class="search-box"><input id="search-input" data-term="search" class="prop-input" style="width:140px;height:24px;font-size:11px;padding:2px 6px" placeholder="🔍 検索" title="ID・ラベルで絞り込み、外れた要素を薄くする。Enter で当たりを読み順に 1 つずつ選ぶ(Shift+Enter で戻る)。一緒に読み込んだ図の名前にも当たり、図名の行を押すか Enter で開く" oninput="doSearch(this.value)" onfocus="if(this.value){searchHitsOpen=true;renderSearchHits();}" onkeydown="searchKey(event)">
 <span id="search-count" class="search-count" aria-live="polite"></span></span>
@@ -231,13 +256,16 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
       <textarea id="editor" spellcheck="false"></textarea>
     </div>
   </div>
+  <div class="pane-split" id="split-left" data-side="left" role="separator" aria-orientation="vertical" aria-controls="editor-panel" tabindex="0" title="ドラッグで DSL 欄とプレビューの幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="preview-panel">
     <div class="panel-label" title="ドラッグで移動(親グループは子も連動)">
       <span class="dot" style="color:var(--green)">●</span> PREVIEW
     </div>
     <div id="canvas-bar" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
+    <div id="drop-hint" hidden>ここに離すと読み込む(.sb・フォルダ)</div>
   </div>
+  <div class="pane-split" id="split-right" data-side="right" role="separator" aria-orientation="vertical" aria-controls="prop-panel" tabindex="0" title="ドラッグでプレビューとツール欄の幅を変える(ダブルクリックで元の幅に戻す。←/→ キーでも動く)"></div>
   <div id="prop-panel">
     <div class="panel-label"><span class="dot" style="color:var(--amber)">●</span> <span id="prop-title">ツール</span></div>
     <div id="prop-content"></div>
@@ -251,7 +279,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 // ═══════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════
-let dsl = `# StableBlock v2.0
+let dsl = `# StableBlock v3.0
 @canvas width=960 height=520 grid=20
 
 # Application
@@ -551,7 +579,7 @@ function setupInteractions(){
       function onUp(ev){
         window.removeEventListener('mousemove',onMove);
         window.removeEventListener('mouseup',onUp);
-        if(moved){const sides=window.StableBlockLayout.moveSides(lastDx,lastDy);growParents(before,items.map(it=>({id:it.id,sides})));refresh();return;}
+        if(moved){const sides=window.StableBlockLayout.moveSides(lastDx,lastDy);growParents(before,items.map(it=>({id:it.id,sides,drop:sel.some(s=>s.id===it.id)})));refresh();return;}
         // 動かさずに同じ要素を 2 回続けてクリック(ダブルクリック)するとキャンバス上でラベルを編集する。押すたびに再描画で要素が作り直されるので dblclick イベントには頼らない
         const now=Date.now();if(!shift&&lastClick&&lastClick.id===id&&now-lastClick.t<450){lastClick=null;startInlineEdit(type,id);return;}lastClick=shift?null:{id,t:now};
         const next=window.StableBlockSelect.releaseSelect(sel,hit,shift,false);
@@ -592,6 +620,7 @@ function startInlineEdit(type,id){
   if(inlineEd)finishInlineEdit(true);
   const it=type==='block'?parsed.blockMap[id]:type==='group'?parsed.groupMap[id]:parsed.noteMap[id];if(!it)return;
   sel=[{type,id}];renderProps();renderSVG();
+  if(window.StableBlockCheck.includeOrigin(expanded,it.line))return;   // include 先の要素は打てない(プロパティ欄の「{ファイル} を開く」で直す)
   const g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);if(!g)return;
   const r=g.querySelector('rect').getBoundingClientRect(),isNote=type==='note',isGroup=type==='group';
   const el=document.createElement(isNote?'textarea':'input');
@@ -679,12 +708,12 @@ function renderPropsPanel(){
       ${includeSectionHtml()}
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
-        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>
+        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
           <span style="color:var(--muted)">Ctrl+V</span> 貼り付け <span style="color:var(--muted)">Ctrl+A</span> 全選択<br>
           <span style="color:var(--muted)">Delete</span> 削除 <span style="color:var(--muted)">Esc</span> 選択解除<br>
-          <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
+          選択なしで <span style="color:var(--muted)">H</span> 未接続を薄く <span style="color:var(--muted)">N</span> 注釈を表示<br>
           <span style="color:var(--muted)">L</span> 線の形 <span style="color:var(--muted)">F</span> 全体表示</div>
       </details>`;
     }
@@ -711,7 +740,7 @@ function renderPropsPanel(){
     if(hasBlocks) html+=`<div class="prop-section"><div class="prop-label">一括 スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn" onclick="batchProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
     if(sel.length>=3&&justLinked.length){
       html+=`<div class="prop-section"><div class="prop-label">結んだ接続のラベル</div>`;
-      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to)[0];html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
+      justLinked.forEach((c,i)=>{const cur=findConnsBetween(c.from,c.to).find(x=>x.from===c.from&&x.to===c.to);html+=`<div class="prop-sub" style="margin-top:6px">${esc(c.from)} → ${esc(c.to)}</div><input class="prop-input link-label" data-i="${i}" value="${esc(cur?cur.label:'')}" oninput="setConnLabel('${c.from}','${c.to}',this.value)" onkeydown="linkLabelKey(event,${i})" placeholder="(なし)" title="打って Enter で次の接続へ。最後の Enter でキャンバスへ戻る">`;});
       html+=`</div>`;
     } else if(sel.length>=3&&chainIds()){
       const ids=chainIds();
@@ -721,27 +750,31 @@ function renderPropsPanel(){
       const a=sel[0].id,b=sel[1].id,conns=findConnsBetween(a,b);
       html+=`<div class="prop-section"><div class="prop-label">接続</div>`;
       const connColors=["#64748B","#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#22C55E","#3B82F6","#06B6D4","#DC2626","#1E293B","#0F172A"];
-      if(conns.length===0){
-        // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。向き違いのボタンは出さず、向きは結んだ後の「⇄ 反転」で変える
-        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff" title="クリックした順に結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える">${esc(a)} → ${esc(b)}</button>`;
-      } else {
-        const c=conns[0],fa=c.from,ta=c.to;
-        html+=`<div style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}</div>`;
+      // 結ぶ入口は選択数に依らず同じ場所・同じ形の 1 ボタン(クリックした順)。クリックした順の向きがまだ無ければ出す(逆向きだけがあるなら戻りの線を足す)
+      if(a!==b&&!window.StableBlockLabel.hasConnDir(parsed.connections,a,b)&&(conns.length===0||selClicked)){
+        html+=`<button class="prop-btn" id="chain-btn" onclick="connectTwo('${a}','${b}')" style="width:100%;background:#6366F1;color:#fff;margin-bottom:8px" title="クリックした順に結ぶ(Enter でも)。${conns.length?'逆向きの接続とは別の線になり、別のラベルを付けられる':'向きは結んだ後に「⇄ 反転」、色・太さ・ラベルも結んだ後にここで変える'}">${esc(a)} → ${esc(b)}</button>`;
+      }
+      // 2 つの間の接続を向きごとに全部並べ、各行でその向きの線だけを直す(core/label connsBetween ほか)。ラベル欄の #conn-label-input はクリックした順の向きの行
+      const focusK=Math.max(0,conns.findIndex(c=>c.from===a&&c.to===b));
+      conns.forEach((c,k)=>{const fa=c.from,ta=c.to,canFlip=window.StableBlockLabel.canFlipConn(parsed.connections,fa,ta),noFlip=canFlip?'':' disabled title="逆向きの接続が別にあるので使えない(同じ向きが 2 本になる)"';
+        html+=`<div class="conn-row" data-from="${esc(fa)}" data-to="${esc(ta)}"${k?' style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"':''}>`;
+        html+=`<div class="conn-dir" style="padding:6px 8px;background:var(--surface);border-radius:6px;margin-bottom:8px;font-size:12px;color:var(--fg);text-align:center">${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)}${c.label&&conns.length>1?` <span style="color:var(--muted)">${esc(c.label)}</span>`:''}</div>`;
         html+=`<div style="display:flex;gap:4px;flex-wrap:wrap">`;
-        html+=`<button class="prop-btn" onclick="flipConn('${fa}','${ta}')" style="flex:1" title="方向を反転">⇄ 反転</button>`;
-        html+=`<button class="prop-btn" onclick="toggleBidir('${fa}','${ta}')" style="flex:1" title="双方向切替">${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
+        html+=`<button class="prop-btn conn-flip" onclick="flipConn('${fa}','${ta}')" style="flex:1"${noFlip||' title="方向を反転"'}>⇄ 反転</button>`;
+        html+=`<button class="prop-btn conn-bidir" onclick="toggleBidir('${fa}','${ta}')" style="flex:1"${noFlip||' title="双方向切替"'}>${c.bidir?'→ 片方向':'↔ 双方向'}</button>`;
         html+=`</div>`;
-        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input" id="conn-label-input" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
+        html+=`<div class="prop-sub" style="margin-top:6px">ラベル</div><input class="prop-input conn-label" id="${k===focusK?'conn-label-input':'conn-label-input-'+k}" value="${esc(c.label)}" oninput="setConnLabel('${fa}','${ta}',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();leaveToCanvas();}" placeholder="(なし)">`;
         html+=`<div class="prop-sub" style="margin-top:6px">ラベル位置</div><div style="display:flex;gap:4px">${[['right','右'],['left','左'],['top','上'],['bottom','下'],['center','中央']].map(([v,l])=>`<button class="style-btn ${c.lpos===v?'active':''}" onclick="setConnProp('${fa}','${ta}','lpos','${v}')">${l}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の色</div><div class="color-grid">${connColors.map(cl=>`<div class="color-dot ${c.color===cl?'active':''}" style="background:${cl}" onclick="setConnColor('${fa}','${ta}','${cl}')"></div>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の太さ</div><div style="display:flex;gap:4px">${[1,1.5,2,3,4].map(w=>`<button class="style-btn ${c.width===w?'active':''}" onclick="setConnProp('${fa}','${ta}','width','${w}')">${w}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線のスタイル</div><div style="display:flex;gap:4px">${["solid","dashed"].map(st=>`<button class="style-btn ${c.style===st?'active':''}" onclick="setConnProp('${fa}','${ta}','style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div>`;
         html+=`<div class="prop-sub" style="margin-top:6px">線の形</div><div style="display:flex;gap:4px">${['','curved','straight','ortho'].map(v=>({v,l:window.StableBlockTerms.lineShapeName(v)})).map(r=>`<button class="style-btn ${(c.route||'')===(r.v)?'active':''}" onclick="${r.v?`setConnProp('${fa}','${ta}','route','${r.v}')`:`removeConnProp('${fa}','${ta}','route')`}">${r.l}</button>`).join('')}</div>`;
-        html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red" onclick="removeConn('${fa}','${ta}')" style="width:100%">接続を削除</button></div>`;
-      }
+        html+=`<div style="margin-top:4px"><button class="prop-btn prop-btn-red conn-remove" onclick="removeConn('${fa}','${ta}')" style="width:100%">${conns.length>1?`${esc(fa)} ${c.bidir?'↔':'→'} ${esc(ta)} を削除`:'接続を削除'}</button></div>`;
+        html+=`</div>`;
+      });
       html+=`</div>`;
     }
-    if(hasBlocks&&sel.length>=2) html+=`<div style="margin-top:8px"><button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;width:100%" onclick="groupSelected()">選択をグループ化</button></div>`;
+    if(hasBlocks&&sel.length>=2) html+=`<div style="margin-top:8px"><button class="prop-btn" style="border-color:#818CF8;color:#C4B5FD;width:100%" onclick="groupSelected()">選択をグループ化</button><div id="group-sel-msg" class="prop-sub" role="status" hidden style="margin-top:4px;color:var(--amber);white-space:normal"></div></div>`;
     html+=`<div style="margin-top:16px"><button class="prop-btn prop-btn-red" onclick="batchDelete()">選択を全削除</button></div>`;
     el.innerHTML=html; return;
   }
@@ -756,6 +789,14 @@ function renderPropsPanel(){
   const colorDots=colors.map(c=>`<div class="color-dot ${item.color===c?'active':''}" style="background:${c}" onclick="setProp('color','${c}')"></div>`).join('');
   const typeLabel=window.StableBlockTerms.typeName(item.type);
   const typeColor=isNote?'#F59E0B':isBlock?'#6366F1':'#818CF8';
+  // include 先の要素(core/check includedItemRows): 本文に行が無く打っても変わらないので、値を見せるだけ。直す入口は「{ファイル} を開く」の 1 つ
+  const roRows=window.StableBlockCheck.includedItemRows(expanded,item);
+  if(roRows){const o=window.StableBlockCheck.includeOrigin(expanded,item.line);
+    el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:12px;font-weight:700;color:${typeColor}">${typeLabel}</span>
+    <button onclick="sel=[];renderProps();renderSVG()" title="選択を外してツール欄へ(Esc)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">✕</button></div>
+    <div class="prop-sub" id="prop-included" style="margin:-4px 0 10px;color:#FCD34D">${esc(window.StableBlockCheck.includedItemNote(expanded,item.line,baseName))}${loadedKey(o.file)?` <button class="prop-btn" style="margin-top:4px" data-id="${esc(item.id)}" onclick="openIncluded(this.dataset.id)">${esc(baseName(o.file))} を開く</button>`:''}</div>
+    ${roRows.map(r=>`<div class="prop-section"><div class="prop-label">${esc(r.label)}</div><div class="prop-ro" id="prop-ro-${r.key}" title="include 先の値(この図からは変えられない)">${r.key==='color'||r.key==='text'||r.key==='border'?`<span class="prop-ro-dot" style="background:${esc(r.value)}"></span>`:''}${esc(r.value)}</div></div>`).join('')}`;
+    return;}
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span id="dup-hint" style="font-size:12px;font-weight:700;color:${typeColor}" title="複製: Ctrl+C → Ctrl+V(大きさ・色そのまま隣の空き位置へ)/ Esc でツール欄">${typeLabel}</span>
@@ -764,24 +805,24 @@ function renderPropsPanel(){
     <div class="prop-section"><div class="prop-label">${isNote?'テキスト':'ラベル'}</div>${isNote?`<textarea class="prop-input" id="note-text" style="height:80px;resize:vertical;font-size:11px;line-height:1.4" oninput="setNoteLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()">${item.label.split('\\n').join('\n')}</textarea>`:`<input class="prop-input" id="prop-label" value="${esc(item.label)}" title="改行は \\n で入力" oninput="setLabel(this.value)" onfocus="startLabelEdit()" onchange="labelChanged()" onkeydown="if(event.key==='Enter'){this.blur();askIdIfUnnamed();}">`}${(els=>els.length&&!(labelNote&&labelNote.id===item.id)?`<div class="prop-sub" id="prop-label-elsewhere" style="color:#A5B4FC">Enter でほかの図(${els.map(e=>esc(baseName(e.path))).join('、')})の同じ表示名も揃う</div>`:'')(idUsesElsewhere(item.id).filter(e=>e.hits.some(h=>h.kind==='def')))}${labelNote&&labelNote.id===item.id?`<div class="prop-sub" id="prop-label-note" style="color:#86EFAC">${esc(labelNote.text)}</div>`:''}</div>
     <details class="prop-section prop-id-box" id="prop-id-box"${window.StableBlockLabel.idFieldOpen(item.id,idOpen,idUsesElsewhere(item.id).length>0)?' open':''}><summary class="prop-label" title="ID を変える(接続の参照も一緒に変わる)。ID はラベルを打てば自動で付く" onclick="idOpen=!this.parentNode.open">ID: <span id="prop-id-now">${esc(item.id)}</span></summary><input class="prop-input" id="prop-id" value="${esc(item.id)}" onchange="setId(this.value)" onkeydown="idKey(event,this)" spellcheck="false" title="英数字と _。接続の参照と、ID と同じ文字の表示名も一緒に変わる"><div class="prop-sub" id="prop-id-msg" style="color:#F87171"></div>${idNote&&idNote.id===item.id?`<div class="prop-sub" id="prop-id-note" style="color:#86EFAC">${esc(idNote.text)}</div>`:''}${(els=>els.length?`<div class="prop-sub" id="prop-id-elsewhere" style="color:#A5B4FC">ほかの図でも使う: ${els.map(e=>`${esc(baseName(e.path))}(${e.hits.map(h=>'L'+h.line).join(', ')})`).join('、')}。改名すると一緒に変わる</div>`:'')(idUsesElsewhere(item.id))}<div class="prop-sub" id="prop-id-help"></div></details>
     <div class="prop-section"><div class="prop-label">位置 (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" oninput="setPos('x',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" oninput="setPos('y',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">X</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.x}" ${fieldAttrs('x',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('x','up')">▲</button><button class="step-btn dn" onclick="stepField('x','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">Y</div><div class="stepper"><input class="prop-input" type="number" min="0" value="${item.y}" ${fieldAttrs('y',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('y','up')">▲</button><button class="step-btn dn" onclick="stepField('y','dn')">▼</button></div></div></div>
     </div></div>
     <div class="prop-section"><div class="prop-label">サイズ (grid)</div><div class="prop-row">
-      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" oninput="setSz('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
-      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" oninput="setSz('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">W</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.w}" ${fieldAttrs('w',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('w','up')">▲</button><button class="step-btn dn" onclick="stepField('w','dn')">▼</button></div></div></div>
+      <div style="flex:1"><div class="prop-sub">H</div><div class="stepper"><input class="prop-input" type="number" min="1" value="${item.h}" ${fieldAttrs('h',item)}><div class="step-col"><button class="step-btn up" onclick="stepField('h','up')">▲</button><button class="step-btn dn" onclick="stepField('h','dn')">▼</button></div></div></div>
     </div></div>
-    <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" oninput="setProp('color',this.value)" placeholder="#RRGGBB"></div>`;
+    <div class="prop-section"><div class="prop-label">背景色</div><div class="color-grid">${colorDots}</div><input class="prop-input" style="width:100px" value="${item.color}" ${fieldAttrs('color',item)} placeholder="#RRGGBB"></div>`;
 
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">テキスト色</div><div class="color-grid">${["#FFFFFF","#000000","#1E293B","#F8FAFC","#92400E","#991B1B","#1E40AF","#166534"].map(c=>`<div class="color-dot ${item.textColor===c?'active':''}" style="background:${c}" onclick="setProp('text','${c}')"></div>`).join('')}</div></div>`;
   }
   if(!isBlock&&!isNote){
-    html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" oninput="setProp('border',this.value)" placeholder="#RRGGBB"></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" ${fieldAttrs('border',item)} placeholder="#RRGGBB"></div>`;
     html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button></div>`;
   }
   if(isBlock||isNote){
-    html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" oninput="setProp('round',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
+    html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" ${fieldAttrs('round',item)}><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">スタイル</div><div style="display:flex;gap:4px">${["solid","dashed","bold"].map(st=>`<button class="style-btn ${item.style===st?'active':''}" onclick="setProp('style','${st}')">${window.StableBlockTerms.styleName(st)}</button>`).join('')}</div></div>`;
@@ -793,13 +834,33 @@ function renderPropsPanel(){
 // ═══════════════════════════════════════════════
 // Actions: single
 // ═══════════════════════════════════════════════
-function setProp(p,v){if(!sel.length)return;pushHistory();const s=sel[0];updateProp(s.type,s.id,p,v);refresh();}
+function setProp(p,v,t){if(!t&&!sel.length)return;pushHistory();const s=t||sel[0];updateProp(s.type,s.id,p,v);refresh();}
 function setLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v);followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 function setConnLabel(a,b,v){pushHistory();dsl=window.StableBlockLabel.setConnLabelInDsl(dsl,a,b,v);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
 function setNoteLabel(v){if(!sel.length)return;pushHistory();const s=sel[0];updateLabel(s.type,s.id,v.replace(/\n/g,'\\n'));followLabelId(v);followLabelEdit(s.id);parsed=parseDoc();syncEditor();renderSVG();renderErrors();renderStatus();}
+// プロパティ欄の数値・色の欄(core/select fieldCommit): 打っている間は本文に書かず、Enter・Tab・欄から出たときに 1 回だけ書く
+// (色は # と 6 桁が揃えば打っている間にも)。▲▼ と欄の中の ↑↓ は 1 押しで書く。Esc は打った値を捨てる。
+// 欄は入ったときの要素(data-ftype / data-fid)に書く: 欄から出るのがキャンバスを押して選択が変わる途中でも、打った要素に入る
+function fieldAttrs(f,item){return `data-field="${f}" data-ftype="${item.type}" data-fid="${esc(item.id)}" onfocus="fieldFocus(this)" oninput="fieldInput(this)" onchange="fieldCommitEl(this)" onkeydown="fieldKey(event,this)"`;}
+// 欄に入ったときの選択を書き先に控える(ラベルに追従して ID が変わっても、欄は描き直されないので描いたときの ID は古いことがある)
+function fieldFocus(el){if(sel.length===1){el.dataset.ftype=sel[0].type;el.dataset.fid=sel[0].id;}}
+function fieldCur(it,f){return f==='color'?it.color:f==='border'?(it.borderColor||''):f==='round'?it.round:it[f];}
+function fieldCommitEl(el,trigger='commit'){const S=window.StableBlockSelect,f=el.dataset.field,t={type:el.dataset.ftype,id:el.dataset.fid},it=getItem(t);if(!it)return false;
+  const v=S.fieldCommit(S.fieldKind(f),el.value,trigger,fieldCur(it,f));
+  if(v===null){if(trigger==='commit')el.value=fieldCur(it,f);return false;}
+  if(f==='x'||f==='y')setPos(f,v,t);else if(f==='w'||f==='h')setSz(f,v,t);else setProp(f,v,t);
+  return true;}
+function refocusField(f,end){const n=document.querySelector(`#prop-content [data-field="${f}"]`);if(!n)return;n.focus();if(end&&n.type!=='number')n.setSelectionRange(n.value.length,n.value.length);else n.select();}
+function fieldInput(el){if(window.StableBlockSelect.fieldKind(el.dataset.field)!=='color')return;const f=el.dataset.field;if(fieldCommitEl(el,'input'))refocusField(f,true);}
+function fieldKey(e,el){const S=window.StableBlockSelect,a=S.fieldKeyAction(e.key,e.shiftKey),f=el.dataset.field;if(!a)return;
+  if(a==='cancel'){const it=getItem({type:el.dataset.ftype,id:el.dataset.fid});if(it)el.value=fieldCur(it,f);return;}
+  if(a==='commit'){e.preventDefault();fieldCommitEl(el);refocusField(f);return;}
+  if(a==='up'||a==='dn'){if(S.fieldKind(f)==='color')return;e.preventDefault();fieldCommitEl(el);if(f==='round')nudgeRound(S.stepDelta(a));else stepField(f,a);refocusField(f);return;}
+  const fs=[...document.querySelectorAll('#prop-content [data-field]')],next=fs[fs.indexOf(el)+(a==='next'?1:-1)];
+  if(!next)return;e.preventDefault();const nf=next.dataset.field;fieldCommitEl(el);refocusField(nf);}
 const axisSides=(axis,d)=>window.StableBlockLayout.moveSides(axis==='x'?d:0,axis==='y'?d:0);
-function setPos(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
-function setSz(axis,v){if(!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
+function setPos(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<0)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updatePos(s.type,s.id,axis==='x'?n:it.x,axis==='y'?n:it.y);growParents(before,[{id:s.id,sides:axisSides(axis,n-it[axis])}]);refresh();}
+function setSz(axis,v,t){if(!t&&!sel.length)return;const n=parseInt(v);if(isNaN(n)||n<1)return;pushHistory();const s=t||sel[0],it=getItem(s);if(!it)return;const before=parentsNow();updateSize(s.type,s.id,axis==='w'?n:it.w,axis==='h'?n:it.h);growParents(before,[{id:s.id,sides:axisSides(axis==='w'?'x':'y',n-it[axis])}]);refresh();}
 function nudge(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],it=getItem(s);if(!it)return;const before=parentsNow();
   if(s.type==='group'){const ch=findChildren(it);ch.childBlocks.forEach(b=>updatePos('block',b.id,b.x+(axis==='x'?delta:0),b.y+(axis==='y'?delta:0)));ch.childGroups.forEach(g=>updatePos('group',g.id,g.x+(axis==='x'?delta:0),g.y+(axis==='y'?delta:0)));}
   updatePos(s.type,s.id,Math.max(0,it.x+(axis==='x'?delta:0)),Math.max(0,it.y+(axis==='y'?delta:0)));growParents(before,[{id:s.id,sides:axisSides(axis,delta)}]);refresh();}
@@ -808,7 +869,7 @@ function nudgeSz(axis,delta){if(!sel.length)return;pushHistory();const s=sel[0],
 function stepField(field,button){const d=window.StableBlockSelect.stepDelta(button);if(!sel.length||!d)return;
   if(field==='x'||field==='y'){if(sel.length>1)batchNudge(field,d);else nudge(field,d);}
   else if(sel.length>1)batchNudgeSz(field,d);else nudgeSz(field,d);}
-function nudgeRound(delta){if(!sel.length)return;pushHistory();const it=parsed.blockMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}
+function nudgeRound(delta){if(!sel.length)return;const it=parsed.blockMap[sel[0].id]||parsed.noteMap[sel[0].id];if(!it)return;setProp('round',Math.max(0,it.round+delta));}   // setProp が履歴を 1 つ積む(Ctrl+Z 1 回で戻る)
 function deleteItem(){if(!sel.length)return;pushHistory();const{type,id}=sel[0];const lines=dsl.split("\n"),re=new RegExp(`^\\s*${type}\\s+${id}\\s+`),c1=new RegExp(`(^|\\s)${id}(\\s+(-->|->)\\s+|$)`),c2=new RegExp(`\\s+(-->|->)\\s+${id}(\\s|$)`);dsl=lines.filter(l=>!re.test(l)&&!c1.test(l)&&!c2.test(l)).join("\n");sel=[];refresh();}
 
 // ═══════════════════════════════════════════════
@@ -836,14 +897,14 @@ function batchDelete(){
 // ═══════════════════════════════════════════════
 // Connection management (two-select) — find, create, remove, flip, bidir, color, width, style
 // ═══════════════════════════════════════════════
-function findConnsBetween(a,b){return parsed.connections.filter(c=>(c.from===a&&c.to===b)||(c.from===b&&c.to===a));}
+function findConnsBetween(a,b){return window.StableBlockLabel.connsBetween(parsed.connections,a,b);}
 function connectTwo(a,b){pushHistory();dsl=dsl.trimEnd()+`\n${a} -> ${b}\n`;justLinked=[];refresh();focusLinkLabel('conn-label-input');}
 // 鎖状に結ぶ: クリックした順(selClicked)で、block / note だけを 3 個以上選んだとき。既にある組は足さない(core/label chainConnectInDsl)
 function chainIds(){if(!selClicked||sel.length<2||sel.some(s=>s.type==='group'))return null;const ids=sel.map(s=>s.id);return window.StableBlockLabel.chainConnectInDsl('',ids,parsed.connections).added.length?ids:null;}
 function connectChain(){const ids=chainIds();if(!ids)return;const r=window.StableBlockLabel.chainConnectInDsl(dsl,ids,parsed.connections);pushHistory();dsl=r.dsl;justLinked=r.added;refresh();focusLinkLabel(null);}
 function focusLinkLabel(id){const el=id?document.getElementById(id):document.querySelector('.link-label[data-i="0"]');if(el){el.focus();el.select&&el.select();}}
 // 右ボタンのドラッグで結ぶ: 始点の block / note から終点の block / note の上で離すと「始点 → 終点」を 1 本足し、そのラベル欄へ。
-// 既に結ばれている組は足さずに 2 つを選ぶだけ。ドラッグ中は点線で行き先を示す
+// 同じ向きの接続が既にあれば足さずに 2 つを選ぶだけ(逆向きしか無ければ戻りの線を 1 本足す)。ドラッグ中は点線で行き先を示す
 function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap svg');if(!svg)return;
   const pt=ev=>{const m=svg.getScreenCTM();if(!m)return{x:0,y:0};const p=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());return{x:p.x,y:p.y};};
   const g=document.createElementNS('http://www.w3.org/2000/svg','line'),p0=pt(e);g.id='link-ghost';
@@ -853,17 +914,17 @@ function startLinkDrag(e,type,from){const svg=document.querySelector('#svg-wrap 
     const t=document.elementFromPoint(ev.clientX,ev.clientY),hit=t&&t.closest?t.closest('#svg-wrap g[data-id]'):null;
     if(!hit||!/^(block|note)$/.test(hit.dataset.type)||hit.dataset.id===from)return;
     const to=hit.dataset.id;sel=[{type,id:from},{type:hit.dataset.type,id:to}];selClicked=true;justLinked=[];
-    if(findConnsBetween(from,to).length){renderProps();renderSVG();return;}
+    if(window.StableBlockLabel.hasConnDir(parsed.connections,from,to)){renderProps();renderSVG();return;}
     connectTwo(from,to);}
   window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);}
 function leaveToCanvas(){if(document.activeElement)document.activeElement.blur();const w=document.getElementById('svg-wrap');if(w){w.setAttribute('tabindex','-1');w.focus({preventScroll:true});}}
 function linkLabelKey(e,i){if(e.key!=='Enter')return;e.preventDefault();const next=document.querySelector(`.link-label[data-i="${i+1}"]`);if(next){next.focus();next.select();}else leaveToCanvas();}
-function removeConn(a,b){pushHistory();const lines=dsl.split("\n");dsl=lines.filter(l=>{const m=l.trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)return true;return!((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a));}).join("\n");refresh();}
-function flipConn(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)(\s+)(-->|->)(\s+)(\S+)(.*)/);if(!m)continue;if((m[1]===a&&m[5]===b)||(m[1]===b&&m[5]===a)){lines[i]=lines[i].replace(/^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/,`$1${m[5]}$3$4$5${m[1]}`);break;}}dsl=lines.join("\n");refresh();}
-function toggleBidir(a,b){pushHistory();const lines=dsl.split("\n");for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=m[2]==='-->'?lines[i].replace('-->','->'):lines[i].replace('->','-->');break;}}dsl=lines.join("\n");refresh();}
+function removeConn(a,b){pushHistory();dsl=window.StableBlockLabel.removeConnInDsl(dsl,a,b);refresh();}
+function flipConn(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.flipConnInDsl(dsl,a,b);refresh();}
+function toggleBidir(a,b){if(!window.StableBlockLabel.canFlipConn(parsed.connections,a,b))return;pushHistory();dsl=window.StableBlockLabel.toggleBidirInDsl(dsl,a,b);refresh();}
 function setConnColor(a,b,col){setConnProp(a,b,'color',col);}
-function setConnProp(a,b,prop,val){pushHistory();const lines=dsl.split("\n");const re=new RegExp(prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=re.test(lines[i])?lines[i].replace(re,`${prop}=${val}`):lines[i].trimEnd()+` ${prop}=${val}`;break;}}dsl=lines.join("\n");refresh();}
-function removeConnProp(a,b,prop){pushHistory();const lines=dsl.split("\n");const re=new RegExp('\\s*'+prop+'=\\S+');for(let i=0;i<lines.length;i++){const m=lines[i].trim().match(/^(\S+)\s+(-->|->)\s+(\S+)/);if(!m)continue;if((m[1]===a&&m[3]===b)||(m[1]===b&&m[3]===a)){lines[i]=lines[i].replace(re,'');break;}}dsl=lines.join("\n");refresh();}
+function setConnProp(a,b,prop,val){pushHistory();dsl=window.StableBlockLabel.setConnPropInDsl(dsl,a,b,prop,val);refresh();}
+function removeConnProp(a,b,prop){pushHistory();dsl=window.StableBlockLabel.removeConnPropInDsl(dsl,a,b,prop);refresh();}
 
 // ═══════════════════════════════════════════════
 // Add items — all new elements get __new_N placeholder IDs
@@ -891,11 +952,16 @@ function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=id;sel=[{type:"block",id}];refresh();}
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size 20x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
-// 選択をグループ化(core/layout groupRectFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる
-function groupSelected(){const items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;pushHistory();const L=window.StableBlockLayout;
-  const bx=Math.min(...items.map(b=>b.x)),by=Math.min(...items.map(b=>b.y)),box={type:'block',id:' sel',x:bx,y:by,w:Math.max(...items.map(b=>b.x+b.w))-bx,h:Math.max(...items.map(b=>b.y+b.h))-by};
-  const pid=L.parentMap([...parsed.groups,box])[box.id],parent=pid?parsed.groupMap[pid]:null;
-  const r=L.groupRectFor(items,boxItems().filter(x=>!items.includes(x)),parent);const gid=`__new_${addCounter++}`;
+// 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
+// 選んでいない要素が間に挟まっていれば、選んだ block だけを空きへ寄せて囲む(選んでいない要素の所属は変えない)。寄せられなければ囲まずに理由を出す
+function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;const L=window.StableBlockLayout;
+  const bx=Math.min(...items.map(b=>b.x)),by=Math.min(...items.map(b=>b.y)),box0={type:'block',id:' sel',x:bx,y:by,w:Math.max(...items.map(b=>b.x+b.w))-bx,h:Math.max(...items.map(b=>b.y+b.h))-by};
+  const pid=L.parentMap([...parsed.groups,box0])[box0.id],parent=pid?parsed.groupMap[pid]:null;
+  const plan=L.groupPlanFor(items,boxItems().filter(x=>!items.includes(x)),parent);
+  if(!plan.rect){const m=document.getElementById('group-sel-msg');if(m){m.textContent=plan.reason;m.hidden=false;}return;}
+  pushHistory();plan.moves.forEach(mv=>updatePos('block',mv.id,mv.x,mv.y));if(plan.moves.length){parsed=parseDoc();items=items.map(b=>parsed.blockMap[b.id]||b);}
+  const ex=Math.max(...items.map(b=>b.x+b.w)),ey=Math.max(...items.map(b=>b.y+b.h)),box={x:Math.min(...items.map(b=>b.x)),y:Math.min(...items.map(b=>b.y))};box.w=ex-box.x;box.h=ey-box.y;
+  const r=plan.rect;const gid=`__new_${addCounter++}`;
   dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${r.x},${r.y} size ${r.w}x${r.h} color=#F1F5F9 border=#94A3B8\n`;
   parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
@@ -966,13 +1032,13 @@ let grewFrom=null;
 function growCanvas(){const p=parseDoc(),nd=window.StableBlockLayout.growCanvasInDsl(dsl,p.canvas,[...p.blocks,...p.groups,...p.notes]);if(nd!==dsl&&!grewFrom)grewFrom={width:p.canvas.width,height:p.canvas.height};dsl=nd;}
 // noGrow: 元に戻す・やり直し・読込は本文をそのまま映す(開いただけで本文を変えない)
 function refresh(noGrow){if(noGrow)grewFrom=null;else growCanvas();parsed=parseDoc();syncEditor();renderSVG();renderProps();renderErrors();renderStatus();renderExportAll();}
-// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ組の 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
+// エラー表示: 読めない行の理由・存在しない ID への接続(error)と、block の重なり・線の横切り・同じ向きの 2 本目(warn)。判定は core/check(VSCode 拡張・CLI と同じ)
 let lastDiag=[];
-function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
+function diagnose(){const SBL=window.StableBlockLabel,paths=SBL.connectionPaths(parsed);return window.StableBlockCheck.checkIncluded(parsed,expanded,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,parsed,measureLabel),parsed)});}
 // 共通部を動かした影響(core/check の includeImpact。CLI の npm run check と同じ診断): 表示中の図を @include している一緒に読み込んだ図にも同じ診断を当て、
 // 読み込んだ時の本文から増えたエラー・警告を、エラー欄の下に「ほかの図: {図名} L{n}: ...」で並べる(押すとその図のその行へ)。見出しに取り込んでいる図の名前
 let impactBase={},impact={includers:[],added:[]},hitLine=null;const impactCache=new Map();
-function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込」で本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
+function checkLoadedDiagram(files,k){const C=window.StableBlockCheck,SBL=window.StableBlockLabel,exp=C.expandIncludes(files[k],C.loadedReader(files,k),k),p=parseDSL(exp.text),paths=SBL.connectionPaths(p);return C.checkIncluded(p,exp,paths,{hint:'(「.sb 読込 ▾」でフォルダを選ぶか、本体と一緒に選ぶ)',labelIssues:SBL.labelIssues(SBL.placeLabels(paths,p,measureLabel),p)});}
 function measureImpact(){syncLoaded();impact=dslFile&&hasLoaded(dslFile)?window.StableBlockCheck.includeImpact(includeFiles,dslFile,impactBase[dslFile],checkLoadedDiagram,impactCache):{includers:[],added:[]};}
 // 一緒に読み込んだ図を開き、line があればその行の要素を選んで本文をその行へ送る(エラー欄に出る図名はどれもこれで開く)
 function openImpact(i){const d=impact.added[i];if(d)openLoadedAt(d.path,d.line);}
@@ -1008,6 +1074,8 @@ function download(name,data){const a=document.createElement('a');a.href=data;a.d
 // 保存するファイル名: 読み込んだ図はその名前、新規・起動時の見本は diagram.sb。タブの題名にも出す
 let sbFileName='diagram.sb';
 function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbFileName} - StableBlock`;}
+// 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)の名前: .sb 保存と同じ図の名前から「一括」と同じ関数で付ける(新規の図は diagram.*)
+function exportName(ext,suffix){return window.StableBlockCheck.bulkFileName(sbFileName,ext,suffix);}
 // 一緒に読み込んだほかの図も、変わっていれば(図をまたぐ改名など)続けて同じファイル名で書き出す
 function exportSB(){download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(dsl));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
   rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text)),200*(i+1));});
@@ -1018,29 +1086,66 @@ const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
-function exportSVG(){const svg=exportSvgText();if(!svg)return;download('diagram.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
+function exportSVG(){const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
 function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(p.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
-function exportPNG(){pngCanvas(false).then(c=>{if(c){download('diagram.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
-function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download('diagram_transparent.png',c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNG(){pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
-async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download('diagram.xlsx',url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
+async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(ev.target.result);rd.onerror=()=>r(null);rd.readAsText(file);});}
-// .sb 読込: 本体と include 先を一緒に選べる(複数選択)。ほかの選んだファイルから include されていないものが本文になる
-async function importSB(input){const files=[...(input.files||[])];input.value='';if(!files.length)return;
-  const texts=await Promise.all(files.map(readFileText)),keys=files.map(f=>(f.webkitRelativePath||f.name).split('\\').join('/'));if(texts.every(t=>t===null))return;
-  pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);keys.forEach((k,i)=>{if(texts[i]!==null)includeFiles[k]=texts[i];});
-  const refs=new Set();keys.forEach((k,i)=>{if(texts[i]!==null)window.StableBlockCheck.expandIncludes(texts[i],p=>{refs.add(p);refs.add(p.split('/').pop());return null;},k);});
-  let mi=keys.findIndex((k,i)=>texts[i]!==null&&!refs.has(k)&&!refs.has(k.split('/').pop()));if(mi<0)mi=texts.findIndex(t=>t!==null);if(mi<0)return;
-  dsl=texts[mi];dslFile=keys[mi];loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(files[mi].name);sel=[];refresh(true);fitView();renderSearchHits();}
+// .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
+// どちらも @include を読込んだパスからの相対で解き、ほかの読んだ図から include されていない図が本文になる(core/check の pickMainDiagram)
+function openOpenMenu(btn){const m=document.getElementById('open-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
+  const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
+function openMenuPick(id){closeExportMenu();document.getElementById(id).click();}
+async function importSB(input,folder){const files=[...(input.files||[])];input.value='';if(!files.length)return;
+  const list=files.map(f=>({path:(f.webkitRelativePath||f.name).split('\\').join('/'),file:f}));
+  await loadSbEntries(folder?window.StableBlockCheck.trimCommonDir(window.StableBlockCheck.folderSbEntries(list)):list,folder);}
+async function loadSbEntries(list,folder){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
+  const texts=await Promise.all(list.map(d=>readFileText(d.file)));if(texts.every(t=>t===null))return;
+  const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
+  pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});
+  dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
+// プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
+// フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む
+function droppedEntries(dt){const C=window.StableBlockCheck,items=[...(dt.items||[])].filter(it=>it.kind==='file');
+  const entries=items.map(it=>it.webkitGetAsEntry?it.webkitGetAsEntry():null);
+  if(!entries.length||entries.some(e=>!e))return Promise.resolve([...(dt.files||[])].filter(f=>C.sbLoadable(f.name,false)).map(f=>({path:f.name,file:f})));
+  const direct=[],inFolder=[];
+  const fileOf=e=>new Promise(r=>e.file(r,()=>r(null)));
+  const readAll=dir=>new Promise(r=>{const rd=dir.createReader(),out=[];const step=()=>rd.readEntries(es=>{if(!es.length)r(out);else{out.push(...es);step();}},()=>r(out));step();});
+  const walk=async e=>{const path=e.fullPath.replace(/^\//,'');
+    if(e.isFile){if(C.sbLoadable(path,true)){const f=await fileOf(e);if(f)inFolder.push({path,file:f});}return;}
+    if(e.isDirectory&&!e.name.startsWith('.'))for(const c of await readAll(e))await walk(c);};
+  return (async()=>{for(const e of entries){if(e.isFile){if(C.sbLoadable(e.name,false)){const f=await fileOf(e);if(f)direct.push({path:e.name,file:f});}}else await walk(e);}
+    return direct.length?[...direct,...C.folderSbEntries(inFolder)]:C.trimCommonDir(C.folderSbEntries(inFolder));})();}
+let dropHintTimer=0;
+function showDropHint(on){const h=document.getElementById('drop-hint');clearTimeout(dropHintTimer);
+  if(!on){h.hidden=true;return;}const r=document.getElementById('preview-area').getBoundingClientRect();
+  Object.assign(h.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});h.hidden=false;dropHintTimer=setTimeout(()=>showDropHint(false),200);}
+{const area=document.getElementById('preview-area'),hasFiles=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files');
+  area.addEventListener('dragover',e=>{if(!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';showDropHint(true);});
+  area.addEventListener('drop',async e=>{if(!hasFiles(e))return;e.preventDefault();showDropHint(false);
+    const list=await droppedEntries(e.dataTransfer);if(!list.length){alert('落としたものに .sb が無い(読み込むのは .sb / .stableblock、フォルダはその配下)');return;}
+    await loadSbEntries(list,false);});}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};
 function renderExportAll(){const n=Object.keys(includeFiles).length;document.querySelectorAll('.tb-more').forEach(b=>{b.hidden=n<2;});if(n<2)closeExportMenu();}
-function closeExportMenu(){['export-menu','png-menu'].forEach(id=>{const m=document.getElementById(id);if(m)m.hidden=true;});}
+function closeExportMenu(){['export-menu','png-menu','open-menu'].forEach(id=>{const m=document.getElementById(id);if(m)m.hidden=true;});}
+// 「一括 ▾」は前回選んだ形式を印付きで先頭に出す(開くとそこにフォーカスがあり、Enter で同じ形式をもう一度)。
+// 利用者ごとの表示の便宜なので localStorage に持ち、本文には書かない。読めなければ元の並び
+const BULK_LAST_KEY='stableblock.bulkExportFormat';
+function bulkLastFormat(){try{return localStorage.getItem(BULK_LAST_KEY);}catch(e){return null;}}
+function orderExportMenu(m){const last=bulkLastFormat(),btns=[...m.querySelectorAll('button[data-fmt]')],by=new Map(btns.map(b=>[b.dataset.fmt,b]));
+  window.StableBlockCheck.bulkFormatOrder(Object.keys(BULK_FMT),last).forEach(k=>{const b=by.get(k);if(!b)return;
+    const mark=b.querySelector('.em-mark');if(k!==last&&mark)mark.remove();
+    if(k===last&&!mark){const s=document.createElement('span');s.className='em-mark';s.setAttribute('aria-hidden','true');s.textContent='前回';b.appendChild(s);}
+    b.classList.toggle('em-last',k===last);m.appendChild(b);});}
 function openExportAll(btn){const m=document.getElementById('export-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
-  syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);
+  syncLoaded();document.getElementById('export-menu-head').textContent=window.StableBlockTerms.exportAllText(Object.keys(includeFiles).length);orderExportMenu(m);
   const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
-function exportAllFromMenu(item){closeExportMenu();exportAll(item.dataset.fmt);}
+function exportAllFromMenu(item){closeExportMenu();try{localStorage.setItem(BULK_LAST_KEY,item.dataset.fmt);}catch(e){}exportAll(item.dataset.fmt);}
 // PNG の ▾: 背景の透過・クリップボードへのコピーを選ぶ(「一括 ▾」と同じ出し方。PNG のボタンの下に開き、先頭にフォーカス、Esc・外を押すと閉じる)
 function openPngMenu(btn){const m=document.getElementById('png-menu');if(!m.hidden){m.hidden=true;return;}closeExportMenu();
   const r=(btn.previousElementSibling||btn).getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
@@ -1054,7 +1159,7 @@ async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
       const p=parseDSL(d.exp.text),name=C.bulkFileName(d.path,f.ext),dropped=C.includeDrops(d.exp);
       if(fmt==='svg')zip.file(name,exportSvgText(p));
       else if(fmt==='png'||fmt==='png-transparent'){const c=await pngCanvas(fmt==='png-transparent',p);zip.file(name,await new Promise(r=>c.toBlob(r,'image/png')));}
-      else if(fmt==='xlsx'){zip.file(name,await window.StableBlockExcel.renderXlsx(p,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles}));dropped.push(...window.StableBlockExcel.listXlsxDrops(p));}
+      else if(fmt==='xlsx'){zip.file(name,await window.StableBlockExcel.renderXlsx(p,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel}));dropped.push(...window.StableBlockExcel.listXlsxDrops(p));}
       else{const r=window.StableBlockMermaid.toMermaid(p);zip.file(name,r.text);dropped.push(...r.dropped);}
       per.push({path:d.path,name,dropped});
     }
@@ -1065,9 +1170,9 @@ function showBulkReport(label,zipName,per){const el=document.getElementById('exp
   el.innerHTML=`<b>${esc(label)}: ${per.length} 枚を ${esc(zipName)} に書き出した</b><div>${per.map(x=>esc(x.name)).join('、')}</div>`
     +(drops.length?`<b>${esc(label)} に書き出せなかったもの(${drops.length} 件)</b><ul>${drops.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`:'<div class="hint">クリックで閉じる</div>');
   el.hidden=false;}
-document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,.tb-more,#png-more'))closeExportMenu();});
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,#open-menu,.tb-more,#png-more,#open-sb-btn'))closeExportMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
-function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download('diagram.mmd','data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
+function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download(exportName('mmd'),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
 function showExportReport(fmt,dropped){const el=document.getElementById('export-report');if(!dropped||!dropped.length){el.hidden=true;el.innerHTML='';return;}el.innerHTML=`<b>${esc(fmt)} に書き出せなかったもの(${dropped.length} 件)</b><ul>${dropped.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`;el.hidden=false;}
 function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
@@ -1192,11 +1297,44 @@ document.addEventListener('keydown',e=>{
   // Arrow keys: move selected
   const an=window.StableBlockSelect.arrowNudge(e.key);if(sel.length&&an){e.preventDefault();if(sel.length>1)batchNudge(an.axis,an.d);else nudge(an.axis,an.d);return;}
   // H: toggle highlight
-  if(e.key==='h'||e.key==='H'){e.preventDefault();toggleHighlight();return;}
-  if(e.key==='l'||e.key==='L'){e.preventDefault();cycleLineMode();return;}
-  if((e.key==='f'||e.key==='F')&&!e.ctrlKey&&!e.metaKey){e.preventDefault();fitView();return;}
-  if(e.key==='n'||e.key==='N'){e.preventDefault();toggleAnnotations();return;}
+  // 1 キー(core/select typedKeyAction): 1 つ選んで文字を打つと、その文字からラベルのその場編集(Excel・draw.io と同じ)。
+  // フォーカスをその場編集の欄へ移すだけで既定の動作は止めない: 打った文字(IME の変換も)が全選択のラベルを置き換える。
+  // H・N・F(表示だけ)は 1 つ選んでいないとき、L(本文の @canvas 行を書く)は何も選んでいないときだけ
+  const ta=window.StableBlockSelect.typedKeyAction(e.key,sel.length,{ctrl:e.ctrlKey,meta:e.metaKey,alt:e.altKey});
+  if(ta==='label'){startInlineEdit(sel[0].type,sel[0].id);return;}
+  if(ta==='highlight'){e.preventDefault();toggleHighlight();return;}
+  if(ta==='line-mode'){e.preventDefault();cycleLineMode();return;}
+  if(ta==='fit'){e.preventDefault();fitView();return;}
+  if(ta==='annotations'){e.preventDefault();toggleAnnotations();return;}
 });
+
+// 欄の境界(DSL | プレビュー、プレビュー | ツール欄)をドラッグして幅を変える。幅の決め方は core/layout paneWidths(プレビューに最小幅を残す)。
+// ダブルクリックで既定の幅に戻す。変えた幅はこのブラウザに覚える(次に開いても同じ幅)
+(function(){
+  const body=document.getElementById('body'),ed=document.getElementById('editor-panel'),pp=document.getElementById('prop-panel');
+  const KEY='stableblock.paneWidths',OPT={minLeft:160,minMid:240,minRight:200};
+  const cur=()=>({left:ed.getBoundingClientRect().width,right:pp.getBoundingClientRect().width});
+  function apply(w,moved){const r=window.StableBlockLayout.paneWidths(body.clientWidth,w.left,w.right,Object.assign({moved},OPT));
+    ed.style.width=r.left+'px';pp.style.width=r.right+'px';ed.style.flex=pp.style.flex='none';return r;}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(cur()));}catch(e){}}
+  function reset(){ed.style.width=pp.style.width=ed.style.flex=pp.style.flex='';try{localStorage.removeItem(KEY);}catch(e){}}
+  const moveBy=(side,w,dx)=>apply(side==='left'?{left:w.left+dx,right:w.right}:{left:w.left,right:w.right-dx},side);
+  try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&s.left>0&&s.right>0)apply(s);}catch(e){}
+  document.querySelectorAll('#body > .pane-split').forEach(sp=>{
+    const side=sp.dataset.side;
+    sp.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();sp.focus();
+      try{sp.setPointerCapture(e.pointerId);}catch(_){}
+      const x0=e.clientX,w0=cur();sp.classList.add('dragging');document.body.classList.add('pane-resizing');
+      const mv=ev=>moveBy(side,w0,ev.clientX-x0);
+      const up=()=>{sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up);sp.removeEventListener('pointercancel',up);
+        sp.classList.remove('dragging');document.body.classList.remove('pane-resizing');save();};
+      sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up);sp.addEventListener('pointercancel',up);});
+    sp.addEventListener('dblclick',e=>{e.preventDefault();reset();});
+    // ←/→ で 16px ずつ(キャンバスの矢印キー移動には渡さない)
+    sp.addEventListener('keydown',e=>{const d=e.key==='ArrowLeft'?-16:e.key==='ArrowRight'?16:0;if(!d)return;e.preventDefault();e.stopPropagation();moveBy(side,cur(),d);save();});
+  });
+  window.addEventListener('resize',()=>{if(ed.style.width)apply(cur());});
+})();
 
 // 右ボタンのドラッグは結ぶ操作(startLinkDrag)なので、プレビューでは右クリックのメニューを出さない
 document.getElementById('svg-wrap').addEventListener('contextmenu',e=>e.preventDefault());

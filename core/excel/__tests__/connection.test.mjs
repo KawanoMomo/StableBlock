@@ -69,8 +69,11 @@ test('buildConnectionLabel: places textbox at midpoint', () => {
   );
   assert.ok(xml.includes('name="connlabel:0"'));
   assert.ok(xml.includes('request'));
-  // midX = 300000 - 250000 (textbox half width) = 50000
-  assert.ok(xml.includes('x="50000"'));
+  // 白地は文字の幅(7 字 x 6px)+ 左右 4px = 50px = 476250 EMU を、中点 300000 を中心に置く(固定幅 500000 にしない)
+  const m = xml.match(/<xdr:pos x="(\d+)" y="(\d+)"\/><xdr:ext cx="(\d+)" cy="(\d+)"\/>/);
+  assert.equal(+m[3], 476250);
+  assert.ok(Math.abs(+m[1] + +m[3] / 2 - 300000) <= 1, m[0]);
+  assert.ok(Math.abs(+m[2] + +m[4] / 2 - 100000) <= 1, m[0]);
 });
 
 test('buildConnectionLabel: escapes special chars in label', () => {
@@ -106,21 +109,18 @@ test('buildConnectionLabel: DSL 2-char \\n splits label', () => {
   assert.equal(pCount, 2);
 });
 
-// Excel の接続線は画面と同じ線の形(曲線・直角・直線)で出す。ラベルは中点だけなので lpos= は接続ごとに知らせる
+// Excel の接続線は画面と同じ線の形(曲線・直角・直線)で出す。ラベルは画面と同じ所(lpos= も)に置くので知らせない
 // (BLK-builder-20260926-1230-1 / BLK-porter-20260926-1205-1)
 import { listXlsxDrops as xlsxDrops, buildDrawingXml as drawingXml, connectorGeometry, xlsxRoute } from '../emitter.js';
 import { parseDSL as parseSb } from '../../dsl/dsl-core.mjs';
 
 const src3 = (canvas, conns) => [canvas, 'block a "A" at 1,1 size 4x2', 'block b "B" at 8,1 size 4x2', 'block c "C" at 1,6 size 4x2', ...conns].join('\n');
 
-test('listXlsxDrops: 線の形は載せるので知らせない。lpos= は接続ごとに要素 ID と値で知らせ、lpos=center は知らせない', () => {
-  assert.deepEqual(xlsxDrops(parseSb(src3('@canvas', ['a -> b "x" lpos=top', 'b -> c route=ortho', 'a -> c "y" route=straight lpos=center']))), [
-    '接続 a -> b の lpos=top(Excel ではラベルを線の中点に置く)',
-  ]);
+test('listXlsxDrops: 線の形と lpos= は載せるので知らせない。端が図に無い接続だけを知らせる', () => {
+  assert.deepEqual(xlsxDrops(parseSb(src3('@canvas', ['a -> b "x" lpos=top', 'b -> c route=ortho', 'a -> c "y" route=straight lpos=center']))), []);
   assert.deepEqual(xlsxDrops(parseSb(src3('@canvas route=straight', ['a -> b "x"', 'b -> c']))), []);
   assert.deepEqual(xlsxDrops(parseSb(src3('@canvas route=ortho', ['a -> b', 'b -> zz', 'c --> a "z" lpos=left']))), [
     '接続 b -> zz(zz が図に無い)',
-    '接続 c --> a の lpos=left(Excel ではラベルを線の中点に置く)',
   ]);
 });
 
@@ -183,4 +183,72 @@ test('buildDrawingXml: 図形の id は 2 から振り、接続線の接着先(s
   const idOf = Object.fromEntries(ids);
   const glue = [...xml.matchAll(/<a:stCxn id="(\d+)" idx="\d"\/><a:endCxn id="(\d+)"/g)].map(m => [+m[1], +m[2]]);
   assert.deepEqual(glue, [[idOf['block:a'], idOf['block:b']], [idOf['block:c'], idOf['block:a']]]);
+});
+
+// 接続ラベルの白地は画面と同じ置き場所・大きさ(core/label の placeLabels。lpos= が無ければ block の名前・他のラベルを避ける)。
+// 白地は文字の幅以上で、固定幅で文字からはみ出さない(BLK-owner-20260929-0405-3)
+import * as LabelCore from '../../label/label-core.mjs';
+import { pxToEmu } from '../emitter.js';
+
+const SWC = [
+  '@canvas width=960 height=520 grid=20',
+  'group Spi_Swc "Spi_Swc" at 1,1 size 20x22',
+  'block Spi_Api "Spi_Api" at 2,3 size 8x3',
+  'block Spi_Cfg "Spi_Cfg" at 11,3 size 8x3',
+  'block Spi_Diag "Spi_Diag" at 2,19 size 8x3',
+  'block Spi_Hl "Spi_Hl" at 11,7 size 8x3',
+  'block Rte "Rte" at 22,1 size 8x3',
+  'note N "note" at 40,1 size 8x2',
+  'Rte -> Spi_Api "SyncTransmit"',
+  'Spi_Api -> Rte "JobEndNotif"',
+  'Spi_Cfg -> Spi_Hl "config"',
+  'Spi_Diag -> Rte "Dem_Report"',
+  'Spi_Api -> Spi_Hl "job" lpos=left',
+  'N -> Rte "anno_label_long"',
+].join('\n');
+
+const labelShapes = xml => [...xml.matchAll(/<xdr:pos x="(-?\d+)" y="(-?\d+)"\/><xdr:ext cx="(\d+)" cy="(\d+)"\/><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="\d+" name="connlabel:(\d+)"/g)]
+  .map(m => ({ i: +m[5], x: +m[1], y: +m[2], w: +m[3], h: +m[4] }));
+
+test('buildDrawingXml(L): 接続ラベルの白地は画面のラベル矩形と同じ位置・大きさで、文字の幅以上', () => {
+  const p = parseSb(SWC);
+  const measure = t => LabelCore.estimateTextWidth(t, 10);
+  const xml = drawingXml(p, { L: LabelCore, measure });
+  const shapes = labelShapes(xml);
+  assert.equal(shapes.length, 6);
+  // 画面(render-core と同じ): block 同士は placeLabels、注釈線は labelLayout
+  const ports = LabelCore.computePorts(p.connections.filter(c => !p.noteMap[c.from] && !p.noteMap[c.to]), p.blockMap, 20);
+  const normal = p.connections.filter(c => !p.noteMap[c.from] && !p.noteMap[c.to]);
+  const items = normal.map((c, k) => ({ conn: c, mid: LabelCore.connPathInfo(ports[k].fp, ports[k].tp, ports[k].fs, ports[k].ts, LabelCore.connRoute(c, p.canvas)).mid }));
+  const screen = LabelCore.placeLabels(items, p, measure);
+  for (const LL of screen) {
+    const ci = p.connections.indexOf(LL.conn);
+    const s = shapes.find(x => x.i === ci);
+    assert.ok(s, `connlabel:${ci}`);
+    const want = { x: pxToEmu(LL.bg.x), y: pxToEmu(LL.bg.y), w: pxToEmu(LL.bg.w), h: pxToEmu(LL.bg.h) };
+    for (const k of ['x', 'y', 'w', 'h']) assert.ok(Math.abs(s[k] - want[k]) <= 1, `${LL.conn.label} ${k}: ${s[k]} != ${want[k]}`);
+    assert.ok(s.w >= pxToEmu(measure(LL.conn.label)), `${LL.conn.label} の白地が文字より狭い`);
+    // 固定幅(500000)ではない: 長いラベルほど広い
+  }
+  const w = lbl => shapes.find(x => x.i === p.connections.findIndex(c => c.label === lbl)).w;
+  assert.ok(w('SyncTransmit') > w('job'));
+  // lpos=left は画面と同じく線の左に右揃えで置く
+  assert.ok(xml.match(/name="connlabel:4"[\s\S]*?<a:pPr algn="r"\/>/));
+  // 注釈線のラベル(note から出る)も文字の幅以上
+  const anno = shapes.find(x => x.i === 5);
+  assert.ok(anno.w >= pxToEmu(measure('anno_label_long')));
+  // 画面でラベルが block の名前・他のラベルに掛からないなら、Excel の白地も掛からない
+  const issues = LabelCore.labelIssues(screen, p);
+  const rects = shapes.map(s => ({ x: s.x / 9525, y: s.y / 9525, w: s.w / 9525, h: s.h / 9525 }));
+  const texts = LabelCore.labelObstacles(p).filter(o => o.kind === 'text');
+  const over = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  if (!issues.length) for (const r of rects.slice(0, 5)) for (const t of texts) assert.ok(over(r, t) < 6, `白地が ${t.item.id} の名前に掛かる`);
+});
+
+test('buildDrawingXml: L を渡さなくても白地は文字の幅以上(線の中点に置く)', () => {
+  const p = parseSb(SWC);
+  const shapes = labelShapes(drawingXml(p));
+  const ci = p.connections.findIndex(c => c.label === 'JobEndNotif');
+  const s = shapes.find(x => x.i === ci);
+  assert.ok(s.w >= pxToEmu(LabelCore.estimateTextWidth('JobEndNotif', 10)), `${s.w}`);
 });
