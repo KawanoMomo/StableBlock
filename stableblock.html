@@ -1126,12 +1126,12 @@ function fileRenameKey(ev){if(ev.key==='Enter'&&!ev.isComposing){ev.preventDefau
 function fileRenameBlur(inp){if(fileEdit&&!fileEdit.busy)commitFileRename(inp.value,false);}
 // 名前を確定する: core/check の planFileRename。使えない名前・同じ名前の図が既にあれば理由を出して変えない(Enter なら欄に残る)。
 // 変えたら、一緒に読み込んだ図のキーを付け替え、この図を @include している図の @include 行を書き換える(変わった図は「.sb 保存」で書き出す)。Ctrl+Z 1 回で戻る
-function commitFileRename(value,keep){if(!fileEdit)return;syncLoaded();const SC=window.StableBlockCheck,own=dslFile&&hasLoaded(dslFile)?dslFile:null;
+function commitFileRename(value,keep){if(!fileEdit)return;const then=keep?fileEdit.then:null;syncLoaded();const SC=window.StableBlockCheck,own=dslFile&&hasLoaded(dslFile)?dslFile:null;
   const plan=SC.planFileRename(includeFiles,own,value,sbFileName);
   if(plan.error){fileNote={err:true,text:`名前を変えなかった: ${plan.error}`};
     if(keep){fileEdit.value=value;let n=document.getElementById('status-file-note');if(!n){n=document.createElement('span');n.id='status-file-note';document.getElementById('status-file-name').after(n);}n.className='status-file-note err';n.textContent=fileNote.text;return;}
     fileEdit=null;renderStatus();return;}
-  fileEdit.busy=true;fileEdit=null;if(plan.same){renderStatus();return;}
+  fileEdit.busy=true;fileEdit=null;if(plan.same){renderStatus();if(then){nameChecked=dslFile;then();}return;}
   pushHistoryAll();
   if(own){const remap=o=>{const next={};Object.keys(o).forEach(k=>{next[k===own?plan.key:k]=o[k];});return next;};
     const next=remap(includeFiles);plan.changes.forEach(c=>{next[c.path]=c.text;});Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,next);
@@ -1139,7 +1139,16 @@ function commitFileRename(value,keep){if(!fileEdit)return;syncLoaded();const SC=
     impactCache.clear();if(bomFiles.delete(own))bomFiles.add(plan.key);dslFile=plan.key;if(loadedTexts[plan.key]===undefined)loadedTexts[plan.key]=null;}
   setSbFileName(plan.name);
   fileNote={text:`名前を ${plan.name} にした`+(plan.changes.length?`・@include を書き換えた図: ${plan.changes.map(c=>`${baseName(c.path)}(${c.lines.length} 行)`).join('、')}`:'')+'。「.sb 保存」で書き出す'};
-  refresh(true);const b=document.getElementById('status-file');if(b)b.focus();}
+  refresh(true);const b=document.getElementById('status-file');if(b)b.focus();if(then){nameChecked=dslFile;then();}}
+// 保存・書き出しの前の名前の確かめ(core/check replacedDiagram): 読み込んだ図の中身を全部入れ替えた(読んだときの要素の ID が 1 つも残っていない)まま出すと、
+// 元の図の名前で出て元のファイルを上書きしかねない。そのときは出す前にステータスバーの図名の欄を開いて聞く(Enter でその名前のまま、打ち替えて Enter で改名して出す。
+// Esc・欄の外を押すとやめる)。確かめた図は聞き直さない。聞いたら true(呼び出し側は出さずに戻る)
+let nameChecked=null;
+function nameGate(action){const k=dslFile;if(!k||nameChecked===k||fileEdit||typeof loadedTexts[k]!=='string'||!window.StableBlockCheck.replacedDiagram(loadedTexts[k],dsl))return false;
+  startFileRename();if(!fileEdit)return false;fileEdit.then=action;fileNote={text:`読み込んだ ${baseName(k)} の中身を全部入れ替えた図。この名前で出すなら Enter、別の名前を打って Enter(Esc でやめる)`};
+  const inp=document.getElementById('status-file-name');if(inp){const n=document.createElement('span');n.id='status-file-note';n.className='status-file-note';n.textContent=fileNote.text;inp.after(n);}return true;}
+// 出した名前をステータスバーの図名の横に出す(図名のダブルクリック・F2 で変えられる)
+function savedNote(name,verb){fileNote={text:`${name} で${verb}(名前は図名のダブルクリック・F2 で変える)`};renderStatus();}
 // ステータスバーの「Canvas: 幅×高さ 自動拡張 / 固定」。押すと選択を外し、右のツール欄の「キャンバス (px)」(寸法と「はみ出したら自動で広げる」)を光らせて示す
 function statusCanvasHtml(){const c=parsed.canvas,g=window.StableBlockLayout.canvasGrows(c);return `<button type="button" id="status-canvas" class="status-canvas" onclick="showCanvasSettings()" title="キャンバスの寸法と、はみ出したら自動で広げるかの設定。押すと右のツール欄のその場所を示す">Canvas: ${c.width}×${c.height} ${g?'自動拡張':'固定'}</button>`;}
 function showCanvasSettings(){if(!parsed)return;if(sel.length){sel=[];renderSVG();}renderProps();const s=document.getElementById('canvas-section');if(!s)return;s.scrollIntoView({block:'nearest'});s.classList.remove('flash');void s.offsetWidth;s.classList.add('flash');clearTimeout(showCanvasSettings.t);showCanvasSettings.t=setTimeout(()=>s.classList.remove('flash'),1600);document.getElementById('canvas-grow').focus();}
@@ -1162,21 +1171,21 @@ function setSbFileName(name){sbFileName=name||'diagram.sb';document.title=`${sbF
 // 1 枚の書き出し(SVG・PNG・透過PNG・Excel・Mermaid)の名前: .sb 保存と同じ図の名前から「一括」と同じ関数で付ける(新規の図は diagram.*)
 function exportName(ext,suffix){return window.StableBlockCheck.bulkFileName(sbFileName,ext,suffix);}
 // 一緒に読み込んだほかの図も、変わっていれば(図をまたぐ改名など)続けて同じファイル名で書き出す
-function exportSB(){fileNote=null;const SC=window.StableBlockCheck;download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(SC.sbSaveText(dsl,!!dslFile&&bomFiles.has(dslFile))));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
+function exportSB(){if(nameGate(exportSB))return;fileNote=null;const SC=window.StableBlockCheck;download(sbFileName,'data:text/plain;charset=utf-8,'+encodeURIComponent(SC.sbSaveText(dsl,!!dslFile&&bomFiles.has(dslFile))));const rest=unsavedOthers().map(k=>({k,text:includeFiles[k]}));if(dslFile&&hasLoaded(dslFile))loadedTexts[dslFile]=dsl;
   rest.forEach((r,i)=>{loadedTexts[r.k]=r.text;setTimeout(()=>download(baseName(r.k),'data:text/plain;charset=utf-8,'+encodeURIComponent(SC.sbSaveText(r.text,bomFiles.has(r.k)))),200*(i+1));});
   if(rest.length){const el=document.getElementById('export-report');el.innerHTML=`<b>.sb 保存: ${rest.length+1} 枚</b><ul>${[sbFileName,...rest.map(r=>r.k)].map(n=>`<li>${esc(n)}</li>`).join('')}</ul><div class="hint">一緒に読み込んだ図のうち変わったものも書き出した。クリックで閉じる</div>`;el.hidden=false;}
-  renderStatus();}
+  savedNote(sbFileName,'保存した');}
 // 新規: 見本の見出し・要素を持ち込まず、@canvas の 1 行だけの図から始める(前の図は Undo で戻る)
 const EMPTY_DSL='@canvas width=960 height=520 grid=20\n';
 function newDiagram(){pushHistory();dsl=EMPTY_DSL;dslFile='';sel=[];lastAddedId=null;lastPaste=null;addCounter=1;setSbFileName('diagram.sb');refresh(true);fitView();}
 // 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
-function exportSVG(){const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));showExportReport('SVG',includeDrops());}
+function exportSVG(){if(nameGate(exportSVG))return;const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した');showExportReport('SVG',includeDrops());}
 function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(p.canvas);return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
-function exportPNG(){pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
-function exportPNGTransparent(){pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));showExportReport('PNG',includeDrops());}});}
+function exportPNG(){if(nameGate(exportPNG))return;pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));savedNote(exportName('png'),'書き出した');showExportReport('PNG',includeDrops());}});}
+function exportPNGTransparent(){if(nameGate(exportPNGTransparent))return;pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));savedNote(exportName('png','_transparent'),'書き出した');showExportReport('PNG',includeDrops());}});}
 function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
-async function exportXlsx(){if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
+async function exportXlsx(){if(nameGate(exportXlsx))return;if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);savedNote(exportName('xlsx'),'書き出した');showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 // バイト列で読み、UTF-8 の本文と先頭の BOM の有無に分ける(core/check decodeSbBytes)。読めなければ null
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(window.StableBlockCheck.decodeSbBytes(new Uint8Array(ev.target.result)));rd.onerror=()=>r(null);rd.readAsArrayBuffer(file);});}
 // .sb 読込 ▾: 「ファイルを選ぶ」は本体と include 先を一緒に選べる(複数選択)。「フォルダを選ぶ」は配下の .sb を全部(パスの順)。
@@ -1259,7 +1268,7 @@ function showBulkReport(label,zipName,per){const el=document.getElementById('exp
   el.hidden=false;}
 document.addEventListener('mousedown',e=>{if(!e.target.closest('#export-menu,#png-menu,#open-menu,.tb-more,#png-more,#open-sb-btn'))closeExportMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeExportMenu();});
-function exportMermaid(){if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download(exportName('mmd'),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
+function exportMermaid(){if(nameGate(exportMermaid))return;if(!parsed)return;const r=window.StableBlockMermaid.toMermaid(parsed);download(exportName('mmd'),'data:text/plain;charset=utf-8,'+encodeURIComponent(r.text));savedNote(exportName('mmd'),'書き出した');showExportReport('Mermaid',[...includeDrops(),...r.dropped]);}
 // 書き出しで落ちたものを右下に出す(クリックで閉じる)。何も落ちなければ出さない
 function showExportReport(fmt,dropped){const el=document.getElementById('export-report');if(!dropped||!dropped.length){el.hidden=true;el.innerHTML='';return;}el.innerHTML=`<b>${esc(fmt)} に書き出せなかったもの(${dropped.length} 件)</b><ul>${dropped.map(d=>`<li>${esc(d)}</li>`).join('')}</ul><div class="hint">.sb には全部残っています。クリックで閉じる</div>`;el.hidden=false;}
 function applyZoom(z){zoom=z;document.getElementById('zoom-label').textContent=Math.round(zoom*100)+'%';renderSVG();}
