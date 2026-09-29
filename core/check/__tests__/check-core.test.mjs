@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote } from '../check-core.mjs';
+import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote, findIdSpellingVariants } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -8,6 +8,32 @@ const check = (text, mode = 'curved') => {
   const p = parseDSL(text);
   return checkDiagram(p, text.split('\n'), connectionPaths(p, mode));
 };
+
+test('findIdSpellingVariants: 図をまたぐ大文字小文字・区切りの違いを両方の図名・行付きで 1 件ずつ出す', () => {
+  const diagram = (file, text) => ({ file, blocks: parseDSL(text).blocks });
+  const pairs = ds => findIdSpellingVariants(ds).map(({ a, b }) => [a.id, a.file, a.line, b.id, b.file, b.line]);
+  // 2 つの図に UartDrv と uartdrv → 1 件(同数なら先に現れた方が基準)
+  assert.deepEqual(pairs([
+    diagram('uart_swc.sb', 'block UartDrv "UART" at 1,1 size 4x2'),
+    diagram('junior/uart_swc.sb', 'block Os "OS" at 8,1 size 4x2\nblock uartdrv "UART" at 1,1 size 4x2'),
+  ]), [['uartdrv', 'junior/uart_swc.sb', 2, 'UartDrv', 'uart_swc.sb', 1]]);
+  // 多い書き方を基準にし、違う書き方の定義ごとに 1 件(総当たりにしない)。区切りだけの違いも同じ部品
+  assert.deepEqual(pairs([
+    diagram('a.sb', 'block rte "RTE" at 1,1 size 4x2'),
+    diagram('b.sb', 'block rte "RTE" at 1,1 size 4x2'),
+    diagram('c.sb', 'block RTE "RTE" at 1,1 size 4x2\nblock spi_drv "SPI" at 8,1 size 4x2'),
+    diagram('d.sb', 'block SpiDrv "SPI" at 1,1 size 4x2'),
+  ]), [['RTE', 'c.sb', 1, 'rte', 'a.sb', 1], ['SpiDrv', 'd.sb', 1, 'spi_drv', 'c.sb', 2]]);
+  // 同じ図の中の組も同じに扱う
+  assert.deepEqual(pairs([diagram('x.sb', 'block Hal "H" at 1,1 size 4x2\nblock HAL "H" at 8,1 size 4x2')]),
+    [['HAL', 'x.sb', 2, 'Hal', 'x.sb', 1]]);
+  // 完全に同じ ID・無関係な ID では出ない
+  assert.deepEqual(pairs([
+    diagram('a.sb', 'block Same_Id "A" at 1,1 size 4x2'),
+    diagram('b.sb', 'block Same_Id "B" at 1,1 size 4x2'),
+    diagram('c.sb', 'block unrelated "C" at 1,1 size 4x2'),
+  ]), []);
+});
 
 test('explainLine: キーワードの書き間違いを言い当てる', () => {
   assert.match(explainLine('blok b "B" at 8,1 size 4x2'), /「blok」.*block の書き間違い/);
