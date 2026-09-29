@@ -5,12 +5,13 @@
 //
 // 画面の状態(view)は描画にだけ効き、本文は変えない:
 //   zoom(表示倍率)/ sel([{type,id}])/ highlight(未接続を薄く)/ search(検索語)/ showAnnotations(注釈の表示)/
-//   snapGuides([{x1,y1,x2,y2}])/ grid(背景の点)/ interactive(data-resize のハンドル・cursor)/ font
+//   snapGuides([{x1,y1,x2,y2}])/ grid(背景の点)/ interactive(data-resize のハンドル・cursor)/ font /
+//   marks({ items: [ID], conns: ['from->to'] }。見比べる画面の「変わった要素」の印: 要素に橙の破線枠、接続に橙の太線を重ねる)
 // 書き出し(exportSvg)はこれらを持ち込まない: 選択・ハンドル・スナップガイド・グリッド・薄め無し、注釈は本文どおり全部、
 // 大きさは @canvas の寸法(倍率 1)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
 
 const RD_FONT = "'IBM Plex Sans','Noto Sans JP',sans-serif";
-const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2;
+const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2, RD_MARK = '#F59E0B';
 
 function rdEsc(t) {
   return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -91,6 +92,8 @@ export function renderSvg(parsed, view, L, measure) {
   const grab = interactive ? ' style="cursor:grab"' : '';
   const route = c => L.connRoute(c, canvas);
   const opAttr = op => (op !== null ? ` opacity="${op}"` : '');
+  const mk = v.marks || null, mkItems = new Set(mk ? mk.items || [] : []), mkConns = new Set(mk ? mk.conns || [] : []);
+  const markConn = (c, pi) => (mkConns.has(`${c.from}->${c.to}`) ? `<path data-changed-conn="${rdEsc(`${c.from}->${c.to}`)}" d="${pi.d}" fill="none" stroke="${RD_MARK}" stroke-width="${Math.max(3, c.width + 2)}" opacity="0.7" style="pointer-events:none"/>` : '');
 
   let hlIds = null, hlGroups = null;
   if (v.highlight) {
@@ -128,6 +131,7 @@ export function renderSvg(parsed, view, L, measure) {
     const pi = L.connPathInfo(p.fp, p.tp, p.fs, p.ts, route(c));
     s += `<g${opAttr(op)}>`;
     s += `<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir ? ` marker-start="url(#a${ci})"` : ''}/>`;
+    s += markConn(c, pi);
     if (c.label) labelItems.push({ conn: c, mid: pi.mid, op });
     s += '</g>';
   });
@@ -162,6 +166,7 @@ export function renderSvg(parsed, view, L, measure) {
       const pi = L.connPathInfo(p.fp, p.tp, p.fs, p.ts, route(c));
       s += '<g>';
       s += `<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir ? ` marker-start="url(#a${ci})"` : ''}/>`;
+      s += markConn(c, pi);
       if (c.label) s += rdLabelBox(c, L.labelLayout(pi.mid, c.lpos, measure(c.label)));
       s += '</g>';
     });
@@ -179,6 +184,12 @@ export function renderSvg(parsed, view, L, measure) {
       s += '</g>';
     });
   }
+
+  // 見比べる画面の「変わった要素」の印(group / block / note の外側に橙の破線枠)
+  if (mkItems.size) [...groups, ...blocks, ...(showAnno ? notes : [])].forEach(it => {
+    if (!mkItems.has(it.id)) return;
+    s += `<rect data-changed="${rdEsc(it.id)}" x="${it.x * g - 4}" y="${it.y * g - 4}" width="${it.w * g + 8}" height="${it.h * g + 8}" fill="none" stroke="${RD_MARK}" stroke-width="2.5" stroke-dasharray="6,3" rx="8" style="pointer-events:none"/>`;
+  });
 
   // 選択中の要素のリサイズハンドル
   if (interactive) sel.forEach(si => {

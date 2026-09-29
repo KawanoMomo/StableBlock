@@ -140,3 +140,13 @@ test('renderSvg: note は style= を書けば solid / dashed / bold で描き分
   assert.match(rect('n3'), /stroke-width="2.5"/);
   assert.doesNotMatch(rect('n3'), /stroke-dasharray/);
 });
+
+test('marks(見比べる画面の印): 変わった要素に橙の破線枠、変わった接続に橙の太線。書き出し・印の無い画面には出ない', () => {
+  const s = renderSvg(parsed, { interactive: false, marks: { items: ['logic', 'memo', 'g1'], conns: ['ui->logic', 'memo->lone'] } }, L, measure);
+  assert.deepEqual([...s.matchAll(/<rect data-changed="([^"]+)"/g)].map(m => m[1]), ['g1', 'logic', 'memo']);
+  assert.deepEqual([...s.matchAll(/data-changed-conn="([^"]+)"/g)].map(m => m[1]), ['ui-&gt;logic', 'memo-&gt;lone']);
+  assert.doesNotMatch(renderSvg(parsed, { interactive: false }, L, measure), /data-changed/);
+  assert.doesNotMatch(exportSvg(parsed, L, measure), /data-changed/);
+  // 注釈を隠しているときは note の印も出さない
+  assert.doesNotMatch(renderSvg(parsed, { interactive: false, showAnnotations: false, marks: { items: ['memo'], conns: [] } }, L, measure), /data-changed/);
+});

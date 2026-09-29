@@ -75,18 +75,40 @@ export function changedMarks(ops) {
 }
 
 // 差分画面に渡すもの: 見出し・左の見出し・左右の本文・左右の絵に使う本文・行差分・印。
-// draw: { oldDraw, newDraw }(@include を展開した本文。無ければ本文のまま描く)。行差分は展開しない本文(正本)で取る
-export function diffModel(oldText, newText, version, draw = {}) {
+// draw: { oldDraw, newDraw }(@include を展開した本文。無ければ本文のまま描く)。行差分は展開しない本文(正本)で取る。
+// names: { left, right }(HTML 版の「今の図と比べる」。左に選んだ図・右に今の図の名前)。無ければ版(version)を左に出す(拡張の Visual Diff)。
+// 2 つの本文に差分が無ければ same: true で、見出しに「変更なし」を足す
+export function diffModel(oldText, newText, version, draw = {}, names = null) {
   const ops = lineDiff(oldText, newText);
-  const label = versionLabel(version);
+  const label = names ? String(names.left) : versionLabel(version);
+  const same = ops.every(o => o.op === ' ');
+  const title = names ? `${names.left}(左) と ${names.right}(右・今の図)を比べている` : `${label} (left) vs Current (right)`;
   return {
-    title: `${label} (left) vs Current (right)`,
+    title: same ? `${title} — 変更なし` : title,
     left: label,
+    right: names ? String(names.right) : 'Current',
     oldText: String(oldText), newText: String(newText),
     oldDraw: String(draw.oldDraw ?? oldText), newDraw: String(draw.newDraw ?? newText),
     ops,
     marks: changedMarks(ops),
+    same,
     added: ops.filter(o => o.op === '+').length,
     removed: ops.filter(o => o.op === '-').length,
   };
+}
+
+// 行差分の欄(HTML 断片)。.sb の行差分をそのまま出し(座標の行も除かない)、変わっていない行は前後 2 行だけ残して「…」に畳む。
+// 行は <div class="l del|add"> に左右の行番号(<span class="n">)と「- / + 本文」。差分が無ければ「差分なし」の 1 行
+export function diffLinesHtml(ops) {
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const list = ops || [];
+  if (!list.some(o => o.op !== ' ')) return '<div class="l none">差分なし(2 つの本文は同じ)</div>';
+  const keep = list.map((o, i) => list.slice(Math.max(0, i - 2), i + 3).some(x => x.op !== ' '));
+  let h = '', gap = false;
+  list.forEach((o, i) => {
+    if (!keep[i]) { if (!gap) h += '<div class="l none">…</div>'; gap = true; return; }
+    gap = false;
+    h += `<div class="l${o.op === '-' ? ' del' : o.op === '+' ? ' add' : ''}"><span class="n">${o.a || ''}</span><span class="n">${o.b || ''}</span>${esc(`${o.op} ${o.text}`)}</div>`;
+  });
+  return h;
 }

@@ -152,7 +152,8 @@ function activate(context) {
       { enableScripts: true }
     );
     const draw = await diffDrawTexts(cp, path, dir, doc, currentText, picked.v, oldText);
-    panel.webview.html = getDiffContent(core.diffModel(oldText, currentText, picked.v, draw));
+    const model = core.diffModel(oldText, currentText, picked.v, draw);
+    panel.webview.html = getDiffContent(model, await diffParts(model));
   });
   context.subscriptions.push(diffCmd);
 
@@ -246,9 +247,17 @@ async function diffDrawTexts(cp, path, dir, doc, currentText, v, oldText) {
   return { newDraw, oldDraw };
 }
 
-// model: core/diff diffModel の結果(見出し・左右の本文・行差分・変わった要素の印)
-function getDiffContent(model) {
-  const json = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
+// 差分画面の左右の絵と行差分の欄: HTML 版の「今の図と比べる」と同じ core/render の renderSvg(marks で変わった要素に印)と
+// core/diff の diffLinesHtml を拡張ホストで呼ぶ(parse は core/dsl、ラベルの幅は core/label の見積り)
+async function diffParts(model) {
+  const [dsl, L, R, D] = await Promise.all([loadCore("dsl"), loadCore("label"), loadCore("render"), loadCore("diff")]);
+  const measure = (t) => L.estimateTextWidth(t, 10);
+  const svg = (text, marks) => R.renderSvg(dsl.parseDSL(text), { zoom: 1, marks, interactive: false, grid: false }, L, measure);
+  return { oldSvg: svg(model.oldDraw, model.marks.old), newSvg: svg(model.newDraw, model.marks.new), lines: D.diffLinesHtml(model.ops) };
+}
+
+// model: core/diff diffModel の結果(見出し・左右の本文・行差分・変わった要素の印)。parts: diffParts の結果(左右の SVG と行差分の HTML)
+function getDiffContent(model, parts) {
   const escH = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<!DOCTYPE html><html><head><style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -258,6 +267,7 @@ body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-d
 .container{display:flex;flex:1;overflow:auto}
 .pane{flex:1;padding:8px;overflow:auto;border-right:1px solid #333}
 .pane:last-child{border-right:none}
+.pane svg{max-width:100%;height:auto;background:#fff;border-radius:4px}
 .label{font-size:11px;font-weight:700;padding:4px 8px;margin-bottom:4px}
 .old .label{color:#f87171}
 .new .label{color:#34d399}
@@ -267,47 +277,11 @@ body{background:#1e1e1e;color:#d4d4d4;font-family:sans-serif;display:flex;flex-d
 </style></head><body>
 <div class="header"><span>StableBlock Visual Diff</span><span id="diff-title">${escH(model.title)}</span><span id="diff-count">-${model.removed} +${model.added}</span></div>
 <div class="container">
-<div class="pane old"><div class="label" id="old-label">${escH(model.left)}</div><div id="old-svg"></div></div>
-<div class="pane new"><div class="label">Current</div><div id="new-svg"></div></div>
+<div class="pane old"><div class="label" id="old-label">${escH(model.left)}</div><div id="old-svg">${parts.oldSvg}</div></div>
+<div class="pane new"><div class="label">${escH(model.right || "Current")}</div><div id="new-svg">${parts.newSvg}</div></div>
 </div>
-<div class="lines" id="diff-lines"></div>
-<script>
-var COLORS=["#6366F1","#8B5CF6","#EC4899","#EF4444","#F59E0B","#D97706","#22C55E","#16A34A","#06B6D4","#3B82F6","#64748B","#DC2626"];
-function esc(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function parseDSL(t){
-  var ls=t.split("\\n"),cv={width:960,height:640,grid:20},bl=[],gr=[],cn=[];
-  for(var i=0;i<ls.length;i++){
-    var r=ls[i].trim();if(!r||r[0]==='#')continue;
-    if(r.startsWith("@canvas")){var w=r.match(/width=(\\d+)/),h=r.match(/height=(\\d+)/),g=r.match(/grid=(\\d+)/);if(w)cv.width=+w[1];if(h)cv.height=+h[1];if(g)cv.grid=+g[1];continue;}
-    var m=r.match(/^block\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-    if(m){bl.push({id:m[1],label:m[2].replace(/\\\\"/g,'"'),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#3B82F6",textColor:(m[7].match(/text=(\\S+)/)||[])[1]||"#FFFFFF",round:+((m[7].match(/round=(\\d+)/)||[])[1]||"4")});continue;}
-    m=r.match(/^group\\s+(\\S+)\\s+"((?:\\\\"|[^"])*)"\\s+at\\s+([\\d.]+),([\\d.]+)\\s+size\\s+([\\d.]+)x([\\d.]+)(.*)/);
-    if(m){gr.push({id:m[1],label:m[2].replace(/\\\\"/g,'"'),x:+m[3],y:+m[4],w:+m[5],h:+m[6],color:(m[7].match(/color=(\\S+)/)||[])[1]||"#F3F4F6",borderColor:(m[7].match(/border=(\\S+)/)||[])[1]||"#9CA3AF"});continue;}
-    m=r.match(/^(\\S+)\\s+(-->|->)\\s+(\\S+)/);
-    if(m){cn.push({from:m[1],to:m[3],bidir:m[2]==="-->"});continue;}
-  }
-  return{canvas:cv,blocks:bl,groups:gr,connections:cn};
-}
-function renderMiniSVG(p,mk){
-  mk=mk||{items:[],conns:[]};
-  var g=p.canvas.grid,s='<svg width="100%" viewBox="0 0 '+p.canvas.width+' '+p.canvas.height+'" xmlns="http://www.w3.org/2000/svg" style="background:#0f172a;border-radius:4px">';
-  p.groups.forEach(function(x){s+='<rect x="'+(x.x*g)+'" y="'+(x.y*g)+'" width="'+(x.w*g)+'" height="'+(x.h*g)+'" fill="'+x.color+'" stroke="'+x.borderColor+'" stroke-width="1" rx="6" opacity="0.85"/>';s+='<text x="'+(x.x*g+6)+'" y="'+(x.y*g+12)+'" font-size="9" fill="'+x.borderColor+'">'+esc(x.label)+'</text>';});
-  var bm={};p.blocks.forEach(function(b){bm[b.id]=b;});
-  p.connections.forEach(function(c){var a=bm[c.from],b=bm[c.to];if(!a||!b)return;var x1=a.x*g+a.w*g/2,y1=a.y*g+a.h*g/2,x2=b.x*g+b.w*g/2,y2=b.y*g+b.h*g/2;var on=mk.conns.indexOf(c.from+'->'+c.to)>=0;s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+(on?'#F59E0B':'#64748B')+'" stroke-width="'+(on?2.5:1)+'"'+(on?' data-changed="1"':'')+'/>';});
-  p.blocks.forEach(function(b){s+='<rect x="'+(b.x*g)+'" y="'+(b.y*g)+'" width="'+(b.w*g)+'" height="'+(b.h*g)+'" fill="'+b.color+'" rx="'+b.round+'" stroke="'+b.color+'" stroke-width="0.5"/>';b.label.split("\\\\n").forEach(function(ln,li,ar){var ty=b.y*g+b.h*g/2+(li-(ar.length-1)/2)*12;s+='<text x="'+(b.x*g+b.w*g/2)+'" y="'+ty+'" font-size="9" fill="'+b.textColor+'" text-anchor="middle" dominant-baseline="central">'+esc(ln)+'</text>';});});
-  // 変わった要素(行差分で消えた・足した・変わった行の block / group)に印の枠
-  p.groups.concat(p.blocks).forEach(function(x){if(mk.items.indexOf(x.id)<0)return;s+='<rect data-changed="'+esc(x.id)+'" x="'+(x.x*g-3)+'" y="'+(x.y*g-3)+'" width="'+(x.w*g+6)+'" height="'+(x.h*g+6)+'" fill="none" stroke="#F59E0B" stroke-width="2" stroke-dasharray="5 3" rx="6"/>';});
-  s+='</svg>';return s;
-}
-var M={old:${json(model.oldDraw)},cur:${json(model.newDraw)},ops:${json(model.ops)},marks:${json(model.marks)}};
-document.getElementById('old-svg').innerHTML=renderMiniSVG(parseDSL(M.old),M.marks.old);
-document.getElementById('new-svg').innerHTML=renderMiniSVG(parseDSL(M.cur),M.marks.new);
-// .sb の行差分をそのまま(座標の行も除かない)。変わっていない行は前後 2 行だけ残して畳む
-(function(){var h='',ops=M.ops,keep=ops.map(function(o,i){for(var k=Math.max(0,i-2);k<=Math.min(ops.length-1,i+2);k++)if(ops[k].op!==' ')return true;return false;}),gap=false;
-ops.forEach(function(o,i){if(!keep[i]){if(!gap)h+='<div class="l none">…</div>';gap=true;return;}gap=false;
-h+='<div class="l '+(o.op==='-'?'del':o.op==='+'?'add':'')+'"><span class="n">'+(o.a||'')+'</span><span class="n">'+(o.b||'')+'</span>'+esc(o.op+' '+o.text)+'</div>';});
-document.getElementById('diff-lines').innerHTML=ops.some(function(o){return o.op!==' '})?h:'<div class="l none">差分なし(選んだ版と今の本文は同じ)</div>';})();
-</script></body></html>`;
+<div class="lines" id="diff-lines">${parts.lines}</div>
+</body></html>`;
 }
 
 // 本文の @include 先(include 先の中の @include も)を読む。キーは / 区切りの絶対パスで、webview の core/check expandIncludes が

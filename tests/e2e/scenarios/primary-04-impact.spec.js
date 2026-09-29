@@ -136,3 +136,59 @@ test('primary-04: @include が本文の後ろの図で、共通部の OS を取�
   await expect(page).toHaveTitle(/adc_swc\.sb/);
   await expect(page.locator('#line-nums .ln-hit')).toHaveText('14');
 });
+
+// 手順 4 の場面「不具合対応で過去の版を探す」: 過去の版と今の版(同じ名前の .sb)を一緒に読み、ステータスバーの図名の一覧の
+// 「今の図と比べる」でプレビューを左右 2 面にする。左に選んだ図・右に今の図、変わった要素に印、下に行の差分、見出しに 2 つの図名。
+// 差分が無ければ見出しに「変更なし」。Esc か「閉じる」で元の 1 面に戻る(BLK-primary-20260929-0005-wish。拡張の Visual Diff と同じ core/diff・core/render)
+test('primary-04: 過去の版と今の版を一緒に読み、図名の一覧の「今の図と比べる」で左右に並べて変わった要素と行を見る', async ({ page }, testInfo) => {
+  const fs = require('node:fs');
+  const now = fs.readFileSync(path.join(SET, 'adc_swc.sb'), 'utf8');
+  const common = fs.readFileSync(COMMON, 'utf8');
+  const past = now.replace('block AdcDrv "AdcDrv" at 4,2 size 8x3', 'block AdcDrv "AdcDrv" at 4,8 size 8x3').replace(/^AdcDrv -> rte.*\r?\n/m, '');
+  expect(past).not.toBe(now);
+  const root = testInfo.outputPath('versions');
+  for (const [dir, text] of [['now', now], ['past', past], ['same', now]]) {
+    fs.mkdirSync(path.join(root, dir, 'shared'), { recursive: true });
+    fs.writeFileSync(path.join(root, dir, 'adc_swc.sb'), text);
+    fs.writeFileSync(path.join(root, dir, 'shared', 'common.sb'), common);
+  }
+  await bootPlain(page);
+  await importFolder(page, root, path.join(root, 'now', 'adc_swc.sb'));
+
+  // 同じ名前の図が一覧に区別できる名前(フォルダ付き)で並び、今の図以外に「今の図と比べる」
+  await page.locator('#status-file').click();
+  const hits = page.locator('#search-hits');
+  await expect(hits.locator('.sh-file[data-path="past/adc_swc.sb"]')).toContainText('past/adc_swc.sb');
+  await expect(hits.locator('.sh-file[data-path="same/adc_swc.sb"]')).toContainText('same/adc_swc.sb');
+  await expect(hits.locator('.sh-compare[data-path="now/adc_swc.sb"]')).toHaveCount(0);
+  await hits.locator('.sh-compare[data-path="past/adc_swc.sb"]').click();
+
+  const view = page.locator('#compare-view');
+  await expect(view).toBeVisible();
+  await expect(view.locator('#compare-title')).toHaveText('past/adc_swc.sb(左) と now/adc_swc.sb(右・今の図)を比べている');
+  // 左は選んだ図(AdcDrv が下の位置)、右は今の図。どちらも共通部(include 先)の rte まで描き、変わった要素に印
+  await expect(view.locator('#compare-left svg g[data-type="block"][data-id="rte"]')).toHaveCount(1);
+  await expect(view.locator('#compare-left svg rect[data-changed="AdcDrv"]')).toHaveCount(1);
+  await expect(view.locator('#compare-right svg rect[data-changed="AdcDrv"]')).toHaveCount(1);
+  await expect(view.locator('#compare-right svg [data-changed-conn="AdcDrv->rte"]')).toHaveCount(1);
+  await expect(view.locator('#compare-left svg [data-changed-conn]')).toHaveCount(0);
+  await expect(view.locator('#compare-lines .del')).toContainText('- block AdcDrv "AdcDrv" at 4,8 size 8x3');
+  await expect(view.locator('#compare-lines .add').filter({ hasText: 'AdcDrv -> rte' })).toHaveCount(1);
+  await expect(view.locator('#compare-count')).toHaveText('-1 +2');
+
+  // Esc で元の 1 面に戻る(表示中の図・本文はそのまま)
+  await page.keyboard.press('Escape');
+  await expect(view).toBeHidden();
+  await expect(page.locator('#svg-wrap svg')).toBeVisible();
+  await expect(page.locator('#status-file')).toContainText('adc_swc.sb');
+  await expect(page.locator('#editor')).toHaveValue(now.replace(/\r\n/g, '\n'));
+
+  // 同じ本文の図と比べると見出しに「変更なし」。「閉じる」でも戻る
+  await page.locator('#status-file').click();
+  await hits.locator('.sh-compare[data-path="same/adc_swc.sb"]').click();
+  await expect(view.locator('#compare-title')).toHaveText('same/adc_swc.sb(左) と now/adc_swc.sb(右・今の図)を比べている — 変更なし');
+  await expect(view.locator('#compare-lines')).toContainText('差分なし');
+  await expect(view.locator('svg [data-changed], svg [data-changed-conn]')).toHaveCount(0);
+  await view.getByRole('button', { name: '閉じる' }).click();
+  await expect(view).toBeHidden();
+});
