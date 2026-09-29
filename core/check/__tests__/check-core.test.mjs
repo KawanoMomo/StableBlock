@@ -129,6 +129,26 @@ test('findCrossings: 両端以外の block の上を通る接続を見つける(
   assert.deepEqual(check(text.replace('at 1,5', 'at 8,5'), 'straight'), []);
 });
 
+test('checkDiagram / checkIncluded: 直す相手の要素を pick に持つ(横切りは横切られた block、重なりは 2 つ、接続の診断は両端)', () => {
+  // エラー欄で行を押すと選ぶ要素(BLK-junior-20260929-2012-friction)。行の要素(接続)ではなく、動かす block を指す
+  const text = [
+    'block a "A" at 1,1 size 4x2', 'block b "B" at 1,5 size 4x2', 'block c "C" at 1,9 size 4x2',
+    'block d "D" at 1,5 size 4x2', 'a -> c "x"', 'a -> c', 'block __new_1 "新" at 20,1 size 4x2',
+  ].join('\n');
+  const d = check(text, 'straight');
+  const pick = re => d.filter(x => re.test(x.msg)).map(x => x.pick);
+  assert.deepEqual(pick(/の上を横切る/), [['b'], ['d'], ['b'], ['d']]);
+  assert.deepEqual(pick(/に重なっている/), [['d', 'b']]);
+  assert.deepEqual(pick(/2 本目/), [['a', 'c']]);
+  assert.deepEqual(pick(/仮の ID/), [['__new_1']]);
+  // include 先の行から出た診断も pick を持ったまま @include 行に寄せる
+  const files = { 'common.sb': 'block rte "RTE" at 1,5 size 4x2\nblock rte2 "R2" at 1,5 size 4x2\n' };
+  const exp = expandIncludes('@include "common.sb"\nblock x "X" at 10,1 size 4x2\n', q => files[q] ?? null, 'a.sb');
+  const p = parseDSL(exp.text);
+  const ov = checkIncluded(p, exp, connectionPaths(p)).find(x => /重なっている/.test(x.msg));
+  assert.deepEqual([ov.line, ov.pick], [1, ['rte2', 'rte']]);
+});
+
 test('findCrossings: owner 批評の 2 列 4 段・3 本で、既定(曲線)の経路が別の block を横切るのを見つける', () => {
   const rows = [];
   for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) rows.push(`block b${r * 2 + c + 1} "B" at ${1 + c * 12},${1 + r * 5} size 8x3`);

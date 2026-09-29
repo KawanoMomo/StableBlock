@@ -1525,3 +1525,62 @@ test('junior-02: group の中の block から Tab で足した block は同じ g
   expect(await getEditorText(page)).toMatch(/^SpiHw -> SpiReg$/m);
   await expect(svg.locator('g[data-type="block"][data-id="SpiReg"]')).toHaveCount(1);
 });
+
+// 指摘の横切り・重なりを直す: 表示中の図の警告行を押すと、直す相手の要素が選ばれ本文がその行へ送られる(BLK-junior-20260929-2012-friction)。
+// 横切りは横切られた block が選ばれ、プロパティ欄の X に入るのでそのまま打てる。重なりは 2 つを選び、続けて押すと 1 つずつ(隠れた block も選べる)
+test('junior-02: 警告行を押すと横切られた block・重なった 2 つが選ばれ、プロパティ欄の X/Y を打つだけで警告が消える', async ({ page }, testInfo) => {
+  const fs = require('node:fs');
+  const file = testInfo.outputPath('warn_fix.sb');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, [
+    '@canvas width=800 height=400 grid=20',
+    'block a "A" at 1,1 size 6x3',
+    'block b "B" at 1,6 size 6x3',
+    'block c "C" at 1,11 size 6x3',
+    'block d "D" at 12,1 size 6x3',
+    'block e "E" at 12,1 size 6x3',
+    'a -> c',
+  ].join('\n') + '\n');
+  await bootPlain(page);
+  await importSb(page, file);
+  const props = page.locator('#prop-content');
+  const bar = page.locator('#error-bar');
+  const field = f => props.locator(`[data-field="${f}"]`);
+  const line = id => getEditorText(page).then(t => t.split('\n').find(l => l.startsWith(`block ${id} `)) || '');
+  const cross = bar.locator('.diag-warn', { hasText: '接続「a -> c」の線が block「b」(L3)の上を横切る' });
+  const overlap = bar.locator('.diag-warn', { hasText: 'block「e」が block「d」(L5)に重なっている' });
+  await expect(cross).toHaveCount(1);
+  await expect(overlap).toHaveCount(1);
+
+  // 横切り: 行(L7 の接続)を押すと、線の両端ではなく横切られた b が選ばれ、行番号 7 に印が付く
+  await cross.click();
+  await expect(props.locator('#prop-id')).toHaveValue('b');
+  await expect(page.locator('#line-nums .ln-hit')).toHaveText('7');
+  await expect(field('x')).toBeFocused();                                   // 選んだらそのまま X を打てる(欄を押し直さない)
+  await page.keyboard.type('22');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => line('b')).toContain('at 22,6 size 6x3');
+  await expect(cross).toHaveCount(0);
+
+  // 重なり: 押すと重なった 2 つ(隠れた d を含む)。続けて押すと e → d → 2 つ、と 1 つずつ選べる
+  await overlap.click();
+  await expect(props).toContainText('2個のアイテムを選択中');
+  await expect(page.locator('#line-nums .ln-hit')).toHaveText('6');
+  await overlap.click();
+  await expect(props.locator('#prop-id')).toHaveValue('e');
+  await overlap.click();
+  await expect(props.locator('#prop-id')).toHaveValue('d');
+  await expect(field('x')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(field('y')).toBeFocused();
+  await page.keyboard.type('6');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => line('d')).toContain('at 12,6 size 6x3');
+  await expect(bar).toBeHidden();
+
+  // 本文に触れていない: 動かした 2 行以外は元のまま
+  const text = await getEditorText(page);
+  expect(text).toContain('block a "A" at 1,1 size 6x3');
+  expect(text).toContain('block e "E" at 12,1 size 6x3');
+  expect(text).toMatch(/^a -> c$/m);
+});
