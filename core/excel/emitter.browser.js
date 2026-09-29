@@ -344,8 +344,8 @@ function buildConnectionLabel(conn, connIndex, endpoints, shapeId, box) {
     bx = (x1 + x2) / 2 / 9525 - bw / 2;
     by = (y1 + y2) / 2 / 9525 - bh / 2;
     anchor = 'middle';
+    if (labelLines.length > 1) { const cy = by + bh / 2; bh += (labelLines.length - 1) * LABEL_LINE_PX; by = cy - bh / 2; }   // 複数行は行の分だけ伸ばす(中心は同じ)。box は labelLayout が行の分を含めて持つ
   }
-  if (labelLines.length > 1) { const cy = by + bh / 2; bh += (labelLines.length - 1) * LABEL_LINE_PX; by = cy - bh / 2; }   // 複数行は行の分だけ伸ばす(中心は同じ)
   const posX = pxToEmu(bx), posY = pxToEmu(by), tbW = pxToEmu(bw), tbH = pxToEmu(bh);
   const algn = anchor === 'start' ? 'l' : anchor === 'end' ? 'r' : 'ctr';
   const pad = pxToEmu(LABEL_PAD_X);
@@ -434,7 +434,7 @@ function buildDrawingXml(ast, opts = {}) {
     placed.forEach((LL, k) => { labelBox[normal[k]] = { ...LL.bg, anchor: LL.anchor }; });
     for (const i of annoIdx) {
       if (!conns[i].label || !allPorts[i]) continue;
-      const LL = L.labelLayout(midOf(i), conns[i].lpos, measure(conns[i].label));
+      const LL = L.labelLayout(midOf(i), conns[i].lpos, L.labelTextWidth(conns[i].label, measure), L.labelLines(conns[i].label).length);
       labelBox[i] = { ...LL.bg, anchor: LL.anchor };
     }
   }

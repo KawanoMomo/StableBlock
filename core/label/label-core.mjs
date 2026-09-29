@@ -51,15 +51,32 @@ export function hasLpos(rest) {
   return /(^|\s)lpos=/.test(rest || '');
 }
 
+// 接続ラベルの行。本文の `\n`(文字どおりのバックスラッシュと n)は block・note と同じく改行の印
+export function labelLines(label) {
+  return String(label == null ? '' : label).split('\\n');
+}
+
+// 接続ラベルの文字幅(px): 行ごとに測った最大。measure は 1 行の幅(省略時は estimateTextWidth の 10px)
+export function labelTextWidth(label, measure) {
+  const m = measure || (t => estimateTextWidth(t, 10));
+  return Math.max(0, ...labelLines(label).map(l => m(l)));
+}
+
+// 接続ラベルの行の間隔(px)。文字 10px の 1.2 倍(Excel の書き出しの段落と同じ)
+const LABEL_LINE_H = 12;
+
 // 配置定数はスペック§3/§4 の QAログ決定値。テキストは全位置 dominant-baseline=central 前提。
-export function labelLayout(mid, lpos, textW) {
+// lines はラベルの行数(labelLines の長さ。省略時 1)。複数行は白地を行の分だけ縦に伸ばし、ty は行の塊の中心。
+// top / bottom は線の側の端(1 行のときの白地の下端 / 上端)を保ったまま線から離れる向きに伸ばす
+export function labelLayout(mid, lpos, textW, lines = 1) {
   const OFFSET = 10, PAD_X = 4, PAD_Y = 2, FONT_H = 10;
+  const extra = (Math.max(1, lines) - 1) * LABEL_LINE_H;
   let tx = mid.x, ty = mid.y, anchor = 'middle';
   if (lpos === 'right') { tx = mid.x + OFFSET; anchor = 'start'; }
   else if (lpos === 'left') { tx = mid.x - OFFSET; anchor = 'end'; }
-  else if (lpos === 'top') { ty = mid.y - OFFSET; }
-  else if (lpos === 'bottom') { ty = mid.y + OFFSET; }
-  const w = textW + PAD_X * 2, h = FONT_H + PAD_Y * 2;
+  else if (lpos === 'top') { ty = mid.y - OFFSET - extra / 2; }
+  else if (lpos === 'bottom') { ty = mid.y + OFFSET + extra / 2; }
+  const w = textW + PAD_X * 2, h = FONT_H + PAD_Y * 2 + extra;
   const x = anchor === 'start' ? tx - PAD_X
     : anchor === 'end' ? tx - textW - PAD_X
     : tx - textW / 2 - PAD_X;
@@ -624,12 +641,12 @@ export function labelObstacles(parsed) {
 
 const LABEL_AUTO_ORDER = ['right', 'top', 'left', 'bottom', 'center'];
 
-// 1 本のラベルの置き場所。auto なら候補のうち obstacles に最も掛からない位置(同じなら候補順の先)、auto でなければ lpos のまま
-export function placeLabel(mid, lpos, textW, obstacles, auto, bounds) {
+// 1 本のラベルの置き場所(lines はラベルの行数)。auto なら候補のうち obstacles に最も掛からない位置(同じなら候補順の先)、auto でなければ lpos のまま
+export function placeLabel(mid, lpos, textW, obstacles, auto, bounds, lines = 1) {
   const cands = auto ? [lpos || 'right', ...LABEL_AUTO_ORDER.filter(p => p !== (lpos || 'right'))] : [lpos || 'right'];
   let best = null;
   for (const p of cands) {
-    const L = labelLayout(mid, p, textW);
+    const L = labelLayout(mid, p, textW, lines);
     let cost = 0;
     for (const o of obstacles || []) cost += sbRectOverlap(L.bg, o) * (o.weight || 1);
     if (bounds) cost += (L.bg.w * L.bg.h - sbRectOverlap(L.bg, bounds)) * 30;
@@ -644,7 +661,7 @@ function isAutoLpos(c) {
   return c.lposAuto === true || (c.lposAuto === undefined && !c.lpos);
 }
 
-// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は文字幅(px)
+// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は 1 行の文字幅(px。`\n` で分けた行ごとに測る)
 // 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
 export function placeLabels(items, parsed, measure) {
   const obstacles = labelObstacles(parsed);
@@ -653,7 +670,7 @@ export function placeLabels(items, parsed, measure) {
   const out = [];
   for (const { conn, mid, anno } of items) {
     if (anno || !conn.label || !mid) continue;
-    const L = placeLabel(mid, conn.lpos, width(conn.label), obstacles, isAutoLpos(conn), bounds);
+    const L = placeLabel(mid, conn.lpos, labelTextWidth(conn.label, width), obstacles, isAutoLpos(conn), bounds, labelLines(conn.label).length);
     out.push({ conn, mid, tx: L.tx, ty: L.ty, anchor: L.anchor, bg: L.bg, lpos: L.lpos });
     obstacles.push({ ...L.bg, weight: 10, kind: 'label', item: conn });
   }

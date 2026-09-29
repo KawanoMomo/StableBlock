@@ -98,3 +98,39 @@ test('porter-03: 属性の後ろに書いた接続のラベルも描かれ、無
   await expect.poll(() => page.locator('#editor').inputValue()).toContain('x -> y width=2 style=dashed color=#EF4444 "先頭"\n');
   await expect(svg.locator('text', { hasText: /^先頭$/ })).toHaveCount(1);
 });
+
+// 接続ラベルの `\n`(README の「ラベル内改行」): block・note と同じく改行して描き、「\n」の文字を描かない。白地は 2 行を覆う。
+// 無変更で Export → バイト一致(本文の \n はそのまま)(BLK-porter-20260930-0109)
+test('porter-03: 接続ラベルの \\n は改行して描かれ、白地が 2 行を覆い、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'conn-label-newline.sb');
+  fs.writeFileSync(SRC, [
+    '@canvas width=400 height=160 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'a -> b "call\\nasync"',
+  ].join('\n') + '\n');
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  const lbl = svg.locator('g.conn-label');
+  await expect(lbl).toHaveCount(1);
+  await expect(lbl.locator('text')).toHaveText(['call', 'async']);
+  await expect(svg.locator('text', { hasText: '\\' })).toHaveCount(0);
+  await expect(page.locator('#error-bar')).toBeHidden();
+  await expect(page.locator('#status')).not.toContainText('Warn:');
+  // 実際の描画: 2 行目は 1 行目の下にあり、白地が両方の行を覆う
+  const t1 = await lbl.locator('text').nth(0).boundingBox();
+  const t2 = await lbl.locator('text').nth(1).boundingBox();
+  const bg = await lbl.locator('rect').boundingBox();
+  expect(t2.y).toBeGreaterThan(t1.y + t1.height / 2);
+  for (const t of [t1, t2]) {
+    expect(t.y).toBeGreaterThanOrEqual(bg.y - 1);
+    expect(t.y + t.height).toBeLessThanOrEqual(bg.y + bg.height + 1);
+    expect(t.x + t.width).toBeLessThanOrEqual(bg.x + bg.width + 1);
+  }
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+});

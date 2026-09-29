@@ -64,10 +64,12 @@ function exportPngSize(canvas) {
   return { width: canvas.width * 2, height: canvas.height * 2 };
 }
 
-// 接続ラベル(置き場所 LL は core/label の placeLabels / labelLayout)。block より上の層に白地で描く
+// 接続ラベル(置き場所 LL は core/label の placeLabels / labelLayout)。block より上の層に白地で描く。
+// 本文の `\n` は block・note と同じく改行: 1 行ずつ <text> にし、行の塊の中心を LL.ty に置く(行の間隔 12px。白地は labelLayout が行の分だけ伸ばす)
 function rdLabelBox(c, LL) {
+  const lines = String(c.label).split('\\n');
   return `<rect x="${LL.bg.x}" y="${LL.bg.y}" width="${LL.bg.w}" height="${LL.bg.h}" rx="${LL.bg.rx}" fill="#FFFFFF" style="pointer-events:none"/>` +
-    `<text x="${LL.tx}" y="${LL.ty}" font-size="10" fill="${c.color}" text-anchor="${LL.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${rdEsc(c.label)}</text>`;
+    lines.map((line, li) => `<text x="${LL.tx}" y="${LL.ty + (li - (lines.length - 1) / 2) * 12}" font-size="10" fill="${c.color}" text-anchor="${LL.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${rdEsc(line)}</text>`).join('');
 }
 
 // 「◎ 未接続」(H キー)の判定: 接続(注釈の破線も)の from / to に現れる ID の集合と、それに入らない block(接続が 1 本も無い)。
@@ -169,7 +171,7 @@ function renderSvg(parsed, view, L, measure) {
       s += '<g>';
       s += `<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir ? ` marker-start="url(#a${ci})"` : ''}/>`;
       s += markConn(c, pi);
-      if (c.label) s += rdLabelBox(c, L.labelLayout(pi.mid, c.lpos, measure(c.label)));
+      if (c.label) s += rdLabelBox(c, L.labelLayout(pi.mid, c.lpos, L.labelTextWidth(c.label, measure), L.labelLines(c.label).length));
       s += '</g>';
     });
     notes.forEach(n => {
