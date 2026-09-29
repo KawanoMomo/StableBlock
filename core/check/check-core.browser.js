@@ -665,6 +665,16 @@ function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
 }
 
+// 読み込んだ図の本文 loaded と今の本文 now: 読んだときの要素(block / group / note)の ID が今は 1 つも無く、今は要素がある =
+// 中身を全部入れ替えた(白紙化して別の図を起こした)。そのまま保存・書き出すと元の図の名前で出て、元のファイルを上書きしかねない
+function replacedDiagram(loaded, now) {
+  const ids = t => new Set([...String(t ?? '').matchAll(/^[ \t]*(?:block|group|note)[ \t]+(\S+)/gm)].map(m => m[1]));
+  const a = ids(loaded), b = ids(now);
+  if (!a.size || !b.size) return false;
+  for (const id of a) if (b.has(id)) return false;
+  return true;
+}
+
 // ─── 「.sb 読込 ▾」: ファイルを選ぶ・フォルダを選ぶ・ドロップ ───
 // 読み込んだファイルのバイト列(Uint8Array)を UTF-8 で読み、先頭の BOM(EF BB BF)の有無を返す。text には BOM を含めない
 // (BOM の後ろにもう 1 つ U+FEFF があれば本文の文字として残す)。BOM 付きで読んだ図は「.sb 保存」で sbSaveText が BOM を戻す
@@ -722,4 +732,4 @@ function bulkFormatOrder(fmts, last) {
   return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
 }
 
-;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, planFileRename, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, decodeSbBytes, sbSaveText, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
+;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, planFileRename, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, replacedDiagram, decodeSbBytes, sbSaveText, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };

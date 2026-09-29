@@ -796,3 +796,15 @@ test('decodeSbBytes / sbSaveText: 先頭の BOM の有無を覚えて本文か�
   assert.equal(two.text, '\uFEFFa');
   assert.deepEqual(decodeSbBytes(new Uint8Array([])), { text: '', bom: false });
 });
+
+import { replacedDiagram } from '../check-core.mjs';
+
+test('replacedDiagram: 読んだときの要素の ID が 1 つも残らず今は要素がある = 中身を全部入れ替えた', () => {
+  const loaded = '# 先輩の図\n@canvas width=660 height=240 grid=20\nblock UartDrv "UART" at 1,1 size 8x3\n\tgroup g "G" at 0,0 size 20x8\nUartDrv -> x\n';
+  assert.equal(replacedDiagram(loaded, '@canvas width=660 height=240 grid=20\nblock I2cDrv "I2C" at 1,1 size 8x3\n'), true);
+  assert.equal(replacedDiagram(loaded, loaded.replace('at 1,1', 'at 2,1')), false);                 // 直しただけ
+  assert.equal(replacedDiagram(loaded, loaded + 'block I2cDrv "I2C" at 1,5 size 8x3\n'), false);   // 足しただけ
+  assert.equal(replacedDiagram(loaded, '@canvas width=660 height=240 grid=20\n'), false);          // 白紙化の途中(まだ何も無い)
+  assert.equal(replacedDiagram('@canvas width=660 height=240 grid=20\n', 'block a "A" at 1,1 size 8x3\n'), false);   // 元が空の図
+  assert.equal(replacedDiagram(null, 'block a "A" at 1,1 size 8x3\n'), false);
+});
