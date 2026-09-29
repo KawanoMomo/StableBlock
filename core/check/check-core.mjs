@@ -597,6 +597,31 @@ export function bulkFileName(path, ext, suffix = '') {
   return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + (suffix || '') + '.' + ext;
 }
 
+// 一括書き出しの zip の名前: 図の名前から付ける(形式だけの固定名だと、別の図の組を続けて書き出したとき同じ名前になり前の zip を上書きする)。
+// files は一緒に読み込んだ図 { パス: 本文 }、fmt は形式(svg / png / png-transparent / xlsx / mermaid)、folder は「フォルダを選ぶ」・フォルダのドロップで
+// 読んだときのフォルダ名(ファイルを選んだなら '')。主図(ほかの読んだ図から @include されていない図。pickMainDiagram と同じ当て方)が
+// 1 枚ならその図名、2 枚以上ならフォルダ名、フォルダでなければ主図が 2 枚は「a+b」、3 枚以上は「先頭の図名_他{n-1}枚」。全部が取り込み合う(循環)なら先頭の図名
+export function bulkZipName(files, fmt, folder = '') {
+  const keys = Object.keys(files || {});
+  const base = p => String(p).split('/').pop().replace(/\.(sb|stableblock|txt)$/i, '');
+  const refs = includeRefs(keys.map(k => ({ path: k, text: files[k] })));
+  const mains = keys.filter(k => !refs.has(k) && !refs.has(String(k).split('/').pop()));
+  let name;
+  if (mains.length === 1) name = base(mains[0]);
+  else if (mains.length >= 2 && folder) name = String(folder);
+  else if (mains.length === 2) name = `${base(mains[0])}+${base(mains[1])}`;
+  else if (mains.length > 2) name = `${base(mains[0])}_他${mains.length - 1}枚`;
+  else name = keys.length ? base(keys[0]) : (folder || 'diagrams');
+  return `${name}-${fmt}.zip`;
+}
+
+// 選んだ・落としたフォルダの名前: 全部の図のパスの先頭のフォルダが同じならその名前(trimCommonDir で外す前のパスに当てる)。無ければ ''
+export function pickedFolderName(list) {
+  const firsts = (list || []).map(d => String(d.path).split('/'));
+  if (!firsts.length || firsts.some(s => s.length < 2)) return '';
+  return firsts.every(s => s[0] === firsts[0][0]) ? firsts[0][0] : '';
+}
+
 // 一括書き出しの知らせ: 図ごとの知らせ([{ path, dropped }])を、どの図の知らせかを頭に付けて 1 つに並べる
 export function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
@@ -629,10 +654,16 @@ export function trimCommonDir(list) {
 // 全部が取り込まれている(循環)なら読めた最初の図、読めた図が無ければ -1。include 先はパスでも名前(最後の / の後)でも当てる(loadedReader と同じ)
 export function pickMainDiagram(list) {
   const ok = d => d.text !== null && d.text !== undefined;
-  const refs = new Set();
-  (list || []).forEach(d => { if (ok(d)) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  const refs = includeRefs(list);
   const i = list.findIndex(d => ok(d) && !refs.has(d.path) && !refs.has(String(d.path).split('/').pop()));
   return i >= 0 ? i : list.findIndex(ok);
+}
+
+// 読んだ図 [{ path, text }] の @include 先(解決したパスと名前(最後の / の後)の両方)。読めなかった図(text が null)は見ない
+function includeRefs(list) {
+  const refs = new Set();
+  (list || []).forEach(d => { if (d.text !== null && d.text !== undefined) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  return refs;
 }
 
 // 「一括 ▾」の形式の並び: 前回選んだ形式 last を先頭に、残りは元の順(last が無い・知らない形式なら元のまま)

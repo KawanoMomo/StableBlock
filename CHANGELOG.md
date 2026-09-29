@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-junior-20260929-0605-wish: 「一括 ▾」の zip 名を図の名前から付ける。主図(共通部を除く)が 1 枚なら `{図名}-{形式}.zip`、2 枚以上はフォルダで読んだならフォルダ名、ファイルで選んだなら `a+b` / `{先頭の図名}_他{n}枚`。別の図の組を続けて書き出しても前の zip を上書きしない。書き出し後の知らせの zip 名も同じ
 - BLK-primary-20260929-0005-wish: ブラウザ版でステータスバーの図名を押して出る一覧の「今の図と比べる」で、選んだ図(過去の版など)を左・今の図を右に並べ、変わった要素・接続に橙の印、下に行の差分、見出しに 2 つの図名(差分が無ければ「変更なし」)を出す。Esc か「閉じる」で戻る。VSCode 拡張の Visual Diff も同じ core/render・core/diff で描く
 - BLK-reviewer-20260928-2255-wish: `npm run check` が接続の 1 本も無い block(画面の「◎ 未接続」が薄くするものと同じ判定)を `info` で並べる。@include 先の block は定義の図と行に「(… から include)」を添える。info は error / warn の数にも終了コードにも数えない
 - BLK-reviewer-20260929-0505-wish: `npm run check` が一緒に検査した図をまたいで大文字小文字・区切り(_ -)だけが違う block ID(`UartDrv` と `uartdrv` など)を、違う方の図・行に基準の図・行を添えて warn で出す(多い書き方を基準に 1 定義 1 件)

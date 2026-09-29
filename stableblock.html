@@ -351,8 +351,8 @@ let selClicked=false, justLinked=[];
 const history=[], future=[]; const MAX_HIST=80;
 function pushHistory(){history.push(dsl);if(history.length>MAX_HIST)history.shift();future.length=0;}
 // 一緒に読み込んだ図をまたぐ操作(表示する図の切替・図をまたぐ改名)は、全部の図の本文と表示中の図を 1 段として戻す
-function snapAll(){syncLoaded();return {ws:true,dsl,dslFile,name:sbFileName,files:{...includeFiles}};}
-function restoreAll(s){Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,s.files);dsl=s.dsl;dslFile=s.dslFile;setSbFileName(s.name);}
+function snapAll(){syncLoaded();return {ws:true,dsl,dslFile,name:sbFileName,files:{...includeFiles},folder:loadedFolder};}
+function restoreAll(s){Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);Object.assign(includeFiles,s.files);loadedFolder=s.folder||'';dsl=s.dsl;dslFile=s.dslFile;setSbFileName(s.name);}
 function pushHistoryAll(){history.push(snapAll());if(history.length>MAX_HIST)history.shift();future.length=0;}
 function undo(){if(!history.length)return;const h=history.pop();if(h&&h.ws){future.push(snapAll());restoreAll(h);}else{future.push(dsl);dsl=h;}sel=[];refresh(true);renderSearchHits();}
 function redo(){if(!future.length)return;const h=future.pop();if(h&&h.ws){history.push(snapAll());restoreAll(h);}else{history.push(dsl);dsl=h;}sel=[];refresh(true);renderSearchHits();}
@@ -450,7 +450,7 @@ function searchStep(dir){const t=window.StableBlockRender.nextMatch(searchMatche
 // @include(core/check の expandIncludes): include 先は「.sb 読込」で本体と一緒に選んだファイルから、読込んだファイルからの相対パスで探す
 // (選んだファイルにフォルダの情報が無ければ同じ名前のファイル)。file:// でも http でも同じ。読めない include はその行のエラーと書き出しの知らせに出す。
 // 保存は本文(dsl)をそのまま書くので @include 行は残る
-let dslFile='',expanded=null;const includeFiles={};
+let dslFile='',expanded=null;const includeFiles={};let loadedFolder='';// loadedFolder: フォルダで読んだときのフォルダ名(一括書き出しの zip 名に使う。ファイルを選んだなら '')
 function readInclude(p){return window.StableBlockCheck.loadedReader(includeFiles,dslFile)(p);}
 // 一緒に読み込んだ図(「.sb 読込」で複数選んだもの)。表示中の図の本文は dsl が正で、includeFiles[dslFile] に写してから使う。loadedTexts は読込・保存した時の本文(違えば未保存)。
 // ツールバーの検索は表示中でない図の当たりも図と行で並べ(クリックでその図を開く)、プロパティ欄の ID の改名はほかの図が同じ ID を使っていれば
@@ -1136,12 +1136,12 @@ function openOpenMenu(btn){const m=document.getElementById('open-menu');if(!m.hi
   const r=btn.getBoundingClientRect();m.style.left=Math.round(r.left)+'px';m.style.top=Math.round(r.bottom+4)+'px';m.hidden=false;m.querySelector('button').focus();}
 function openMenuPick(id){closeExportMenu();document.getElementById(id).click();}
 async function importSB(input,folder){const files=[...(input.files||[])];input.value='';if(!files.length)return;
-  const list=files.map(f=>({path:(f.webkitRelativePath||f.name).split('\\').join('/'),file:f}));
-  await loadSbEntries(folder?window.StableBlockCheck.trimCommonDir(window.StableBlockCheck.folderSbEntries(list)):list,folder);}
-async function loadSbEntries(list,folder){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
+  const C=window.StableBlockCheck,list=files.map(f=>({path:(f.webkitRelativePath||f.name).split('\\').join('/'),file:f})),inFolder=folder?C.folderSbEntries(list):list;
+  await loadSbEntries(folder?C.trimCommonDir(inFolder):list,folder,folder?C.pickedFolderName(inFolder):'');}
+async function loadSbEntries(list,folder,folderName){if(!list.length){if(folder)alert('選んだフォルダに .sb が無い(読み込むのは .sb / .stableblock)');return;}
   const texts=await Promise.all(list.map(d=>readFileText(d.file)));if(texts.every(t=>t===null))return;
   const docs=list.map((d,i)=>({path:d.path,text:texts[i]})),mi=window.StableBlockCheck.pickMainDiagram(docs);if(mi<0)return;
-  closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});
+  closeCompare();pushHistoryAll();Object.keys(includeFiles).forEach(k=>delete includeFiles[k]);docs.forEach(d=>{if(d.text!==null)includeFiles[d.path]=d.text;});loadedFolder=folderName||'';
   dsl=docs[mi].text;dslFile=docs[mi].path;loadedTexts={...includeFiles};impactBase={...includeFiles};impactCache.clear();hitLine=null;idNote=null;labelNote=null;includeNote=null;setSbFileName(list[mi].file.name);sel=[];refresh(true);fitView();renderSearchHits();}
 // プレビューへのドロップ: 落としたファイル(.sb / .stableblock / .txt)とフォルダの配下の .sb を「.sb 読込」と同じに読む(draw.io・VSCode と同じ)。
 // フォルダの中身は webkitGetAsEntry で辿る(drop の間に entry を取り出し、読むのはその後)。取れないブラウザは落としたファイルだけ読む
@@ -1155,7 +1155,8 @@ function droppedEntries(dt){const C=window.StableBlockCheck,items=[...(dt.items|
     if(e.isFile){if(C.sbLoadable(path,true)){const f=await fileOf(e);if(f)inFolder.push({path,file:f});}return;}
     if(e.isDirectory&&!e.name.startsWith('.'))for(const c of await readAll(e))await walk(c);};
   return (async()=>{for(const e of entries){if(e.isFile){if(C.sbLoadable(e.name,false)){const f=await fileOf(e);if(f)direct.push({path:e.name,file:f});}}else await walk(e);}
-    return direct.length?[...direct,...C.folderSbEntries(inFolder)]:C.trimCommonDir(C.folderSbEntries(inFolder));})();}
+    if(direct.length)return [...direct,...C.folderSbEntries(inFolder)];
+    const out=C.trimCommonDir(C.folderSbEntries(inFolder));out.folder=C.pickedFolderName(inFolder);return out;})();}
 let dropHintTimer=0;
 function showDropHint(on){const h=document.getElementById('drop-hint');clearTimeout(dropHintTimer);
   if(!on){h.hidden=true;return;}const r=document.getElementById('preview-area').getBoundingClientRect();
@@ -1164,7 +1165,7 @@ function showDropHint(on){const h=document.getElementById('drop-hint');clearTime
   area.addEventListener('dragover',e=>{if(!hasFiles(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';showDropHint(true);});
   area.addEventListener('drop',async e=>{if(!hasFiles(e))return;e.preventDefault();showDropHint(false);
     const list=await droppedEntries(e.dataTransfer);if(!list.length){alert('落としたものに .sb が無い(読み込むのは .sb / .stableblock、フォルダはその配下)');return;}
-    await loadSbEntries(list,false);});}
+    await loadSbEntries(list,false,list.folder||'');});}
 // Mermaid (core/mermaid): note・色も残し、表せないもの(座標・存在しない ID への接続など)は書き出し後に知らせる
 // ── 一括書き出し: 一緒に読み込んだ図が 2 枚以上あれば、書き出しの並びの後ろの「一括 ▾」から形式を選び、読み込んだ全部の図を 1 つの zip に書き出す ──
 const BULK_FMT={svg:{label:'SVG',ext:'svg'},png:{label:'PNG',ext:'png'},'png-transparent':{label:'透過PNG',ext:'png'},xlsx:{label:'Excel',ext:'xlsx'},mermaid:{label:'Mermaid',ext:'mmd'}};
@@ -1200,7 +1201,7 @@ async function exportAll(fmt){const f=BULK_FMT[fmt];if(!f)return;
       else{const r=window.StableBlockMermaid.toMermaid(p);zip.file(name,r.text);dropped.push(...r.dropped);}
       per.push({path:d.path,name,dropped});
     }
-    const zipName=`diagrams-${fmt}.zip`,url=URL.createObjectURL(await zip.generateAsync({type:'blob'}));
+    const zipName=C.bulkZipName(includeFiles,fmt,loadedFolder),url=URL.createObjectURL(await zip.generateAsync({type:'blob'}));
     download(zipName,url);setTimeout(()=>URL.revokeObjectURL(url),1000);showBulkReport(f.label,zipName,per);
   }catch(e){alert(`${f.label} の一括書き出し失敗: `+e.message);console.error(e);}}
 function showBulkReport(label,zipName,per){const el=document.getElementById('export-report'),drops=window.StableBlockCheck.bulkDrops(per);
