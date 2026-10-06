@@ -672,7 +672,31 @@ test('placeInGroupFit / placeBesideFit: grow: false なら group の寸法もほ
   const b = placeBesideFit([g, m], m, 8, 3, 'right', { group: g, grow: false });
   assert.deepEqual(b, { x: 2, y: 7, changes: [] });
   const tight = G('T', 1, 1, 18, 6);
-  assert.deepEqual(placeBesideFit([tight, m], m, 8, 3, 'right', { group: tight, grow: false }), { x: 12, y: 3, changes: [] });
+  assert.deepEqual(placeBesideFit([tight, m], m, 8, 3, 'right', { group: tight, grow: false }), { x: 12, y: 3, changes: [], overflow: true });
+});
+
+// grow=off で入り切らないときは黙って group の外へ移さない: group の列にはみ出して置き overflow(W・H を広げれば子になる)。
+// はみ出す先が別の要素に掛かるなら hits(足す操作は足さずに理由を出す)(BLK-owner-20261007-0726-1)
+test('placeInGroupFit / placeBesideFit: grow: false で入り切らなければ group からはみ出して置き overflow、掛かる要素があれば hits', () => {
+  const A = G('A', 1, 1, 20, 8), Bg = G('B', 22, 1, 20, 8), C = G('C', 1, 10, 20, 8);
+  const a0 = B('a0', 2, 3, 8), a1 = B('a1', 11, 3, 8);
+  const r = placeInGroupFit([A, Bg, C, a0, a1], A, 8, 3, a1, 1, { grow: false });
+  assert.deepEqual(r, { x: 2, y: 7, changes: [], overflow: true });
+  // 利用者が A の H を 1 回広げれば、足した block は A の子になる(C の位置は変えない)
+  assert.equal(parentMap([{ ...A, h: 10 }, Bg, C, a0, a1, B('a2', r.x, r.y, 8)]).a2, 'A');
+  // 子 group: 2 個目は B の下にはみ出す(B の外の要素には掛からない)
+  const g1 = G('g1', 23, 3, 12, 6);
+  assert.deepEqual(placeInGroupFit([A, Bg, C, g1], Bg, 12, 6, null, 1, { grow: false }), { x: 23, y: 10, changes: [], overflow: true });
+  assert.deepEqual(placeInGroupFit([A, Bg, C], Bg, 12, 6, null, 1, { grow: false }), { x: 23, y: 3, changes: [] });   // 入れば今までどおり
+  // はみ出す先に C が掛かる(隙間 0)なら hits。x, y は誰にも掛からない所
+  const C9 = G('C', 1, 9, 20, 8);
+  const h = placeInGroupFit([A, C9, a0, a1], A, 8, 3, a1, 1, { grow: false });
+  assert.deepEqual(h.hits, ['C']);
+  assert.equal(h.overflow, true);
+  assert.ok(![A, C9, a0, a1].some(o => o.id !== 'A' && overlapsBox({ x: h.x, y: h.y, w: 8, h: 3 }, o)));
+  // つないで追加: 下にはみ出して置く。group の外の要素に掛かれば hits
+  assert.deepEqual(placeBesideFit([A, C, a0, a1], a0, 8, 3, 'below', { group: A, grow: false }), { x: 2, y: 7, changes: [], overflow: true });
+  assert.deepEqual(placeBesideFit([A, C9, a0, a1], a0, 8, 3, 'below', { group: A, grow: false }).hits, ['C']);
 });
 
 test('placeBesideFit: 右へ広がる group が動かせない共通部(fixed)に掛かるなら ref の下に置く。掛からなければ右のまま', () => {
@@ -690,3 +714,5 @@ test('placeBesideFit: 右へ広がる group が動かせない共通部(fixed)�
   // group の外(gr なし)は placeBeside と同じで changes は空
   assert.deepEqual(placeBesideFit([rte], rte, 8, 3, 'right', { fixed: new Set(['rte']) }), { x: 30, y: 2, changes: [] });
 });
+
+function overlapsBox(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }

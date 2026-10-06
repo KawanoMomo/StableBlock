@@ -104,10 +104,10 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 
 /* Preview Panel */
 #preview-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; position:relative; }
-#canvas-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:11px; line-height:1.6; border-bottom:1px solid #F59E0B; }
-#canvas-bar[hidden] { display:none; }
-#canvas-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
-#canvas-bar button.plain { border-color:transparent; color:#D6B98C; }
+#canvas-bar, #group-bar { padding:4px 10px; background:#422006; color:#FDE68A; font-size:11px; line-height:1.6; border-bottom:1px solid #F59E0B; }
+#canvas-bar[hidden], #group-bar[hidden] { display:none; }
+#canvas-bar button, #group-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
+#canvas-bar button.plain, #group-bar button.plain { border-color:transparent; color:#D6B98C; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
 #preview-area.panning, #preview-area.panning * { cursor:grabbing !important; }  /* 中ボタンのドラッグで表示領域を動かしている間 */
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
@@ -298,6 +298,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
       <span class="dot" style="color:var(--green)">●</span> PREVIEW
     </div>
     <div id="canvas-bar" hidden></div>
+    <div id="group-bar" role="status" hidden></div>
     <div id="preview-area"><div id="svg-wrap"></div></div>
     <div id="drop-hint" hidden>ここに離すと読み込む(.sb・フォルダ)</div>
     <div id="compare-view" hidden></div>
@@ -1033,7 +1034,8 @@ function blockLine(id,p,src){const w=src?src.w:8,h=src?src.h:3;let l=`block ${id
 function groupOf(r,skip){return parsed.groups.filter(g=>!(skip&&skip.has(g.id))&&isInside(r,g)).sort((a,b)=>a.w*a.h-b.w*b.h)[0]||null;}
 // In a group (core/layout placeInGroupFit): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well,
 // and pushes the groups / blocks it would newly cover (with their contents), keeping the gap — it never runs into another group.
-// In a fixed-size diagram (@canvas grow=off) the group is not grown and nothing moves: no room inside overflows it (warned as straddling)
+// In a fixed-size diagram (@canvas grow=off) the group is not grown and nothing moves: no room inside overflows it (p.overflow, shown by noteGroupFit),
+// and an overflow that would run into another item is refused before adding (p.hits, groupFullRefused)
 function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
   if(!gr)return L.placeNext(all,w,h,{prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});
   const p=L.placeInGroupFit(all,gr,w,h,prev,1,{grow:L.canvasGrows(parsed.canvas)});p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();
@@ -1043,17 +1045,34 @@ function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=
 function addBlock(){pushHistory();const id=newPlaceholderId(),prev=lastAddedId&&parsed.blockMap[lastAddedId]||null;
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
 // gid を省くと選択中の group(ラベルの入力で ID が変わった直後でも今の ID を使う)。prev は group の直下の block(子 group の中は数えない)
-function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=newPlaceholderId();
+function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
-  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
+  if(groupFullRefused(prev?prev.w:8,prev?prev.h:3,prev,gr))return;pushHistory();const id=newPlaceholderId();
+  const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];noteGroupFit(p,gr,'block',id);refresh();}
 // 選んだ block からの「+ ブロック追加」: block が group の中なら同じ group の中へ(addBlockInGroup)、そうでなければツール欄と同じ(addBlock)
 function addBlockBesideSel(){const si=sel.length===1&&sel[0].type==='block'?sel[0]:null;if(!si)return;const pid=window.StableBlockLayout.parentMap(boxItems())[si.id];if(pid)addBlockInGroup(pid);else addBlock();}
 // 選んだ group の中に子 group を足す(入れ子)。置き場所・親の広がりは addBlockInGroup と同じ(core/layout placeInGroupFit)。既定 12x6
-function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=newPlaceholderId();
+function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;
   const L=window.StableBlockLayout,prev=L.lastChildBlock(boxItems(),gr),w=12,h=6;
+  if(groupFullRefused(w,h,prev,gr))return;pushHistory();const id=newPlaceholderId();
   const p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+`
 group ${id} "New Group" at ${p.x},${p.y} size ${w}x${h} color=#F1F5F9 border=#94A3B8
-`;sel=[{type:"group",id}];refresh();}
+`;sel=[{type:"group",id}];noteGroupFit(p,gr,'group',id);refresh();}
+// 寸法を固定した図(grow=off)で group に入り切らなかったとき、プレビューの上端に group の名前とともに出す(core/layout の overflow / hits)。
+// はみ出して置いた要素は group の W・H を広げて中に入れば(子になれば)消え、足さなかった知らせは group の寸法が変われば消える。「閉じる」でも消える
+let groupNote=null;
+function noteGroupFit(p,gr,type,id){groupNote=p&&p.overflow&&gr?{gid:gr.id,type,id}:null;}
+function groupFullRefused(w,h,prev,gr){const L=window.StableBlockLayout;if(L.canvasGrows(parsed.canvas))return false;
+  const q=L.placeInGroupFit([...parsed.blocks,...parsed.groups,...parsed.notes],gr,w,h,prev,1,{grow:false});if(!q.hits||!q.hits.length)return false;
+  groupNote={gid:gr.id,hits:q.hits,w:gr.w,h:gr.h};renderGroupBar();return true;}
+function renderGroupBar(){const el=document.getElementById('group-bar');if(!el)return;const n=groupNote,gr=n&&parsed&&parsed.groupMap[n.gid];
+  const it=n&&gr&&n.id&&(n.type==='group'?parsed.groupMap[n.id]:parsed.blockMap[n.id]);
+  if(n&&(!gr||(n.id?!it||window.StableBlockLayout.parentMap(boxItems())[n.id]===n.gid:gr.w!==n.w||gr.h!==n.h)))groupNote=null;
+  if(!groupNote){if(!el.hidden){el.hidden=true;el.innerHTML='';}return;}
+  const name=x=>String(x.label||'').replace(/\s*\n\s*/g,' ')||x.id;
+  el.hidden=false;
+  el.innerHTML=`<span id="group-overflow">${esc(window.StableBlockLayout.groupFitNotice({group:name(gr),item:it&&name(it),hits:n.hits}))}<button type="button" onclick="selectGroupNoted()" title="この group を選んで、プロパティ欄の H(高さ)の欄へ移る">「${esc(name(gr))}」を選ぶ</button><button type="button" class="plain" onclick="groupNote=null;renderGroupBar()">閉じる</button></span>`;}
+function selectGroupNoted(){const n=groupNote;if(!n||!parsed.groupMap[n.gid])return;sel=[{type:'group',id:n.gid}];renderSVG();renderProps();const f=document.querySelector('#prop-content [data-field="h"]');if(f)f.focus();}
 // group は既定 20x8。その行に入らなければ幅を 12 まで詰めて既存の図の脇の空きに置く(図の下端より下へ送らない。中に足す block で広がる)
 function addGroup(){pushHistory();const id=newPlaceholderId(),p=freeSlot(20,8,12);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size ${p.w||20}x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 // 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
@@ -1078,7 +1097,8 @@ function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null
   const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
   const pid=parentsNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
   const p=L.placeBesideFit([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxItems(),fixed:includedIds(),grow:L.canvasGrows(parsed.canvas)});
-  pushHistory();const id=newPlaceholderId();dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
+  if(p.hits&&p.hits.length){groupNote={gid:gr.id,hits:p.hits,w:gr.w,h:gr.h};renderGroupBar();return;}
+  pushHistory();const id=newPlaceholderId();noteGroupFit(p,gr,'block',id);dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
   p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();pendingLink=kind;revealAndEdit('block',id);}
 // 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
@@ -1091,7 +1111,7 @@ function addNote(){pushHistory();const id=newPlaceholderId(),p=freeSlot(8,2);dsl
 // __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
 const autoIds=new Set();
 function usedIdsExcept(id){return new Set([...parsed.blocks,...parsed.groups,...parsed.notes].map(x=>x.id).filter(x=>x!==id));}
-function applyRename(s,newId,opts){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const o=it&&expanded?expanded.origin[it.line-1]:null;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&o&&o.file===expanded.file?o.line:undefined,opts);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);if(lastAddedId===s.id)lastAddedId=newId;return true;}
+function applyRename(s,newId,opts){const it=getItem(s),dup=[...parsed.blocks,...parsed.groups,...parsed.notes].filter(x=>x.id===s.id).length>1;const o=it&&expanded?expanded.origin[it.line-1]:null;const out=window.StableBlockLabel.renameIdInDsl(dsl,s.id,newId,dup&&o&&o.file===expanded.file?o.line:undefined,opts);if(out===dsl)return false;dsl=out;sel=sel.map(x=>x.id===s.id?{...x,id:newId}:x);if(lastAddedId===s.id)lastAddedId=newId;if(groupNote){if(groupNote.id===s.id)groupNote.id=newId;if(groupNote.gid===s.id)groupNote.gid=newId;}return true;}
 function setId(v){if(!sel.length)return;const s=sel[0],nv=String(v).trim(),msg=document.getElementById('prop-id-msg');if(nv===s.id){if(msg)msg.textContent='';return;}
   const SL=window.StableBlockLabel;const err=!SL.isValidId(nv)?'英数字と _ だけが使えます':usedIdsExcept(s.id).has(nv)?`「${nv}」は既に使われています`:'';
   if(err){if(msg)msg.textContent=err;return;}
@@ -1231,7 +1251,7 @@ function renderCanvasBar(){const el=document.getElementById('canvas-bar');if(!el
   el.hidden=false;el.title='はみ出した要素に合わせて @canvas 行を広げた。以後も広げるかは下端の Canvas(ツール欄の「はみ出したら自動で広げる」)で切り替える';
   el.innerHTML=`<span id="canvas-grew">キャンバスを広げた ${grewFrom.width}×${grewFrom.height} → ${c.width}×${c.height}<button type="button" onclick="fixCanvasAtOrigin()" title="広げる前の寸法に戻し、以後は自動で広げない(本文の @canvas 行に grow=off)">元の寸法に戻して固定</button><button type="button" class="plain" onclick="keepGrownCanvas()" title="広げた寸法のままにしてこの知らせを閉じる">このまま</button></span>`;}
 function keepGrownCanvas(){grewFrom=null;renderStatus();}
-function renderStatus(){renderCanvasBar();const ed=fileEdit&&document.activeElement&&document.activeElement.id==='status-file-name';if(fileEdit)fileEdit.busy=true;document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));if(fileEdit){fileEdit.busy=false;const inp=document.getElementById('status-file-name');if(inp&&ed){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}}}
+function renderStatus(){renderCanvasBar();renderGroupBar();const ed=fileEdit&&document.activeElement&&document.activeElement.id==='status-file-name';if(fileEdit)fileEdit.busy=true;document.getElementById('status').innerHTML=statusFileHtml()+`<span>Blocks: ${parsed.blocks.length}</span><span>Groups: ${parsed.groups.length}</span><span>Notes: ${parsed.notes.length}</span><span>Conn: ${parsed.connections.length}</span>${statusCanvasHtml()}`+`<span>Selected: ${sel.length}</span>`+((n=>n?`<span id="status-unsaved" style="color:var(--amber)">未保存のほかの図: ${n}</span>`:'')(unsavedOthers().length))+((n=>n?`<span style="color:var(--red)">Err: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='error').length))+((n=>n?`<span style="color:var(--amber)">Warn: ${n}</span>`:'')(lastDiag.filter(d=>d.level==='warn').length))+((n=>n?`<span id="status-impact-err" style="color:var(--red)">ほかの図 Err: ${n}</span>`:'')(impact.added.filter(d=>d.level==='error').length))+((n=>n?`<span id="status-impact-warn" style="color:var(--amber)">ほかの図 Warn: ${n}</span>`:'')(impact.added.filter(d=>d.level==='warn').length));if(fileEdit){fileEdit.busy=false;const inp=document.getElementById('status-file-name');if(inp&&ed){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);}}}
 
 // ═══════════════════════════════════════════════
 // Export / Import — SVG, PNG (white/transparent), clipboard, Mermaid, .sb file

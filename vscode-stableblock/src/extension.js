@@ -401,7 +401,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { keepPos, noteFloors, posFloor, clampShift, contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, panScroll, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor };';
+    + '\n;window.StableBlockLayout = { keepPos, noteFloors, posFloor, clampShift, contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, panScroll, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor, groupFitNotice };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -869,9 +869,14 @@ function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.
 function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
 function newPlaceholderId(){var ids=parsed?parsed.blocks.concat(parsed.groups,parsed.notes).map(function(x){return x.id;}):[];addC=window.StableBlockLabel.nextPlaceholderN(ids,addC);return "__new_"+(addC++);}
 function addBlock(){pushH();var id=newPlaceholderId(),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
-function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id=newPlaceholderId();var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
+function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);if(gFull(prev?prev.w:8,prev?prev.h:3,prev,gr))return;pushH();var id=newPlaceholderId();var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();gFit(p,gr,'New Block');}
+// Fixed-size diagram (@canvas grow=off): an add that does not fit in the group overflows it (p.overflow) or, if that would run into another item, is not made (p.hits).
+// Either way the notice names the group (core/layout groupFitNotice)
+function gName(x){return String(x.label||'').replace(/\\s+/g,' ')||x.id;}
+function gFit(p,gr,item){if(!p||!gr||!(p.overflow||p.hits))return;vscodeApi.postMessage({type:'info',text:window.StableBlockLayout.groupFitNotice({group:gName(gr),item:p.hits?null:item,hits:p.hits})});}
+function gFull(w,h,prev,gr){var L=window.StableBlockLayout;if(L.canvasGrows(parsed.canvas))return false;var q=L.placeInGroupFit(parsed.blocks.concat(parsed.groups,parsed.notes),gr,w,h,prev,1,{grow:false});if(!q.hits||!q.hits.length)return false;gFit(q,gr);return true;}
 function addBlockBesideSel(){var si=sel.length===1&&sel[0].type==='block'?sel[0]:null;if(!si)return;var pid=window.StableBlockLayout.parentMap(boxIt())[si.id];if(pid)addBlockInGroup(pid);else addBlock();}
-function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id=newPlaceholderId();var L=window.StableBlockLayout,prev=L.lastChildBlock(boxIt(),gr),w=12,h=6;var p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+w+'x'+h+' color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
+function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;var L=window.StableBlockLayout,prev=L.lastChildBlock(boxIt(),gr),w=12,h=6;if(gFull(w,h,prev,gr))return;pushH();var id=newPlaceholderId();var p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+w+'x'+h+' color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();gFit(p,gr,'New Group');}
 function addGroup(){pushH();var id=newPlaceholderId(),p=freeSlot(20,8,12);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+(p.w||20)+'x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 // Link-add (core/select linkAddKey): with 1 block selected, Tab adds a block linked from it (column to its right, core/layout placeBeside),
 // Ctrl+Enter a sibling linked from the same sources (below it); same size / colors, then its label is edited in place. In a group it joins that group (core/layout growGroupFor)
@@ -880,6 +885,7 @@ function linkAdd(kind){var s=sel.length===1&&sel[0].type==='block'?sel[0]:null,r
   var pid=parNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
   var fixed=new Set(parsed.blocks.concat(parsed.groups,parsed.notes).filter(function(it){var o=EXP&&EXP.origin[it.line-1];return o&&o.file!==EXP.file;}).map(function(it){return it.id;}));
   var p=L.placeBesideFit(parsed.blocks.concat(parsed.groups,parsed.notes),ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxIt(),fixed:fixed,grow:L.canvasGrows(parsed.canvas)});
+  if(p.hits&&p.hits.length){gFit(p,gr);return;}gFit(p,gr,'New Block');
   pushH();var id=newPlaceholderId();dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,ref)+"\\n"+from.map(function(f){return f+' -> '+id+"\\n";}).join('');
   p.changes.forEach(function(r){upP(r.type,r.id,r.x,r.y);if(r.type==='group')upS('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id:id}];selClk=false;go();notify();pendLk=kind;revealEdit('block',id);}

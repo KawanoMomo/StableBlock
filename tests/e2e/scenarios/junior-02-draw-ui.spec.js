@@ -1232,6 +1232,22 @@ test('junior-02: 「はみ出したら自動で広げる」を外した図で gr
   for (const id of ['A', 'B', 'C', 'X']) expect(all[id], `a2 を足して ${id} が動いた`).toEqual(before[id]);
   for (const id of ['B', 'C', 'X', 'a0', 'a1']) expect(hits(all.a2, all[id]), `a2 が ${id} に重なる`).toBe(false);
   expect(await canvasLine()).toBe('@canvas width=960 height=520 grid=20 grow=off');
+  // 黙って group の外へ移さない: a2 は A の列にはみ出して置かれ、足した直後にプレビューの上端に A の名前とともに「入っていない」と出る
+  // (BLK-owner-20261007-0726-1)
+  expect(parentOf(all, 'a2')).toBe(null);
+  expect(hits(all.a2, all.A)).toBe(true);
+  const bar = page.locator('#group-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('「a2」は group「A」に入り切らず');
+  // 知らせの「「A」を選ぶ」から H の欄を 1 回広げれば、a2 は A の子になり知らせは消える
+  await bar.getByRole('button', { name: '「A」を選ぶ' }).click();
+  await expect(page.locator('#prop-id')).toHaveValue('A');
+  const hField = props.locator('[data-field="h"]');
+  await expect(hField).toBeFocused();
+  await hField.fill(String(all.a2.y + all.a2.h + 1 - all.A.y));
+  await hField.press('Enter');
+  await expect.poll(async () => parentOf(boxes(await getEditorText(page)), 'a2')).toBe('A');
+  await expect(bar).toBeHidden();
 });
 
 // ホイールを押し込んだまま(中ボタン)ドラッグで表示領域が動く。要素の上で押しても選択・移動はせず、本文も変わらない。
