@@ -252,8 +252,17 @@ function placeBeside(items, ref, w, h, side, opts = {}) {
 // 「つないで追加」の置き場所と、ref を囲む group gr の広がり(placeBeside + growGroupFor)を 1 つで決める。
 // 右の列(side 'right')に置くと gr が広がって fixed(動かせない要素の id。@include の共通部など)を押し出すなら、
 // ref の下('below')に置き直す(線は同じ。group は下へ広がる)。下でも押し出すなら右のまま。返り値 { x, y, changes }
+// opts.grow === false(寸法を固定した図、grow=off)は gr を広げない: gr の内側(枠から 1 内側)に収まる側(side、だめなら 'below')に置き、
+// どちらも収まらなければ side のまま gr からはみ出して置く(枠をまたぐ警告で知らせる)。changes は空
 function placeBesideFit(items, ref, w, h, side, opts = {}) {
   const gr = opts.group || null, boxes = opts.boxes || items, fixed = opts.fixed || new Set();
+  if (gr && opts.grow === false) {
+    const fits = p => p.x >= gr.x + 1 && p.y >= gr.y + 1 && p.x + w <= gr.x + gr.w - 1 && p.y + h <= gr.y + gr.h - 1;
+    const sides = side === 'below' ? ['below'] : [side, 'below'];
+    const ps = sides.map(s => placeBeside(items, ref, w, h, s));
+    const p = ps.find(fits) || ps[0];
+    return { x: p.x, y: p.y, changes: [] };
+  }
   const at = s => {
     const p = placeBeside(items, ref, w, h, s);
     const changes = gr ? growGroupFor(boxes, gr, { x: p.x, y: p.y, w, h }) : [];
@@ -573,8 +582,15 @@ function placeInGroup(items, gr, w, h, prev) {
 // 隙間を保って押し出し(group なら中身ごと)、gr や押し出した要素が親の枠をまたげば親も広げる。「+ ブロック追加」を group 内で
 // 続けても、広がった group がほかの group に重ならない。items: block / group / note(note は置き場所で避けるだけで、押さない)。
 // 返り値 { x, y, changes }。changes は広がった gr を含む、動いた・広がった要素(fitParents と同じ形。呼び出し側が本文の行に書く)
-function placeInGroupFit(items, gr, w, h, prev, margin = 1) {
+// opts.grow === false(寸法を固定した図、grow=off)は gr を広げず何も押し出さない: gr の内側の空きに置き、空きが無ければ gr の列のまま
+// 下へはみ出して置く。そのとき gr の外の要素(gr を含む祖先は除く)にも重ねない。はみ出しは枠をまたぐ警告で知らせる。changes は空
+function placeInGroupFit(items, gr, w, h, prev, margin = 1, opts = {}) {
   const list = (items || []).filter(Boolean);
+  if (opts.grow === false) {
+    const obs = list.filter(x => x.id !== gr.id && !inside(gr, x));
+    const p = placeNext(obs, w, h, { prev, x0: gr.x + 1, y0: gr.y + 2, cols: gr.x + gr.w - 1 });
+    return { x: p.x, y: p.y, changes: [] };
+  }
   const p = placeInGroup(list, gr, w, h, prev), ng = p.group;
   if (ng.w === gr.w && ng.h === gr.h) return { x: p.x, y: p.y, changes: [] };
   const boxes = list.filter(i => i.type !== 'note');
