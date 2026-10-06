@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-owner-20261007-0726-1: 「はみ出したら自動で広げる」を外した図で、空きの無い group に「+ 中にブロック」「+ 中にグループ」「+ ブロック追加」・Tab / Ctrl+Enter で足すと、group の外の別の場所へ黙って置かず、group の列にはみ出して置き、プレビューの上端に「group「A」に入り切らず…」と group の名前とともに出る。「「A」を選ぶ」から H(W)を 1 回広げれば中に入り知らせは消える。はみ出す先がほかの要素に重なるなら足さずに理由を出す。VSCode 拡張も同じ文を通知に出す
 - BLK-releaser-20261007-0719: コーパス往復テストが 202/202 で通る(porter の見本 116・168 から DSL に無い group の `round=` を除いた。見本はリポジトリ外の persona-data/porter/corpus)
 - BLK-human-20261006-1955-4-wish: プレビューでマウスのホイールを押し込んだまま(中ボタン)ドラッグすると、表示領域がマウスについて動く(要素の上で押しても選択・移動・接続はせず、本文も変わらない)。ホイールの回転は今までどおり。ツール欄「操作とキー」にも出る。VSCode 拡張も同じ
 - BLK-human-20261006-1955-1: ツール欄の「はみ出したら自動で広げる」を外した図(grow=off)では、group に「+ 中にブロック」・貼り付け・Tab / Ctrl+Enter で足しても group の幅・高さが変わらず、周りの group・block も押し出されない(空きが無ければ group からはみ出して置き、枠をまたぐ警告で知らせる)。チェックが付いた図は今までどおり group が広がる。VSCode 拡張も同じ

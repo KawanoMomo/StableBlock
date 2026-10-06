@@ -24,3 +24,11 @@ HTML 版と VSCode 拡張は同じ core/layout を呼ぶ。チェックの説明
 ## 影響
 - `placeInGroupFit(items, gr, w, h, prev, margin, opts)` / `placeBesideFit(..., opts)` に `opts.grow`(既定 true で従来どおり)
 - grow=on(既定)の図の挙動は変わらない
+
+## 追補(2026-10-07、BLK-owner-20261007-0726-1)
+入り切らない要素を「group の外の要素にも重ねない所」へ送ると、group の外(別の group の下など)に置かれ、利用者は「中に」足したのに
+入っていないことに気づけなかった。grow=off で入り切らないときは:
+- grow=on で group が広がるときと同じ場所(group の中身だけを避けた group の列)に、group からはみ出して置く(`overflow: true`)。
+  所属は座標で決まるので子ではないが、group の W・H を 1 回広げれば子になる(Visio のコンテナ・draw.io の container も、自動拡張を切ると子は枠をはみ出して残る)
+- そのはみ出す先が group の外の要素に重なるなら足さない(`hits`。重ねて置くと別の要素と見分けがつかない)
+- どちらも足した直後(足さなかった直後)に group の名前とともに画面に出す(HTML 版はプレビュー上端の知らせ、VSCode 拡張は通知。文は core/layout `groupFitNotice`)
