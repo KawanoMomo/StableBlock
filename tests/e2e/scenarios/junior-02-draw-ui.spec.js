@@ -1887,3 +1887,55 @@ test('junior-02: 共通部を取り込んだ新規の図で group は脇の空�
   await expect(status(page)).not.toContainText('Warn');
   await expect(status(page)).not.toContainText('Err');
 });
+
+// block や group を選んだままでも、右の欄から「ブロック追加」「グループ追加」ができる。選んだ group の中に子 block・子 group を足せる(BLK-human-20261006-1955-2)
+test('junior-02: group を選んだまま「+ 中にグループ」で子 group を作り、block を選んだままの「+ ブロック追加」は同じ group の中に入る', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('#prop-label');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  await label().fill('ECU');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('ECU');
+
+  // group を選んだまま: 子 group を足す(本文欄には触らない)
+  await props.getByRole('button', { name: '+ 中にグループ' }).click();
+  await label().fill('MCU');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('MCU');
+  let all = boxes(await getEditorText(page));
+  expect(all.MCU.type).toBe('group');
+  expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
+
+  // 子 group の中にもう 1 つ block を足し、その block を選んだまま「+ ブロック追加」: 同じ子 group の中に入る
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('CPU');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('CPU');
+  await expect(props.getByRole('button', { name: '+ ブロック追加' })).toHaveCount(1);
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await label().fill('RAM');
+  await label().press('Enter');
+  await expect(props.locator('#prop-id')).toHaveValue('RAM');
+  all = boxes(await getEditorText(page));
+  expect(parentOf(all, 'CPU')).toBe('MCU');
+  expect(parentOf(all, 'RAM')).toBe('MCU');
+  expect(hits(all.CPU, all.RAM)).toBe(false);
+  expect(within(all.MCU, all.ECU, 1), JSON.stringify(all)).toBe(true);
+
+  // 親 group を選び直して子 group をもう 1 つ: 兄弟の子 group に掛からず、親の内側に収まる
+  await selectGroup('ECU');
+  await props.getByRole('button', { name: '+ 中にグループ' }).click();
+  await label().fill('Periph');
+  await label().press('Enter');
+  all = boxes(await getEditorText(page));
+  expect(all.Periph.type).toBe('group');
+  expect(hits(all.Periph, all.MCU), JSON.stringify(all)).toBe(false);
+  expect(within(all.Periph, all.ECU, 1), JSON.stringify(all)).toBe(true);
+  await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
+});
