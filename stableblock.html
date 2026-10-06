@@ -109,6 +109,7 @@ body.pane-resizing, body.pane-resizing * { cursor:col-resize !important; user-se
 #canvas-bar button { font:inherit; font-size:10px; padding:0 6px; margin-left:6px; border:1px solid var(--amber); border-radius:3px; background:transparent; color:#FDE68A; cursor:pointer; }
 #canvas-bar button.plain { border-color:transparent; color:#D6B98C; }
 #preview-area { flex:1; overflow:auto; padding:12px; background:repeating-conic-gradient(#1E293B 0% 25%,#0F172A 0% 50%) 0 0/24px 24px; }
+#preview-area.panning, #preview-area.panning * { cursor:grabbing !important; }  /* 中ボタンのドラッグで表示領域を動かしている間 */
 #svg-wrap { background:#fff; border-radius:8px; display:inline-block; line-height:0; }
 #svg-wrap svg { cursor:default; overflow:visible; }  /* キャンバスの外にはみ出した要素も見せる(DSL にあるものは全部見える)。書き出しはキャンバスの寸法で切れる */
 
@@ -797,7 +798,7 @@ function renderPropsPanel(){
       ${includeSectionHtml()}
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
-        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br><span style="color:var(--muted)">Shift+Enter</span> ラベルを改行(block・group・note・接続)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
+        <div>クリック選択 / Shift+クリック複数選択<br>ドラッグ移動 / ハンドルでリサイズ<br>ホイールを押し込んでドラッグ 表示領域を動かす<br>ダブルクリック・<span style="color:var(--muted)">F2</span> ラベルをその場で編集(Tab で次へ)<br><span style="color:var(--muted)">Shift+Enter</span> ラベルを改行(block・group・note・接続)<br>1 つ選んで文字を打つ: その文字からラベルを編集<br>
           block を 1 つ選んで <span style="color:var(--muted)">Tab</span> 線でつないだ次の block を右に <span style="color:var(--muted)">Ctrl+Enter</span> 同じ元から下に(名前を打って Enter、Tab でそのまま続けて足す)<br>
           <span style="color:var(--muted)">Ctrl+Z</span> 元に戻す <span style="color:var(--muted)">Ctrl+Y</span> やり直す<br>
           <span style="color:var(--muted)">Ctrl+C</span> コピー <span style="color:var(--muted)">Ctrl+X</span> 切り取り<br>
@@ -1436,6 +1437,13 @@ document.getElementById('preview-area').addEventListener('mousedown',e=>{
   const r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;   // scrollbar
   releaseFocus();clearSelection();
 });
+// 中ボタン(ホイールの押し込み)のドラッグで表示領域を動かす(core/layout panScroll)。要素の上で押しても選択・移動・接続はしない
+// (捕捉段で止める)。ブラウザの自動スクロールも出さない。ホイールの回転は今までどおり
+document.getElementById('preview-area').addEventListener('mousedown',e=>{if(e.button!==1)return;e.preventDefault();e.stopPropagation();
+  const area=e.currentTarget,start={left:area.scrollLeft,top:area.scrollTop},x0=e.clientX,y0=e.clientY;area.classList.add('panning');
+  const mv=ev=>{const p=window.StableBlockLayout.panScroll(start,ev.clientX-x0,ev.clientY-y0,{left:area.scrollWidth-area.clientWidth,top:area.scrollHeight-area.clientHeight});area.scrollLeft=p.left;area.scrollTop=p.top;};
+  const up=ev=>{if(ev.button!==1)return;window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);area.classList.remove('panning');};
+  window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);},true);
 // スクロール・ズームで入力欄が要素からずれるので、そこで確定する
 document.getElementById('preview-area').addEventListener('scroll',()=>{if(revealScroll){revealScroll=false;return;}if(inlineEd)finishInlineEdit(true);});
 

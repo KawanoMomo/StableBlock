@@ -1234,6 +1234,50 @@ test('junior-02: 「はみ出したら自動で広げる」を外した図で gr
   expect(await canvasLine()).toBe('@canvas width=960 height=520 grid=20 grow=off');
 });
 
+// ホイールを押し込んだまま(中ボタン)ドラッグで表示領域が動く。要素の上で押しても選択・移動はせず、本文も変わらない。
+// ホイールの回転は今までどおりスクロール(BLK-human-20261006-1955-4-wish)
+test('junior-02: 中ボタンのドラッグで表示領域が移動量ぶん動き、図の内容と選択は変わらず、ホイールの回転は今までどおり', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await bootPlain(page);
+  await importSb(page, SENPAI);
+  for (let i = 0; i < 6; i++) await page.locator('button[data-term="zoom-in"]').click();   // 表示領域より大きくしてスクロールできるように
+  const area = page.locator('#preview-area');
+  const scroll = () => area.evaluate(a => ({ left: a.scrollLeft, top: a.scrollTop }));
+  await expect.poll(() => area.evaluate(a => a.scrollWidth > a.clientWidth + 300 && a.scrollHeight > a.clientHeight + 200)).toBe(true);
+  const text0 = await getEditorText(page);
+  expect(await scroll()).toEqual({ left: 0, top: 0 });
+
+  // block の上で中ボタンを押し、左上へ 240・160 px 引くと、表示領域の原点が右下へ同じだけずれる(図はマウスについて動く)
+  const b = await page.locator('#svg-wrap svg g[data-type="block"]').first().boundingBox();
+  const x0 = b.x + b.width / 2, y0 = b.y + b.height / 2;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(x0 - 120, y0 - 80, { steps: 4 });
+  await page.mouse.move(x0 - 240, y0 - 160, { steps: 4 });
+  await expect(area).toHaveClass(/panning/);
+  await page.mouse.up({ button: 'middle' });
+  await expect(area).not.toHaveClass(/panning/);
+  expect(await scroll()).toEqual({ left: 240, top: 160 });
+  expect(await getEditorText(page)).toBe(text0);
+  await expect(page.locator('#status')).toContainText('Selected: 0');
+
+  // 右下へ 100・60 px 戻すと、その分だけ戻る。離した後のマウス移動では動かない
+  const p = { x: x0 - 240, y: y0 - 160 };
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(p.x + 100, p.y + 60, { steps: 4 });
+  await page.mouse.up({ button: 'middle' });
+  await page.mouse.move(p.x + 300, p.y + 300, { steps: 2 });
+  expect(await scroll()).toEqual({ left: 140, top: 100 });
+  expect(await getEditorText(page)).toBe(text0);
+
+  // ホイールの回転は今までどおり縦スクロール(倍率は変わらない)
+  const zoom = await page.locator('#zoom-label').textContent();
+  await page.mouse.wheel(0, 120);
+  await expect.poll(async () => (await scroll()).top).toBeGreaterThan(100);
+  await expect(page.locator('#zoom-label')).toHaveText(zoom);
+  expect(await getEditorText(page)).toBe(text0);
+});
+
 // ─── __new_ のまま残った ID を検索で順に直す(BLK-junior-20260926-0609-wish) ───
 const NEW_IDS = path.join(FIXTURES, 'junior-new-ids.sb');
 

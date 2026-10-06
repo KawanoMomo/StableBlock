@@ -401,7 +401,7 @@ function getWebviewContent(dslText, docPath) {
   }
   const layoutCoreAsGlobals = layoutCoreScript
     .replace(/^\s*export\s+(async\s+)?function\s+(\w+)/gm, '$1function $2')
-    + '\n;window.StableBlockLayout = { keepPos, noteFloors, posFloor, clampShift, contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor };';
+    + '\n;window.StableBlockLayout = { keepPos, noteFloors, posFloor, clampShift, contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, panScroll, paneWidths, parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor };';
 
   // ───── Mermaid 書き出しの共有ロジック(mermaid-core.mjs)をインライン埋め込み ─────
   let mermaidCoreScript = '';
@@ -449,6 +449,7 @@ body{background:var(--vscode-editor-background,#1e1e1e);color:var(--vscode-edito
 .sep{width:1px;height:14px;background:var(--vscode-widget-border,#444)}
 .main{flex:1;display:flex;overflow:hidden}
 #preview{flex:1;overflow:auto;padding:8px}
+#preview.panning,#preview.panning *{cursor:grabbing!important}
 .inline-label{position:fixed;z-index:40;box-sizing:border-box;margin:0;padding:2px 6px;border:2px solid #6366F1;border-radius:4px;background:#fff;color:#0F172A;font:600 12px sans-serif;text-align:center;outline:none;box-shadow:0 4px 12px rgba(0,0,0,.35);resize:none}
 textarea.inline-label{text-align:left;font-weight:400;line-height:1.4}
 textarea.inline-label.il1{text-align:center;font-weight:600;overflow:hidden;white-space:pre}
@@ -1014,6 +1015,12 @@ document.getElementById('preview').addEventListener('mousedown',function(e){
   var r=e.currentTarget;if(e.target===r&&(e.offsetX>=r.clientWidth||e.offsetY>=r.clientHeight))return;
   relFocus();clrSel();
 });
+// Middle-button (wheel press) drag pans the view (core/layout panScroll). Stopped in the capture phase: no select / move / link on items, no autoscroll
+document.getElementById('preview').addEventListener('mousedown',function(e){if(e.button!==1)return;e.preventDefault();e.stopPropagation();
+  var area=e.currentTarget,start={left:area.scrollLeft,top:area.scrollTop},x0=e.clientX,y0=e.clientY;area.classList.add('panning');
+  function mv(ev){var p=window.StableBlockLayout.panScroll(start,ev.clientX-x0,ev.clientY-y0,{left:area.scrollWidth-area.clientWidth,top:area.scrollHeight-area.clientHeight});area.scrollLeft=p.left;area.scrollTop=p.top;}
+  function up(ev){if(ev.button!==1)return;window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up);area.classList.remove('panning');}
+  window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);},true);
 document.getElementById('preview').addEventListener('scroll',function(){if(revealScr){revealScr=false;return;}if(inl)finInl(true);});
 
 // Drag the preview | side panel border to resize the side panel (core/layout paneWidths keeps a minimum preview width).

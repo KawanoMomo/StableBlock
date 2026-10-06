@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, panScroll, paneWidths,
   parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor,
 } from '../layout-core.mjs';
 
@@ -111,6 +111,16 @@ test('stepZoom: 0.25 刻み、端数からは刻みに戻る', () => {
   assert.equal(stepZoom(0.25, -1), 0.25);
   assert.equal(stepZoom(0.1, -1), 0.1);   // 全体表示で 0.25 未満になっていても − で大きくならない
   assert.equal(stepZoom(0.1, 1), 0.25);
+});
+
+// 中ボタン(ホイールの押し込み)のドラッグで表示領域を動かす(BLK-human-20261006-1955-4-wish)
+test('panScroll: 押した時のスクロール位置からマウスの移動量だけ逆向きにずらし、0〜最大で止める', () => {
+  const max = { left: 500, top: 300 };
+  assert.deepEqual(panScroll({ left: 200, top: 100 }, 50, 30, max), { left: 150, top: 70 });     // 右下へ引くと図も右下へ(表示は左上へ)
+  assert.deepEqual(panScroll({ left: 200, top: 100 }, -80, -40, max), { left: 280, top: 140 });
+  assert.deepEqual(panScroll({ left: 20, top: 10 }, 100, 100, max), { left: 0, top: 0 });
+  assert.deepEqual(panScroll({ left: 480, top: 290 }, -100, -100, max), { left: 500, top: 300 });
+  assert.deepEqual(panScroll({ left: 0, top: 0 }, -10, -10, { left: 0, top: 0 }), { left: 0, top: 0 });   // スクロールできない表示は動かない
 });
 
 test('paneWidths: 境界のドラッグで左右の欄の幅を変え、プレビューに最小幅を残す', () => {

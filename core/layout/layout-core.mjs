@@ -302,6 +302,13 @@ export function stepZoom(zoom, dir, opts = {}) {
   return Math.max(min, Math.min(max, next));
 }
 
+// 中ボタン(ホイールの押し込み)のドラッグで表示領域を動かす: 押した時のスクロール位置 start({ left, top }、px)から、マウスの移動量
+// (dx, dy、px)だけ逆向きにずらした位置(図はマウスについて動く)。0〜max({ left, top }、スクロールできる最大)で止める。
+export function panScroll(start, dx, dy, max) {
+  const clamp = (v, m) => Math.max(0, Math.min(m, v));
+  return { left: clamp(start.left - dx, max.left), top: clamp(start.top - dy, max.top) };
+}
+
 // ── 欄の幅(HTML 版の DSL | プレビュー | ツール欄、拡張のプレビュー | サイド欄) ──
 // 境界をドラッグした後の左・右の欄の幅(px、整数)。左右はそれぞれ最小幅を割らず、真ん中(プレビュー)に minMid を残す。
 // 入り切らないときは動かした側(moved: 'left' | 'right')を先に削る。moved 省略(窓の大きさが変わった)は左を先に削る。
