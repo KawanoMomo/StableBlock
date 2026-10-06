@@ -4,6 +4,7 @@ All notable changes to StableBlock will be documented in this file.
 
 ## [Unreleased]
 
+- BLK-human-20261006-1955-4-wish: プレビューでマウスのホイールを押し込んだまま(中ボタン)ドラッグすると、表示領域がマウスについて動く(要素の上で押しても選択・移動・接続はせず、本文も変わらない)。ホイールの回転は今までどおり。ツール欄「操作とキー」にも出る。VSCode 拡張も同じ
 - BLK-human-20261006-1955-1: ツール欄の「はみ出したら自動で広げる」を外した図(grow=off)では、group に「+ 中にブロック」・貼り付け・Tab / Ctrl+Enter で足しても group の幅・高さが変わらず、周りの group・block も押し出されない(空きが無ければ group からはみ出して置き、枠をまたぐ警告で知らせる)。チェックが付いた図は今までどおり group が広がる。VSCode 拡張も同じ
 - BLK-human-20261006-1955-3: 図に仮の ID(__new_1 など)が残っていても、「+ ブロック追加」などで足した要素の仮の ID はそれと重ならず、直後の「ID補正」でその要素にも ID が付く(重複 ID を作らない。HTML 版・VSCode 拡張)
 - BLK-human-20261006-1955-2: group を選んだまま右欄の「+ 中にグループ」で子 group を足せ(入れ子)、block を選んだままの「+ ブロック追加」はその block の group の中に入る(HTML 版・VSCode 拡張)
