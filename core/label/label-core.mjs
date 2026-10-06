@@ -278,6 +278,15 @@ export function isPlaceholderId(id) {
   return typeof id === 'string' && id.startsWith('__new_');
 }
 
+// 仮の ID `__new_N` の次の番号。from 以上で、used(ID の Set か配列)に `__new_N` がまだ無い最小の N を返す。
+// 読み込んだ図・前の作業から残った `__new_1` と、新しく足す要素の ID が重ならないようにする(重なると ID 補正・改名が別の要素に掛かる)
+export function nextPlaceholderN(used, from = 1) {
+  const has = used instanceof Set ? id => used.has(id) : id => (used || []).includes(id);
+  let n = Math.max(1, from | 0);
+  while (has(`__new_${n}`)) n++;
+  return n;
+}
+
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
 export function uniqueId(base, used) {
   const has = used instanceof Set ? id => used.has(id) : id => used.includes(id);
