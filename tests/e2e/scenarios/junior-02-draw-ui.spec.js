@@ -1181,6 +1181,59 @@ test('junior-02: 資料の寸法に合わせた図は「はみ出したら自動
   await expect.poll(canvasLine).not.toBe('@canvas width=400 height=300 grid=20');
 });
 
+// 「はみ出したら自動で広げる」を外した図では、group に「+ 中にブロック」で足しても group の幅・高さもほかの要素の位置も変わらない
+// (表示がずれない)。入り切らない分は group を広げずに置き、直すのは人(BLK-human-20261006-1955-1)
+test('junior-02: 「はみ出したら自動で広げる」を外した図で group にブロックを足しても、group の寸法とほかの要素の位置が変わらない', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const svg = page.locator('#svg-wrap svg');
+  const label = () => props.locator('#prop-label');
+  const selectGroup = id => svg.locator(`g[data-type="group"][data-id="${id}"]`).click({ position: { x: 30, y: 8 } });
+  const canvasLine = async () => (await getEditorText(page)).split('\n').find(l => l.startsWith('@canvas'));
+
+  // group A・B・C を置き、C には block X を入れておく
+  for (const name of ['A', 'B', 'C']) {
+    await props.getByRole('button', { name: '+ グループ追加' }).click();
+    await label().fill(name);
+    await label().press('Enter');
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#prop-title')).toHaveText('ツール');
+  }
+  await selectGroup('C');
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('X');
+  await expect(props.locator('#prop-id')).toHaveValue('X');
+  await page.keyboard.press('Escape');
+
+  // ツール欄の「はみ出したら自動で広げる」を外す(本文の差分は @canvas 行の grow=off だけ)
+  await page.locator('#canvas-grow').uncheck();
+  await expect.poll(canvasLine).toBe('@canvas width=960 height=520 grid=20 grow=off');
+  const before = boxes(await getEditorText(page));
+
+  // A に 2 つ足す: A の中に入り、A・B・C・X は 1 グリッドも動かない
+  for (const name of ['a0', 'a1']) {
+    await selectGroup('A');
+    await props.getByRole('button', { name: '+ 中にブロック' }).click();
+    await label().fill(name);
+    await expect(props.locator('#prop-id')).toHaveValue(name);
+    const all = boxes(await getEditorText(page));
+    expect(parentOf(all, name)).toBe('A');
+    for (const id of ['A', 'B', 'C', 'X']) expect(all[id], `${name} を足して ${id} が動いた`).toEqual(before[id]);
+  }
+  // 入り切らない 3 つ目も A を広げず、ほかの要素も押し出さない。キャンバスも固定のまま
+  await selectGroup('A');
+  await props.getByRole('button', { name: '+ 中にブロック' }).click();
+  await label().fill('a2');
+  await expect(props.locator('#prop-id')).toHaveValue('a2');
+  const all = boxes(await getEditorText(page));
+  for (const id of ['A', 'B', 'C', 'X']) expect(all[id], `a2 を足して ${id} が動いた`).toEqual(before[id]);
+  for (const id of ['B', 'C', 'X', 'a0', 'a1']) expect(hits(all.a2, all[id]), `a2 が ${id} に重なる`).toBe(false);
+  expect(await canvasLine()).toBe('@canvas width=960 height=520 grid=20 grow=off');
+});
+
 // ─── __new_ のまま残った ID を検索で順に直す(BLK-junior-20260926-0609-wish) ───
 const NEW_IDS = path.join(FIXTURES, 'junior-new-ids.sb');
 

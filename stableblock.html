@@ -792,7 +792,7 @@ function renderPropsPanel(){
       <div class="prop-section" id="canvas-section"><div class="prop-label">キャンバス (px)</div><div class="prop-row">
         <div style="flex:1"><div class="prop-sub">幅</div><div class="stepper"><input class="prop-input" id="canvas-w" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.width}" onchange="setCanvasSize('w',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('w',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('w',-1)">▼</button></div></div></div>
         <div style="flex:1"><div class="prop-sub">高さ</div><div class="stepper"><input class="prop-input" id="canvas-h" type="number" min="1" step="${parsed.canvas.grid}" value="${parsed.canvas.height}" onchange="setCanvasSize('h',this.value)"><div class="step-col"><button class="step-btn up" onclick="nudgeCanvas('h',1)">▲</button><button class="step-btn dn" onclick="nudgeCanvas('h',-1)">▼</button></div></div></div>
-      </div><label class="prop-sub canvas-grow" title="${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素がはみ出したらキャンバスを広げる(要素より小さくはできない)。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。はみ出した要素はエラー欄に出る'}"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label></div>
+      </div><label class="prop-sub canvas-grow" title="${window.StableBlockLayout.canvasGrows(parsed.canvas)?'要素がはみ出したらキャンバスと group を広げる(要素より小さくはできない)。資料の寸法に合わせた図は外して固定する':'寸法を固定中(本文の @canvas に grow=off)。group に足しても group は広げない。はみ出した要素はエラー欄に出る'}"><input type="checkbox" id="canvas-grow" ${window.StableBlockLayout.canvasGrows(parsed.canvas)?'checked':''} onchange="setCanvasGrow(this.checked)"> はみ出したら自動で広げる</label></div>
       ${includeSectionHtml()}
       <details id="help-keys" class="help-keys" title="接続の結び方・マウスとキーの操作"><summary>操作とキー</summary>
         <div id="conn-guide" style="color:var(--muted);margin-bottom:6px">ブロックを Shift+クリックで選び、クリックした順に「a → b」(3 つ以上は「a → b → c」の鎖状)で結ぶ(Enter でも)。向きは結んだ後に「⇄ 反転」。右ボタンで block から block へドラッグしても 1 本結べる</div>
@@ -1030,10 +1030,11 @@ function blockLine(id,p,src){const w=src?src.w:8,h=src?src.h:3;let l=`block ${id
 // at the group's edge, growing the group downward. groupOf skips the copied groups themselves
 function groupOf(r,skip){return parsed.groups.filter(g=>!(skip&&skip.has(g.id))&&isInside(r,g)).sort((a,b)=>a.w*a.h-b.w*b.h)[0]||null;}
 // In a group (core/layout placeInGroupFit): avoid everything on the group's area (child groups and their frames too); a grown group grows its parents as well,
-// and pushes the groups / blocks it would newly cover (with their contents), keeping the gap — it never runs into another group
+// and pushes the groups / blocks it would newly cover (with their contents), keeping the gap — it never runs into another group.
+// In a fixed-size diagram (@canvas grow=off) the group is not grown and nothing moves: no room inside overflows it (warned as straddling)
 function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.blocks,...parsed.groups,...parsed.notes];
   if(!gr)return L.placeNext(all,w,h,{prev,cols:Math.floor(parsed.canvas.width/parsed.canvas.grid)});
-  const p=L.placeInGroupFit(all,gr,w,h,prev);p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();
+  const p=L.placeInGroupFit(all,gr,w,h,prev,1,{grow:L.canvasGrows(parsed.canvas)});p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(p.changes.length)parsed=parseDoc();
   return p;}
 // The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
 function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}
@@ -1074,7 +1075,7 @@ function includedIds(){return new Set([...parsed.blocks,...parsed.groups,...pars
 function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null,ref=s&&parsed.blockMap[s.id];if(!ref)return;
   const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
   const pid=parentsNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
-  const p=L.placeBesideFit([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxItems(),fixed:includedIds()});
+  const p=L.placeBesideFit([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxItems(),fixed:includedIds(),grow:L.canvasGrows(parsed.canvas)});
   pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
   p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();pendingLink=kind;revealAndEdit('block',id);}

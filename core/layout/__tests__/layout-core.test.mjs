@@ -645,6 +645,26 @@ test('growGroupFor: 右の列に置いた子が group の外なら group を右�
   assert.deepEqual(growGroupFor([g, a], g, { x: 1, y: 2, w: 8, h: 3 }), []);   // 収まっていれば何もしない
 });
 
+// 「はみ出したら自動で広げる」を外した図(grow=off)では group に足しても group を広げず、ほかの要素も動かさない(BLK-human-20261006-1955-1)
+test('placeInGroupFit / placeBesideFit: grow: false なら group の寸法もほかの要素も変えず、空きが無ければ group の下へはみ出して置く', () => {
+  const g1 = G('G1', 1, 1, 20, 8), g2 = G('G2', 1, 10, 20, 8), x = B('X', 3, 13, 8);
+  // 空きがあれば grow: true と同じ場所(group の内側)に置く
+  assert.deepEqual(placeInGroupFit([g1, g2, x], g1, 8, 3, null, 1, { grow: false }), { x: 2, y: 3, changes: [] });
+  // 埋まった group: 広げず、下のほかの要素にも掛からない所へ置く(はみ出しは警告で知らせ、人が直す)
+  const full = [B('a', 2, 3, 8), B('b', 11, 3, 8)];
+  const r = placeInGroupFit([g1, g2, x, ...full], g1, 8, 3, full[1], 1, { grow: false });
+  assert.deepEqual(r.changes, []);
+  const nb = { x: r.x, y: r.y, w: 8, h: 3 };
+  for (const o of [g2, x, ...full]) assert.ok(nb.x + nb.w <= o.x || o.x + o.w <= nb.x || nb.y + nb.h <= o.y || o.y + o.h <= nb.y, `${o.id} に重なる ${JSON.stringify(nb)}`);
+  assert.ok(nb.x >= g1.x && nb.x + nb.w <= g1.x + g1.w);             // 列は group の内側のまま
+  // つないで追加: 右の列が group に収まらなければ下に置き、下も収まらなければ右のまま。どちらも group は広げない
+  const m = B('m', 2, 3, 8), g = G('W', 1, 1, 18, 10);
+  const b = placeBesideFit([g, m], m, 8, 3, 'right', { group: g, grow: false });
+  assert.deepEqual(b, { x: 2, y: 7, changes: [] });
+  const tight = G('T', 1, 1, 18, 6);
+  assert.deepEqual(placeBesideFit([tight, m], m, 8, 3, 'right', { group: tight, grow: false }), { x: 12, y: 3, changes: [] });
+});
+
 test('placeBesideFit: 右へ広がる group が動かせない共通部(fixed)に掛かるなら ref の下に置く。掛からなければ右のまま', () => {
   const g = { type: 'group', id: 'W', x: 1, y: 1, w: 18, h: 8 }, m = { type: 'block', id: 'WdtMgr', x: 2, y: 3, w: 8, h: 3 };
   const rte = { type: 'block', id: 'rte', x: 20, y: 2, w: 8, h: 3 }, hal = { type: 'block', id: 'hal', x: 20, y: 14, w: 8, h: 3 };
