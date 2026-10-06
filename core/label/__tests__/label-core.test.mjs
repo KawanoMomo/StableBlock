@@ -705,3 +705,12 @@ test('placeLabels: 複数行の接続ラベルは行の分の高さ・行ごと�
   assert.equal(LL.bg.h, 26);
   assert.equal(LL.bg.w, estimateTextWidth('async', 10) + 8);   // 「call\nasync」全体の幅ではない
 });
+
+import { nextPlaceholderN } from '../label-core.mjs';
+test('nextPlaceholderN: 図に残った __new_N と重ならない番号を返す', () => {
+  assert.equal(nextPlaceholderN([], 1), 1);
+  assert.equal(nextPlaceholderN(['a', '__new_2'], 1), 1);
+  assert.equal(nextPlaceholderN(['__new_1', '__new_2', '__new_4'], 1), 3);
+  assert.equal(nextPlaceholderN(new Set(['__new_5']), 5), 6);
+  assert.equal(nextPlaceholderN(['__new_1'], 0), 2);
+});

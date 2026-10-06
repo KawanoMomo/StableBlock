@@ -417,6 +417,7 @@ function isInside(c,p){return c.x>=p.x&&c.y>=p.y&&c.x+c.w<=p.x+p.w&&c.y+c.h<=p.y
 function findChildren(gr){return{childBlocks:parsed.blocks.filter(b=>isInside(b,gr)),childGroups:parsed.groups.filter(g=>g.id!==gr.id&&isInside(g,gr))};}
 // 入れ子の group(core/layout): 子は座標で決まる。操作の前に親を控え(parentsNow)、操作の後で子が親の枠をまたいだら
 // その向きに親(と親の親)を広げる(growParents)。本文で変わるのは広がった group の行だけ
+function newPlaceholderId(){const ids=parsed?[...parsed.blocks,...parsed.groups,...parsed.notes].map(x=>x.id):[];addCounter=window.StableBlockLabel.nextPlaceholderN(ids,addCounter);return `__new_${addCounter++}`;}
 function boxItems(){return[...parsed.blocks,...parsed.groups];}
 function parentsNow(){return window.StableBlockLayout.parentMap(boxItems());}
 function growParents(before,moved,seeds){parsed=parseDoc();const ch=window.StableBlockLayout.fitParents(boxItems(),before,moved,1,seeds);ch.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});if(ch.length)parsed=parseDoc();}
@@ -1038,22 +1039,22 @@ function areaSlot(w,h,prev,gr){const L=window.StableBlockLayout,all=[...parsed.b
   return p;}
 // The tool panel's add stays on the canvas level: after a block in a group, it goes right of the outermost group
 function outerGroup(r){return parsed.groups.filter(g=>isInside(r,g)).sort((a,b)=>b.w*b.h-a.w*a.h)[0]||null;}
-function addBlock(){pushHistory();const id=`__new_${addCounter++}`,prev=lastAddedId&&parsed.blockMap[lastAddedId]||null;
+function addBlock(){pushHistory();const id=newPlaceholderId(),prev=lastAddedId&&parsed.blockMap[lastAddedId]||null;
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
 // gid を省くと選択中の group(ラベルの入力で ID が変わった直後でも今の ID を使う)。prev は group の直下の block(子 group の中は数えない)
-function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
+function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=newPlaceholderId();
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
 // 選んだ block からの「+ ブロック追加」: block が group の中なら同じ group の中へ(addBlockInGroup)、そうでなければツール欄と同じ(addBlock)
 function addBlockBesideSel(){const si=sel.length===1&&sel[0].type==='block'?sel[0]:null;if(!si)return;const pid=window.StableBlockLayout.parentMap(boxItems())[si.id];if(pid)addBlockInGroup(pid);else addBlock();}
 // 選んだ group の中に子 group を足す(入れ子)。置き場所・親の広がりは addBlockInGroup と同じ(core/layout placeInGroupFit)。既定 12x6
-function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
+function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=newPlaceholderId();
   const L=window.StableBlockLayout,prev=L.lastChildBlock(boxItems(),gr),w=12,h=6;
   const p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+`
 group ${id} "New Group" at ${p.x},${p.y} size ${w}x${h} color=#F1F5F9 border=#94A3B8
 `;sel=[{type:"group",id}];refresh();}
 // group は既定 20x8。その行に入らなければ幅を 12 まで詰めて既存の図の脇の空きに置く(図の下端より下へ送らない。中に足す block で広がる)
-function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8,12);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size ${p.w||20}x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
+function addGroup(){pushHistory();const id=newPlaceholderId(),p=freeSlot(20,8,12);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size ${p.w||20}x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 // 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。
 // 選んでいない要素が間に挟まっていれば、選んだ block だけを空きへ寄せて囲む(選んでいない要素の所属は変えない)。寄せられなければ囲まずに理由を出す
 function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type==='block');if(items.length<2)return;const L=window.StableBlockLayout;
@@ -1063,7 +1064,7 @@ function groupSelected(){let items=sel.map(s=>getItem(s)).filter(b=>b&&b.type===
   if(!plan.rect){const m=document.getElementById('group-sel-msg');if(m){m.textContent=plan.reason;m.hidden=false;}return;}
   pushHistory();plan.moves.forEach(mv=>updatePos('block',mv.id,mv.x,mv.y));if(plan.moves.length){parsed=parseDoc();items=items.map(b=>parsed.blockMap[b.id]||b);}
   const ex=Math.max(...items.map(b=>b.x+b.w)),ey=Math.max(...items.map(b=>b.y+b.h)),box={x:Math.min(...items.map(b=>b.x)),y:Math.min(...items.map(b=>b.y))};box.w=ex-box.x;box.h=ey-box.y;
-  const r=plan.rect;const gid=`__new_${addCounter++}`;
+  const r=plan.rect;const gid=newPlaceholderId();
   dsl=dsl.trimEnd()+`\ngroup ${gid} "New Group" at ${r.x},${r.y} size ${r.w}x${r.h} color=#F1F5F9 border=#94A3B8\n`;
   parsed=parseDoc();const after=parentsNow();if(pid)after[gid]=pid;items.forEach(b=>{after[b.id]=gid;});
   growParents(after,[{id:gid,sides:['l','t','r','b']}],[{id:gid,from:{x:r.x,y:r.y,w:box.x+box.w-r.x,h:box.y+box.h-r.y}}]);sel=[{type:'group',id:gid}];refresh();}
@@ -1076,7 +1077,7 @@ function linkAdd(kind){const s=sel.length===1&&sel[0].type==='block'?sel[0]:null
   const L=window.StableBlockLayout,from=kind==='child'?[ref.id]:window.StableBlockLabel.linkSources(parsed.connections,ref.id);
   const pid=parentsNow()[ref.id],gr=pid?parsed.groupMap[pid]:null;
   const p=L.placeBesideFit([...parsed.blocks,...parsed.groups,...parsed.notes],ref,ref.w,ref.h,kind==='child'?'right':'below',{group:gr,boxes:boxItems(),fixed:includedIds(),grow:L.canvasGrows(parsed.canvas)});
-  pushHistory();const id=`__new_${addCounter++}`;dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
+  pushHistory();const id=newPlaceholderId();dsl=dsl.trimEnd()+`\n${blockLine(id,p,ref)}\n`+from.map(f=>`${f} -> ${id}\n`).join('');
   p.changes.forEach(r=>{updatePos(r.type,r.id,r.x,r.y);if(r.type==='group')updateSize('group',r.id,r.w,r.h);});
   lastAddedId=id;sel=[{type:'block',id}];selClicked=false;justLinked=[];refresh();pendingLink=kind;revealAndEdit('block',id);}
 // 表示欄の外に置いた要素は見える所までスクロールしてからその場編集を開く(このスクロールでは編集を確定しない)
@@ -1084,7 +1085,7 @@ let revealScroll=false;
 function revealAndEdit(type,id){const area=document.getElementById('preview-area'),g=[...document.querySelectorAll('#svg-wrap g[data-id]')].find(x=>x.dataset.id===id&&x.dataset.type===type);
   if(area&&g){const st=area.scrollTop,sl=area.scrollLeft;g.scrollIntoView({block:'nearest',inline:'nearest'});if(area.scrollTop!==st||area.scrollLeft!==sl)revealScroll=true;}
   startInlineEdit(type,id);}
-function addNote(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
+function addNote(){pushHistory();const id=newPlaceholderId(),p=freeSlot(8,2);dsl=dsl.trimEnd()+`\nnote ${id} "Annotation" at ${p.x},${p.y} size 8x2 color=#FEF3C7 text=#92400E\n`;sel=[{type:"note",id}];if(!showAnnotations){showAnnotations=true;document.getElementById('anno-btn').classList.add('tb-anno-active');}refresh();}
 // ID: プロパティ欄の「ID」で決める(setId)。改名は定義行と接続の from/to だけを書き換える(core/label の renameIdInDsl)。直前に足した要素(lastAddedId)の改名も追う(次の「+ ブロック追加」がその右隣に並ぶ)
 // __new_ の新規要素と、ここで自動で付けた ID(autoIds)はラベルの入力に追従する(followLabelId)。読み込んだ図の ID は追従しない
 const autoIds=new Set();
@@ -1399,7 +1400,7 @@ function pasteClipboard(){
   const newSel=[],idMap={};
   clipboard.forEach(ci=>{
     // Generate unique ID for paste
-    const newId=`__new_${addCounter++}`;idMap[ci.id]=newId;
+    const newId=newPlaceholderId();idMap[ci.id]=newId;
     let line=ci.line.replace(new RegExp(`^(${ci.type}\\s+)${ci.id}`),`$1${newId}`);
     line=line.replace(/at\s+(-?[\d.]+),(-?[\d.]+)/,(m,x,y)=>`at ${+x+dx},${+y+dy}`);
     dsl=dsl.trimEnd()+"\n"+line+"\n";

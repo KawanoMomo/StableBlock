@@ -1992,3 +1992,37 @@ test('junior-02: group を選んだまま「+ 中にグループ」で子 group 
   expect(within(all.Periph, all.ECU, 1), JSON.stringify(all)).toBe(true);
   await expect(page.locator('#error-bar')).not.toContainText('枠をまたいでいる');
 });
+
+// 「+ ブロック追加」で足した直後に「ID補正」を押すと、その block に既存と同じ規則(ラベルの表記・重なれば _2)で ID が付く。
+// 読み込んだ図に __new_1 が残っていても新しい block の仮 ID は重ならない(BLK-human-20261006-1955-3)
+test('junior-02: 「+ ブロック追加」の直後の「ID補正」で新しい block に ID が付き、図に残った __new_ とも重ならない', async ({ page }) => {
+  await bootPlain(page);
+  await importSb(page, BLANK);
+  const props = page.locator('#prop-content');
+  const report = page.locator('#export-report');
+  const fixBtn = page.getByRole('button', { name: 'ID補正' });
+  const defLines = text => text.split('\n').filter(l => /^block /.test(l)).map(l => l.split(' ')[1]);
+
+  // 2 つ足し(2 つ目は 1 つ目を選んだまま)、そのまま ID補正: ラベル「New Block」の表記で 1 つ目、重なる 2 つ目は _2
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  expect(defLines(await getEditorText(page))).toEqual(['__new_1', '__new_2']);
+  await fixBtn.click();
+  await expect(report).toContainText('ID補正: 2 件');
+  expect(defLines(await getEditorText(page))).toEqual(['New_Block', 'New_Block_2']);
+  await expect(page.locator('#error-bar')).not.toContainText('重複');
+
+  // __new_1・__new_2・__new_3 が残った図に足した block は __new_4 で、重複 ID を作らず、ID補正で全部に付く
+  await importSb(page, NEW_IDS);
+  await page.keyboard.press('Escape');
+  await props.getByRole('button', { name: '+ ブロック追加' }).click();
+  const text = await getEditorText(page);
+  const ids = [...text.matchAll(/^(?:block|group|note) (\S+) /gm)].map(m => m[1]);
+  expect(new Set(ids).size, ids.join(',')).toBe(ids.length);
+  expect(ids.filter(i => i.startsWith('__new_'))).toHaveLength(4);
+  await fixBtn.click();
+  await expect(report).toContainText('ID補正: 4 件');
+  expect(await getEditorText(page)).toMatch(/^block New_Block "New Block" /m);
+  expect(await getEditorText(page)).not.toMatch(/^(?:block|group|note) __new_/m);
+  expect(await getEditorText(page)).not.toMatch(/-> __new_/);
+});
