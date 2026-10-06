@@ -909,7 +909,10 @@ function renderPropsPanel(){
   }
   if(!isBlock&&!isNote){
     html+=`<div class="prop-section"><div class="prop-label">枠線色</div><div class="color-grid">${COLORS.map(c=>`<div class="color-dot ${item.borderColor===c?'active':''}" style="background:${c}" onclick="setProp('border','${c}')"></div>`).join('')}</div><input class="prop-input" style="width:100px" value="${item.borderColor||''}" ${fieldAttrs('border',item)} placeholder="#RRGGBB"></div>`;
-    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button></div>`;
+    html+=`<div class="prop-section"><button class="prop-btn" onclick="addBlockInGroup()" style="background:#6366F1;color:#fff;width:100%" data-term="add-block-in-group" title="このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する">+ 中にブロック</button><button class="prop-btn" onclick="addGroupInGroup()" style="border-color:#818CF8;color:#C4B5FD;width:100%;margin-top:6px" data-term="add-group-in-group" title="このグループの中に、子のグループを空き位置に追加する(入れ子)">+ 中にグループ</button></div>`;
+  }
+  if(isBlock){
+    html+=`<div class="prop-section"><button class="prop-btn prop-btn-accent" onclick="addBlockBesideSel()" style="width:100%" data-term="add-block-sel" title="このブロックが group の中ならその group の中に、無ければ図の空きに、同じ大きさ・色で追加する">+ ブロック追加</button></div>`;
   }
   if(isBlock||isNote){
     html+=`<div class="prop-section"><div class="prop-label">角丸 (px)</div><div class="stepper" style="width:90px"><input class="prop-input" type="number" min="0" value="${item.round}" ${fieldAttrs('round',item)}><div class="step-col"><button class="step-btn up" onclick="nudgeRound(1)">▲</button><button class="step-btn dn" onclick="nudgeRound(-1)">▼</button></div></div></div>`;
@@ -1040,6 +1043,14 @@ function addBlock(){pushHistory();const id=`__new_${addCounter++}`,prev=lastAdde
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
   const L=window.StableBlockLayout;let prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxItems())[prev.id]!==gr.id)prev=L.lastChildBlock(boxItems(),gr);
   const p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+`\n${blockLine(id,p,prev)}\n`;lastAddedId=freshAddId=id;sel=[{type:"block",id}];refresh();}
+// 選んだ block からの「+ ブロック追加」: block が group の中なら同じ group の中へ(addBlockInGroup)、そうでなければツール欄と同じ(addBlock)
+function addBlockBesideSel(){const si=sel.length===1&&sel[0].type==='block'?sel[0]:null;if(!si)return;const pid=window.StableBlockLayout.parentMap(boxItems())[si.id];if(pid)addBlockInGroup(pid);else addBlock();}
+// 選んだ group の中に子 group を足す(入れ子)。置き場所・親の広がりは addBlockInGroup と同じ(core/layout placeInGroupFit)。既定 12x6
+function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;const gr=parsed.groupMap[gid];if(!gr)return;pushHistory();const id=`__new_${addCounter++}`;
+  const L=window.StableBlockLayout,prev=L.lastChildBlock(boxItems(),gr),w=12,h=6;
+  const p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+`
+group ${id} "New Group" at ${p.x},${p.y} size ${w}x${h} color=#F1F5F9 border=#94A3B8
+`;sel=[{type:"group",id}];refresh();}
 // group は既定 20x8。その行に入らなければ幅を 12 まで詰めて既存の図の脇の空きに置く(図の下端より下へ送らない。中に足す block で広がる)
 function addGroup(){pushHistory();const id=`__new_${addCounter++}`,p=freeSlot(20,8,12);dsl=dsl.trimEnd()+`\ngroup ${id} "New Group" at ${p.x},${p.y} size ${p.w||20}x8 color=#F1F5F9 border=#94A3B8\n`;sel=[{type:"group",id}];refresh();}
 // 選択をグループ化(core/layout groupPlanFor): 外接矩形に余白を付け、選んでいない要素の枠はまたがない。親 group の中なら親の内側に収め、足りなければ親が広がる。

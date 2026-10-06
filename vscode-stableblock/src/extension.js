@@ -768,9 +768,13 @@ function propsPanel(){
   if(isB||isN){
     h+='<div class="pl">Style</div><div style="display:flex;gap:3px">'+["solid","dashed","bold"].map(function(s){return'<button class="sbtn'+(it.style===s?' act':'')+'" onclick="sPr(\\'style\\',\\''+s+'\\')">'+window.StableBlockTerms.styleName(s,'en')+'</button>'}).join('')+'</div>';
   }
+  if(isB){
+    h+='<button class="pbtn" style="background:#6366F1;color:#fff;border-color:#6366F1;margin-top:8px" data-term="add-block-sel" onclick="addBlockBesideSel()" title="Add a block in the same group as this block (or at a free spot), same size and color">+ Block</button>';
+  }
   if(!isB&&!isN){
     h+='<div class="pl">Border</div><div class="cg">'+COLORS.map(function(c){return'<div class="cd'+(it.borderColor===c?' act':'')+'" style="background:'+c+'" onclick="sPr(\\'border\\',\\''+c+'\\')"></div>'}).join('')+'</div>';
     h+='<button class="pbtn" style="background:#6366F1;color:#fff;border-color:#6366F1;margin-top:8px" data-term="add-block-in-group" onclick="addBlockInGroup()" title="Add a block inside this group, right of its last block (same size and color)">+ Block in Group</button>';
+    h+='<button class="pbtn" style="border-color:#818CF8;color:#C4B5FD;margin-top:8px" data-term="add-group-in-group" onclick="addGroupInGroup()" title="Add a child group inside this group at a free spot (nested)">+ Group in Group</button>';
   }
   h+='<button class="pbtn" style="border-color:#c44;color:#faa;margin-top:12px" onclick="sDel()">Delete</button>';
   el.innerHTML=h;
@@ -864,6 +868,8 @@ function areaSlot(w,h,prev,gr){var L=window.StableBlockLayout,all=parsed.blocks.
 function outerGroup(r){return parsed.groups.filter(function(g){return isIn(r,g)}).sort(function(a,b){return b.w*b.h-a.w*a.h})[0]||null;}
 function addBlock(){pushH();var id="__new_"+(addC++),prev=(lastAddedId&&parsed.blockMap[lastAddedId])||null;var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev&&(outerGroup(prev)||prev),null);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
 function addBlockInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout;var prev=lastAddedId&&parsed.blockMap[lastAddedId];if(!prev||L.parentMap(boxIt())[prev.id]!==gr.id)prev=L.lastChildBlock(boxIt(),gr);var p=areaSlot(prev?prev.w:8,prev?prev.h:3,prev,gr);dsl=dsl.trimEnd()+"\\n"+blockLine(id,p,prev)+"\\n";lastAddedId=freshId=id;sel=[{type:"block",id:id}];go();notify();}
+function addBlockBesideSel(){var si=sel.length===1&&sel[0].type==='block'?sel[0]:null;if(!si)return;var pid=window.StableBlockLayout.parentMap(boxIt())[si.id];if(pid)addBlockInGroup(pid);else addBlock();}
+function addGroupInGroup(gid){if(!gid&&sel.length===1&&sel[0].type==='group')gid=sel[0].id;var gr=parsed.groupMap[gid];if(!gr)return;pushH();var id="__new_"+(addC++);var L=window.StableBlockLayout,prev=L.lastChildBlock(boxIt(),gr),w=12,h=6;var p=areaSlot(w,h,prev,gr);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+w+'x'+h+' color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 function addGroup(){pushH();var id="__new_"+(addC++),p=freeSlot(20,8,12);dsl=dsl.trimEnd()+"\\ngroup "+id+' "New Group" at '+p.x+','+p.y+' size '+(p.w||20)+'x8 color=#F1F5F9 border=#94A3B8\\n';sel=[{type:"group",id:id}];go();notify();}
 // Link-add (core/select linkAddKey): with 1 block selected, Tab adds a block linked from it (column to its right, core/layout placeBeside),
 // Ctrl+Enter a sibling linked from the same sources (below it); same size / colors, then its label is edited in place. In a group it joins that group (core/layout growGroupFor)
