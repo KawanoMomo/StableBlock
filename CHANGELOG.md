@@ -2,6 +2,10 @@
 
 All notable changes to StableBlock will be documented in this file.
 
+## v4.0
+
+メジャー: 前メジャー v3.0 以降の done 28 件(中身は loop/releases/v4.0.md)。
+
 ## [Unreleased]
 
 - BLK-owner-20261007-0726-1: 「はみ出したら自動で広げる」を外した図で、空きの無い group に「+ 中にブロック」「+ 中にグループ」「+ ブロック追加」・Tab / Ctrl+Enter で足すと、group の外の別の場所へ黙って置かず、group の列にはみ出して置き、プレビューの上端に「group「A」に入り切らず…」と group の名前とともに出る。「「A」を選ぶ」から H(W)を 1 回広げれば中に入り知らせは消える。はみ出す先がほかの要素に重なるなら足さずに理由を出す。VSCode 拡張も同じ文を通知に出す
