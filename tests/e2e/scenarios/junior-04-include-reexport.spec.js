@@ -40,7 +40,7 @@ test('junior-04: 共有部を include した図の画布を広げると、透過
 
 // PNG の ▾「コピー」は画面の見た目のまま: 「◎ 未接続」で薄めた要素はコピーした画像でも同じ薄さ、薄めていないときは同じ色
 // (選択の枠・グリッドの点・表示倍率は入らない)。クリップボードの画像と画面のスクリーンショットの同じ場所の色を比べる(BLK-human-20261012-1432-1)
-test('junior-04: PNG の ▾「コピー」でクリップボードに入る画像は、通常表示でも「◎ 未接続」の薄めでも画面と同じ色になる', async ({ page }) => {
+test('junior-04: PNG の ▾「コピー」でクリップボードに入る画像は、通常表示でも「◎ 未接続」の薄めでも画面と同じ色になり、「PNG」の保存もそのコピーと同じ', async ({ page }) => {
   // OS のクリップボードには触らず、画面が navigator.clipboard.write に渡した画像を受け取る
   await page.addInitScript(() => { window.__clip = []; if (navigator.clipboard) navigator.clipboard.write = async items => { window.__clip.push(items); }; });
   await bootPlain(page);
@@ -94,6 +94,17 @@ test('junior-04: PNG の ▾「コピー」でクリップボードに入る画�
   expect(near(h.lone, n.lone)).toBe(false);                  // 薄まった
   expect(near(h.lone, await screenColor('lone'))).toBe(true); // 画面と同じ薄さ
   expect(near(h.src, await screenColor('src'))).toBe(true);
+
+  // 「◎ 未接続」のまま「PNG」で保存した画像も、同じ画面のコピーと同じ大きさ・同じ色(BLK-human-20261012-1432-2)。SVG も同じ薄め
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-term="export-png"]').click()]);
+  const saved = fs.readFileSync(await dl.path()).toString('base64');
+  expect(pngSize(await dl.path())).toEqual({ w: 1280, h: 640 });
+  expect(Buffer.from(hl, 'base64').readUInt32BE(16)).toBe(1280);
+  expect(near(await pixel(saved, 120, 400), h.lone)).toBe(true);
+  expect(near(await pixel(saved, 120, 120), h.src)).toBe(true);
+  await expect(page.locator('#status-file-note')).toContainText('diagram.png で書き出した(画面の見た目のまま: 未接続を薄く)');
+  const [ds] = await Promise.all([page.waitForEvent('download'), page.locator('[data-term="export-svg"]').click()]);
+  expect(fs.readFileSync(await ds.path(), 'utf8')).toMatch(/data-id="lone"[^>]*opacity="0\.15"/);
 
   // 「◎ 未接続」を戻せば、コピーも元の色に戻る
   await page.locator('#hl-btn').click();

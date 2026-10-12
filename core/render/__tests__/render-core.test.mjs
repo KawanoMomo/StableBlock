@@ -87,15 +87,22 @@ test('PNGをコピー(viewExportSvg)は見たまま: 薄め・注釈を隠すは
   assert.equal(exportSvg(parsed, L, measure), base);
 });
 
-test('HTML 版と VSCode 拡張の「PNGをコピー」は画面の薄め・注釈の表示を viewExportSvg に渡す', () => {
-  for (const f of ['stableblock.html', 'vscode-stableblock/src/extension.js']) {
+test('HTML 版と VSCode 拡張の表示中の図 1 枚の書き出し(SVG / PNG / 透過PNG / PNGをコピー)は画面の薄め・注釈の表示を viewExportSvg に渡す', () => {
+  const fns = { 'stableblock.html': ['exportSVG', 'exportPNG', 'exportPNGTransparent', 'copyPNG'], 'vscode-stableblock/src/extension.js': ['exportSVG', 'exportPNG', 'exportPNGT', 'copyPNG'] };
+  for (const f of Object.keys(fns)) {
     const src = read(f);
-    const copy = src.slice(src.indexOf('function copyPNG'));
-    assert.match(copy.slice(0, copy.indexOf('\n')), /viewSvgText\(\)/, f + ' の PNGをコピー');
+    for (const fn of fns[f]) {
+      const body = src.slice(src.indexOf(`function ${fn}(`));
+      assert.match(body.slice(0, body.indexOf('\n')), /viewSvgText\(\)/, `${f} の ${fn}`);
+    }
     const view = src.slice(src.indexOf('function viewSvgText'));
     assert.match(view.slice(0, view.indexOf('\n')), /StableBlockRender\.viewExportSvg\(parsed,\{highlight.*search:.*showAnnotations:?/, f + ' の見たまま');
   }
   assert.match(read('vscode-stableblock/src/extension.js'), /renderSvg, exportSvg, viewExportSvg \}/);
+  // 一括書き出し(画面に出ていない図も含む)は本文だけの絵のまま
+  const html = read('stableblock.html');
+  assert.match(html, /zip\.file\(name,exportSvgText\(p\)\)/);
+  assert.match(html, /await pngCanvas\(fmt==='png-transparent',p\)/);
 });
 
 test('画面の描画は状態を映す(倍率・選択のハンドル・グリッド・薄め)', () => {
