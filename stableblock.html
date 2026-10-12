@@ -245,7 +245,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
   <div class="logo">
     <div class="logo-icon">◆</div>
     <span class="logo-text">StableBlock</span>
-    <span class="badge">v4.0</span>
+    <span class="badge">v4.1</span>
   </div>
   <div class="toolbar">
     <button class="tb" data-term="zoom-out" onclick="setZoom(-1)" title="縮小する">−</button>
@@ -262,9 +262,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
     <button class="tb tb-anno-active" data-term="anno" id="anno-btn" onclick="toggleAnnotations()" title="注釈を表示する/隠す(N キー)。表示中の注釈はそのままクリックで選べる">◇ 注釈</button>
     <button class="tb" data-term="fix-id" id="fix-id-btn" onclick="fixIds()" title="仮の ID(__new_)のままの要素に、ラベルから ID を一括で付ける(表記はラベルのまま、接続も追従)。英数字の無いラベルはプロパティ欄の ID で付ける">ID補正</button>
     <div class="sep"></div>
-    <button class="tb tb-accent" data-term="export-svg" onclick="exportSVG()" title="SVG で書き出す">SVG</button>
-    <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)">▾</button>
-    <div id="png-menu" role="menu" hidden><div class="em-head">PNG(表示中の図)</div><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGTransparent)" title="背景を透過した PNG で書き出す">透過PNG</button><button class="tb tb-accent" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="PNG 画像をクリップボードにコピーする">コピー</button></div>
+    <button class="tb tb-accent" data-term="export-svg" onclick="exportSVG()" title="SVG で書き出す(画面の薄め・注釈の表示のまま)">SVG</button>
+    <button class="tb tb-accent tb-split-l" data-term="export-png" onclick="exportPNG()" title="PNG で書き出す(画面の薄め・注釈の表示のまま)">PNG</button><button class="tb tb-accent tb-split-r" data-term="png-more" id="png-more" aria-haspopup="menu" aria-label="PNG のほかの出し方" onclick="openPngMenu(this)" title="PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)">▾</button>
+    <div id="png-menu" role="menu" hidden><div class="em-head">PNG(表示中の図)</div><button class="tb tb-accent" role="menuitem" data-term="export-png-transparent" onclick="pngMenuDo(exportPNGTransparent)" title="背景を透過した PNG で書き出す(画面の薄め・注釈の表示のまま)">透過PNG</button><button class="tb tb-accent" role="menuitem" data-term="copy-png" onclick="pngMenuDo(copyPNG)" title="画面の見た目(未接続・検索の薄め、注釈の表示)のまま PNG 画像をクリップボードにコピーする">コピー</button></div>
     <button class="tb tb-accent" data-term="export-xlsx" onclick="exportXlsx()" title="Excel(.xlsx)で書き出す">Excel</button>
     <button class="tb tb-accent" data-term="export-mermaid" onclick="exportMermaid()" title="Mermaid(.mmd)で書き出す">Mermaid</button>
     <button class="tb tb-accent tb-more" data-term="export-all" onclick="openExportAll(this)" title="一緒に読み込んだ全部の図を書き出す。形式を選ぶと 1 枚ずつ include を解決して 1 つの zip で保存する" hidden>一括 ▾</button>
@@ -317,7 +317,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
 // ═══════════════════════════════════════════════
 // State
 // ═══════════════════════════════════════════════
-let dsl = `# StableBlock v4.0
+let dsl = `# StableBlock v4.1
 @canvas width=960 height=520 grid=20
 
 # Application
@@ -1276,13 +1276,16 @@ function newDiagram(){syncLoaded();const others=Object.keys(includeFiles).length
   if(others)pushHistoryAll();else pushHistory();
   dsl=EMPTY_DSL;dslFile=key;delete posFloorsBy[key];if(key){includeFiles[key]=dsl;loadedTexts[key]=null;}
   sel=[];lastAddedId=freshAddId=null;lastPaste=null;addCounter=1;setSbFileName(key?baseName(key):'diagram.sb');refresh(true);fitView();}
-// 書き出し(SVG / PNG / 透過PNG / PNGをコピー)は本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
+// 一括書き出しは本文だけで決まる絵(core/render exportSvg)。画面の選択・ハンドル・グリッド・薄め・表示倍率は入らない
 function exportSvgText(p=parsed){return p?window.StableBlockRender.exportSvg(p,window.StableBlockLabel,measureLabel,SVG_FONT):null;}
-function exportSVG(){if(nameGate(exportSVG))return;const svg=exportSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した');showExportReport('SVG',includeDrops());}
-function pngCanvas(transparent,p=parsed){const data=exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(window.StableBlockLabel.drawArea(p));return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
-function exportPNG(){if(nameGate(exportPNG))return;pngCanvas(false).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));savedNote(exportName('png'),'書き出した');showExportReport('PNG',includeDrops());}});}
-function exportPNGTransparent(){if(nameGate(exportPNGTransparent))return;pngCanvas(true).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));savedNote(exportName('png','_transparent'),'書き出した');showExportReport('PNG',includeDrops());}});}
-function copyPNG(){pngCanvas(false).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);});showExportReport('PNG',includeDrops());});}
+// 表示中の図 1 枚の書き出し(SVG / PNG / 透過PNG / PNGをコピー)は見たまま(core/render viewExportSvg): 「◎ 未接続」・検索の薄めと注釈の表示切替は画面どおり、選択・ハンドル・グリッド・表示倍率は入らない
+function viewSvgText(){return parsed?window.StableBlockRender.viewExportSvg(parsed,{highlight,search:searchQuery,showAnnotations},window.StableBlockLabel,measureLabel,SVG_FONT):null;}
+function viewNote(){const s=[highlight&&'未接続を薄く',searchQuery.trim()&&'検索の薄め',!showAnnotations&&'注釈を隠す'].filter(Boolean);return s.length?`(画面の見た目のまま: ${s.join('・')})`:'';}
+function exportSVG(){if(nameGate(exportSVG))return;const svg=viewSvgText();if(!svg)return;download(exportName('svg'),'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));savedNote(exportName('svg'),'書き出した'+viewNote());showExportReport('SVG',includeDrops());}
+function pngCanvas(transparent,p=parsed,svgText){const data=svgText!==undefined?svgText:exportSvgText(p);if(!data)return Promise.resolve(null);const size=window.StableBlockRender.exportPngSize(window.StableBlockLabel.drawArea(p));return new Promise(r=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=size.width;c.height=size.height;const ctx=c.getContext('2d');if(!transparent){ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);}ctx.drawImage(img,0,0,c.width,c.height);r(c);};img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(data)));});}
+function exportPNG(){if(nameGate(exportPNG))return;const note=viewNote();pngCanvas(false,parsed,viewSvgText()).then(c=>{if(c){download(exportName('png'),c.toDataURL('image/png'));savedNote(exportName('png'),'書き出した'+note);showExportReport('PNG',includeDrops());}});}
+function exportPNGTransparent(){if(nameGate(exportPNGTransparent))return;const note=viewNote();pngCanvas(true,parsed,viewSvgText()).then(c=>{if(c){download(exportName('png','_transparent'),c.toDataURL('image/png'));savedNote(exportName('png','_transparent'),'書き出した'+note);showExportReport('PNG',includeDrops());}});}
+function copyPNG(){const note=viewNote();pngCanvas(false,parsed,viewSvgText()).then(c=>{if(!c)return;c.toBlob(blob=>{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(()=>{fileNote={text:`PNG をクリップボードにコピーした${note}`};renderStatus();},()=>{fileNote={err:true,text:'クリップボードにコピーできなかった(ブラウザがクリップボードへの書き込みを許していない)'};renderStatus();});});showExportReport('PNG',includeDrops());});}
 async function exportXlsx(){if(nameGate(exportXlsx))return;if(!parsed){alert('図がパースされていません');return;}if(!window.StableBlockExcel||!window.JSZip){alert('Excel エクスポート用モジュールがまだ読み込まれていません');return;}if(!window.StableBlockExcelReady){alert('Excel テンプレートをロード中です。少し待ってから再試行してください');return;}try{const bytes=await window.StableBlockExcel.renderXlsx(parsed,{JSZip:window.JSZip,templateFiles:window.StableBlockTemplateFiles,L:window.StableBlockLabel,measure:measureLabel});const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});const url=URL.createObjectURL(blob);download(exportName('xlsx'),url);setTimeout(()=>URL.revokeObjectURL(url),1000);savedNote(exportName('xlsx'),'書き出した');showExportReport('Excel',[...includeDrops(),...window.StableBlockExcel.listXlsxDrops(parsed)]);}catch(e){alert('Excel エクスポート失敗: '+e.message);console.error(e);}}
 // バイト列で読み、UTF-8 の本文と先頭の BOM の有無に分ける(core/check decodeSbBytes)。読めなければ null
 function readFileText(file){return new Promise(r=>{const rd=new FileReader();rd.onload=ev=>r(window.StableBlockCheck.decodeSbBytes(new Uint8Array(ev.target.result)));rd.onerror=()=>r(null);rd.readAsArrayBuffer(file);});}

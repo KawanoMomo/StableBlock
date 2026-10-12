@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as L from '../../label/label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
-import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch, linkedIds, unlinkedBlocks } from '../render-core.mjs';
+import { renderSvg, exportSvg, viewExportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch, linkedIds, unlinkedBlocks } from '../render-core.mjs';
 import { buildRenderCoreBrowser } from '../../excel/build-browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -64,6 +64,45 @@ test('画面の状態(選択・倍率・検索・未接続を薄く・注釈を�
     assert.notEqual(screen, base, '画面は状態を映す');
     assert.equal(exportSvg(parsed, L, measure), base);
   }
+});
+
+test('PNGをコピー(viewExportSvg)は見たまま: 薄め・注釈を隠すは画面どおり、選択・ハンドル・グリッド・倍率・スナップガイドは入らない', () => {
+  const base = exportSvg(parsed, L, measure);
+  // 薄めも注釈を隠すことも無い画面では書き出しとバイト一致(選択・倍率・グリッドを変えても)
+  assert.equal(viewExportSvg(parsed, { zoom: 1.25, sel: [{ type: 'block', id: 'ui' }], grid: true }, L, measure), base);
+  assert.equal(viewExportSvg(parsed, null, L, measure), base);
+  // 「◎ 未接続」: 画面と同じ要素が同じ不透明度で薄まる(大きさは @canvas の寸法のまま)
+  const hlView = { zoom: 1.25, sel: [{ type: 'block', id: 'ui' }], grid: true, highlight: true, snapGuides: [{ x1: 0, y1: 60, x2: 960, y2: 60 }] };
+  const hl = viewExportSvg(parsed, hlView, L, measure);
+  const dims = s => [...s.matchAll(/data-id="([^"]+)"[^>]*opacity="(0\.(?:15|2))"/g)].map(m => m[1] + ':' + m[2]);
+  assert.deepEqual(dims(hl), dims(renderSvg(parsed, hlView, L, measure)));
+  assert.deepEqual(dims(hl), ['solo:0.15']);
+  assert.match(hl, /^<svg width="960" height="520" viewBox="0 0 960 520"/);
+  assert.doesNotMatch(hl, /data-resize|url\(#gd\)|<pattern|cursor:|#6366F1|rgba\(99,102,241|<line /);
+  // 検索の薄め・注釈を隠すも画面どおり
+  const sv = viewExportSvg(parsed, { search: 'ui', showAnnotations: false }, L, measure);
+  assert.match(sv, /data-id="logic"[^>]*opacity="0.2"/);
+  assert.doesNotMatch(sv, /data-id="memo"/);
+  // 書き出し(SVG / PNG / 透過PNG)は変わらず本文だけ
+  assert.equal(exportSvg(parsed, L, measure), base);
+});
+
+test('HTML 版と VSCode 拡張の表示中の図 1 枚の書き出し(SVG / PNG / 透過PNG / PNGをコピー)は画面の薄め・注釈の表示を viewExportSvg に渡す', () => {
+  const fns = { 'stableblock.html': ['exportSVG', 'exportPNG', 'exportPNGTransparent', 'copyPNG'], 'vscode-stableblock/src/extension.js': ['exportSVG', 'exportPNG', 'exportPNGT', 'copyPNG'] };
+  for (const f of Object.keys(fns)) {
+    const src = read(f);
+    for (const fn of fns[f]) {
+      const body = src.slice(src.indexOf(`function ${fn}(`));
+      assert.match(body.slice(0, body.indexOf('\n')), /viewSvgText\(\)/, `${f} の ${fn}`);
+    }
+    const view = src.slice(src.indexOf('function viewSvgText'));
+    assert.match(view.slice(0, view.indexOf('\n')), /StableBlockRender\.viewExportSvg\(parsed,\{highlight.*search:.*showAnnotations:?/, f + ' の見たまま');
+  }
+  assert.match(read('vscode-stableblock/src/extension.js'), /renderSvg, exportSvg, viewExportSvg \}/);
+  // 一括書き出し(画面に出ていない図も含む)は本文だけの絵のまま
+  const html = read('stableblock.html');
+  assert.match(html, /zip\.file\(name,exportSvgText\(p\)\)/);
+  assert.match(html, /await pngCanvas\(fmt==='png-transparent',p\)/);
 });
 
 test('画面の描画は状態を映す(倍率・選択のハンドル・グリッド・薄め)', () => {

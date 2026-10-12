@@ -38,6 +38,80 @@ test('junior-04: 共有部を include した図の画布を広げると、透過
   expect(pngSize(file)).toEqual({ w: 1920, h: 1560 });   // @canvas × 2。下半分が切れない
 });
 
+// PNG の ▾「コピー」は画面の見た目のまま: 「◎ 未接続」で薄めた要素はコピーした画像でも同じ薄さ、薄めていないときは同じ色
+// (選択の枠・グリッドの点・表示倍率は入らない)。クリップボードの画像と画面のスクリーンショットの同じ場所の色を比べる(BLK-human-20261012-1432-1)
+test('junior-04: PNG の ▾「コピー」でクリップボードに入る画像は、通常表示でも「◎ 未接続」の薄めでも画面と同じ色になり、「PNG」の保存もそのコピーと同じ', async ({ page }) => {
+  // OS のクリップボードには触らず、画面が navigator.clipboard.write に渡した画像を受け取る
+  await page.addInitScript(() => { window.__clip = []; if (navigator.clipboard) navigator.clipboard.write = async items => { window.__clip.push(items); }; });
+  await bootPlain(page);
+  await page.locator('#editor').fill([
+    '@canvas width=640 height=320 grid=20',
+    'block src "Src" at 2,2 size 8x4',
+    'block dst "Dst" at 16,2 size 8x4',
+    'block lone "Lone" at 2,9 size 8x4',
+    'src -> dst',
+  ].join('\n'));
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
+  // 色を見る場所: block の左上寄り(名前の文字を避ける)。図の座標(px)
+  const spots = { src: [60, 60], lone: [60, 200] };
+  async function screenColor(id) {
+    const r = await svg.locator(`g[data-type="block"][data-id="${id}"] rect`).first().boundingBox();
+    const [x, y] = spots[id], k = r.width / 160;                    // block 幅 8 マス = 160px
+    const bx = r.x + (x - 40) * k, by = r.y + (y - (id === 'lone' ? 180 : 40)) * k;
+    const shot = await page.screenshot({ clip: { x: Math.round(bx), y: Math.round(by), width: 1, height: 1 } });
+    return pixel(shot.toString('base64'), 0, 0);
+  }
+  async function pixel(b64, x, y) {
+    return page.evaluate(([b, px, py]) => new Promise(res => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0); res([...ctx.getImageData(px, py, 1, 1).data].slice(0, 3)); }; img.src = 'data:image/png;base64,' + b; }), [b64, x, y]);
+  }
+  async function copyAndRead() {
+    const before = await page.evaluate(() => window.__clip.length);
+    await page.locator('#png-more').click();
+    await page.getByRole('menuitem', { name: 'コピー', exact: true }).click();
+    await page.waitForFunction(k => window.__clip.length > k, before);
+    await expect(page.locator('#status-file-note')).toContainText('PNG をクリップボードにコピーした');
+    const b64 = await page.evaluate(async () => {
+      const blob = await window.__clip[window.__clip.length - 1][0].getType('image/png');
+      return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
+    });
+    return b64;
+  }
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 10);
+
+  // 通常表示: コピーの色 = 画面の色(PNG は @canvas × 2 の画素)
+  const normal = await copyAndRead();
+  const n = { src: await pixel(normal, 120, 120), lone: await pixel(normal, 120, 400) };
+  expect(near(n.src, await screenColor('src'))).toBe(true);
+  expect(near(n.lone, await screenColor('lone'))).toBe(true);
+
+  // 「◎ 未接続」: 接続の無い Lone だけが画面でもコピーでも薄まる
+  await page.locator('#hl-btn').click();
+  const hl = await copyAndRead();
+  await expect(page.locator('#status-file-note')).toContainText('画面の見た目のまま: 未接続を薄く');
+  const h = { src: await pixel(hl, 120, 120), lone: await pixel(hl, 120, 400) };
+  expect(near(h.src, n.src)).toBe(true);                     // 接続のある block は薄まらない
+  expect(near(h.lone, n.lone)).toBe(false);                  // 薄まった
+  expect(near(h.lone, await screenColor('lone'))).toBe(true); // 画面と同じ薄さ
+  expect(near(h.src, await screenColor('src'))).toBe(true);
+
+  // 「◎ 未接続」のまま「PNG」で保存した画像も、同じ画面のコピーと同じ大きさ・同じ色(BLK-human-20261012-1432-2)。SVG も同じ薄め
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-term="export-png"]').click()]);
+  const saved = fs.readFileSync(await dl.path()).toString('base64');
+  expect(pngSize(await dl.path())).toEqual({ w: 1280, h: 640 });
+  expect(Buffer.from(hl, 'base64').readUInt32BE(16)).toBe(1280);
+  expect(near(await pixel(saved, 120, 400), h.lone)).toBe(true);
+  expect(near(await pixel(saved, 120, 120), h.src)).toBe(true);
+  await expect(page.locator('#status-file-note')).toContainText('diagram.png で書き出した(画面の見た目のまま: 未接続を薄く)');
+  const [ds] = await Promise.all([page.waitForEvent('download'), page.locator('[data-term="export-svg"]').click()]);
+  expect(fs.readFileSync(await ds.path(), 'utf8')).toMatch(/data-id="lone"[^>]*opacity="0\.15"/);
+
+  // 「◎ 未接続」を戻せば、コピーも元の色に戻る
+  await page.locator('#hl-btn').click();
+  const back = await copyAndRead();
+  expect(near(await pixel(back, 120, 400), n.lone)).toBe(true);
+});
+
 test('junior-04: 共有部の block を選ぶと、この図から動かせない理由と定義の場所が出て、そのファイルを開いて直せる', async ({ page }) => {
   await bootPlain(page);
   await importSb(page, [MAIN, COMMON]);
