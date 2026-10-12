@@ -1,5 +1,5 @@
 // StableBlock の図の描画(SVG 文字列)。HTML 版 / VSCode 拡張 Webview の画面と書き出し(SVG / PNG / 透過PNG / PNGをコピー)が
-// 同じ関数を使う。browser 版は core/excel/build-browser.mjs が render-core.browser.js を生成する(window.StableBlockRender)。
+// 同じ関数を使う(PNGをコピー は見たままの viewExportSvg)。browser 版は core/excel/build-browser.mjs が render-core.browser.js を生成する(window.StableBlockRender)。
 // DOM API は使用禁止 — node --test で検証する純粋関数のみ。接続の端点・線の形・ラベルの置き場所は core/label の関数を
 // 引数 L で受け取る(browser 版は window.StableBlockLabel、node は label-core.mjs の名前空間)。measure はラベル文字列の幅(px)。
 //
@@ -9,6 +9,7 @@
 //   marks({ items: [ID], conns: ['from->to'] }。見比べる画面の「変わった要素」の印: 要素に橙の破線枠、接続に橙の太線を重ねる)
 // 書き出し(exportSvg)はこれらを持ち込まない: 選択・ハンドル・スナップガイド・グリッド・薄め無し、注釈は本文どおり全部、
 // 大きさは @canvas の寸法(倍率 1。原点より左・上の要素があればその分だけ左・上へ広げる。core/label の drawArea)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
+// 「PNGをコピー」は見たまま(viewExportSvg): 薄め・注釈の表示切替だけを画面から持ち込む
 
 const RD_FONT = "'IBM Plex Sans','Noto Sans JP',sans-serif";
 const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2, RD_MARK = '#F59E0B';
@@ -233,4 +234,15 @@ export function renderSvg(parsed, view, L, measure) {
 // 注釈の表示切替・表示倍率を持ち込まない)。大きさは描く範囲(@canvas の寸法と、原点より左・上の要素)
 export function exportSvg(parsed, L, measure, font) {
   return renderSvg(parsed, { zoom: 1, grid: false, interactive: false, showAnnotations: true, font }, L, measure);
+}
+
+// 見たままの書き出し(PNGをコピー): 画面で見えている薄め(「◎ 未接続」・検索)と注釈の表示切替は持ち込み、
+// 選択の枠・ハンドル・スナップガイド・グリッドの点・見比べの印・表示倍率は持ち込まない(大きさは exportSvg と同じ描く範囲)。
+// 薄めも注釈を隠すことも無い画面では exportSvg とバイト一致
+export function viewExportSvg(parsed, view, L, measure, font) {
+  const v = view || {};
+  return renderSvg(parsed, {
+    zoom: 1, grid: false, interactive: false, font,
+    highlight: !!v.highlight, search: v.search || '', showAnnotations: v.showAnnotations !== false,
+  }, L, measure);
 }

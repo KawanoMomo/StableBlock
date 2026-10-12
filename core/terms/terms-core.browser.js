@@ -28,7 +28,7 @@ const SB_TERMS_TABLE = {
   // PNG は 1 つの入口: 「PNG」で保存し、横の ▾ から背景の透過・クリップボードへのコピーを選ぶ
   'png-more': { ja: ['▾', 'PNG のほかの出し方を選ぶ(透過PNG・クリップボードにコピー)'], en: ['▾', 'More PNG options (transparent background, copy to the clipboard)'] },
   'export-png-transparent': { ja: ['透過PNG', '背景を透過した PNG で書き出す'], en: ['Save with transparent background', 'Save as PNG with a transparent background'] },
-  'copy-png': { ja: ['コピー', 'PNG 画像をクリップボードにコピーする'], en: ['Copy to clipboard', 'Copy the diagram to the clipboard as PNG'] },
+  'copy-png': { ja: ['コピー', '画面の見た目(未接続・検索の薄め、注釈の表示)のまま PNG 画像をクリップボードにコピーする'], en: ['Copy to clipboard', 'Copy the diagram to the clipboard as PNG, as shown (dimming and note visibility kept)'] },
   'export-xlsx': { ja: ['Excel', 'Excel(.xlsx)で書き出す'], en: ['Excel', 'Save as Excel (.xlsx)'] },
   'export-mermaid': { ja: ['Mermaid', 'Mermaid(.mmd)で書き出す'], en: ['Mermaid', 'Save as Mermaid (.mmd)'] },
   // 一緒に読み込んだ図が 2 枚以上のときだけ書き出しの並びの後ろに出る「一括 ▾」と、その選択肢(形式ごとに 1 つの zip)
