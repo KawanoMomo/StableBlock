@@ -177,3 +177,38 @@ test('porter-06: ラベルの " は SVG / Mermaid / Excel に引用符のまま�
   const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
   expect(xml).toContain('<a:t>Block &quot;quoted&quot; label</a:t>');
 });
+
+// 原点より左上(座標が負)の要素がある図: SVG / PNG は描く範囲を左・上へ広げて欠けずに描き、Excel は図全体を右下へずらして
+// シートの中に置く(接続も接着される)。Mermaid にも要素と接続が残る(BLK-porter-20260930-0509)
+test('porter-06: 負の座標の要素も SVG / PNG / Excel / Mermaid で欠けない', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const src = path.join(dir, 'negative.sb');
+  fs.writeFileSync(src, [
+    '@canvas width=320 height=200 grid=20',
+    'group g "旧系統" at -6,-2 size 8x5',
+    'block a "A" at -2,1 size 5x3',
+    'block b "B" at 6,1 size 5x3',
+    'note n "移設予定" at 12,-1 size 3x1',
+    'a -> b "req"',
+  ].join('\n') + '\n');
+  await bootPlain(page);
+  await importSb(page, src);
+  const svgText = fs.readFileSync(await download(page, 'SVG', dir), 'utf8');
+  expect(svgText).toMatch(/^<svg width="440" height="240" viewBox="-120 -40 440 240"/);
+  for (const id of ['g', 'a', 'b', 'n']) expect(svgText).toContain(`data-id="${id}"`);
+  expect(pngSize(await download(page, 'PNG', dir))).toEqual({ w: 880, h: 480 });
+
+  const zip = await JSZip.loadAsync(fs.readFileSync(await download(page, 'Excel', dir)));
+  const xml = await zip.file('xl/drawings/drawing1.xml').async('string');
+  const pos = [...xml.matchAll(/<xdr:pos x="(-?\d+)" y="(-?\d+)"\/>/g)].map(m => [+m[1], +m[2]]);
+  expect(pos.length).toBeGreaterThanOrEqual(5);
+  for (const [x, y] of pos) expect(x >= 0 && y >= 0, `シートの外: ${x},${y}`).toBe(true);
+  for (const n of ['group:g', 'block:a', 'block:b', 'note:n']) expect(xml).toContain(`name="${n}"`);
+  const cxn = xml.match(/<xdr:cxnSp macro="">([\s\S]*?)<\/xdr:cxnSp>/);
+  expect(cxn, '接続が Excel に無い').not.toBeNull();
+  expect(cxn[1]).toMatch(/<a:stCxn id="\d+"/);
+
+  const mmd = fs.readFileSync(await download(page, 'Mermaid', dir), 'utf8');
+  for (const t of ['旧系統', '"A"', '"B"', '移設予定']) expect(mmd).toContain(t);
+  expect(mmd).toMatch(/a\s*-->/);
+});

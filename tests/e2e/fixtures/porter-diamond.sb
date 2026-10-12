@@ -1,0 +1,4 @@
+@canvas width=520 height=260 grid=20
+@include "shared/diamond-a.sb"
+@include "shared/diamond-b.sb"
+ua -> ub "sync"

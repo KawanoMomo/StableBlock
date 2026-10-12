@@ -124,6 +124,11 @@ export function buildTermsCoreBrowser(source) {
   return buildBrowserGlobal(source, 'StableBlockTerms', 'terms-core.mjs');
 }
 
+// diff-core は定数(GIT_LOG_ARGS)も export するので、export const も外してから包む
+export function buildDiffCoreBrowser(source) {
+  return buildBrowserGlobal(source.replace(/^export\s+const\s+/gm, 'const '), 'StableBlockDiff', 'diff-core.mjs');
+}
+
 /**
  * CLI entry point.
  */
@@ -170,6 +175,11 @@ function main() {
   const OUT_RENDER_BROWSER = join(__dirname, '..', 'render', 'render-core.browser.js');
   writeFileSync(OUT_RENDER_BROWSER, buildRenderCoreBrowser(readFileSync(RENDER_SRC, 'utf8')));
   console.log(`Wrote: ${OUT_RENDER_BROWSER}`);
+
+  const DIFF_SRC = join(__dirname, '..', 'diff', 'diff-core.mjs');
+  const OUT_DIFF_BROWSER = join(__dirname, '..', 'diff', 'diff-core.browser.js');
+  writeFileSync(OUT_DIFF_BROWSER, buildDiffCoreBrowser(readFileSync(DIFF_SRC, 'utf8')));
+  console.log(`Wrote: ${OUT_DIFF_BROWSER}`);
 }
 
 // Only run main when invoked as a CLI script

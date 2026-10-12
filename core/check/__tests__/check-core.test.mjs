@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote } from '../check-core.mjs';
+import { explainLine, findOverlaps, findOutside, segmentHitsRect, findCrossings, findStraddles, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeDrops, includeOrigin, includedItemNote, findIdSpellingVariants } from '../check-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
 import { connectionPaths, computePorts, pathPoints } from '../../label/label-core.mjs';
 
@@ -8,6 +8,32 @@ const check = (text, mode = 'curved') => {
   const p = parseDSL(text);
   return checkDiagram(p, text.split('\n'), connectionPaths(p, mode));
 };
+
+test('findIdSpellingVariants: 図をまたぐ大文字小文字・区切りの違いを両方の図名・行付きで 1 件ずつ出す', () => {
+  const diagram = (file, text) => ({ file, blocks: parseDSL(text).blocks });
+  const pairs = ds => findIdSpellingVariants(ds).map(({ a, b }) => [a.id, a.file, a.line, b.id, b.file, b.line]);
+  // 2 つの図に UartDrv と uartdrv → 1 件(同数なら先に現れた方が基準)
+  assert.deepEqual(pairs([
+    diagram('uart_swc.sb', 'block UartDrv "UART" at 1,1 size 4x2'),
+    diagram('junior/uart_swc.sb', 'block Os "OS" at 8,1 size 4x2\nblock uartdrv "UART" at 1,1 size 4x2'),
+  ]), [['uartdrv', 'junior/uart_swc.sb', 2, 'UartDrv', 'uart_swc.sb', 1]]);
+  // 多い書き方を基準にし、違う書き方の定義ごとに 1 件(総当たりにしない)。区切りだけの違いも同じ部品
+  assert.deepEqual(pairs([
+    diagram('a.sb', 'block rte "RTE" at 1,1 size 4x2'),
+    diagram('b.sb', 'block rte "RTE" at 1,1 size 4x2'),
+    diagram('c.sb', 'block RTE "RTE" at 1,1 size 4x2\nblock spi_drv "SPI" at 8,1 size 4x2'),
+    diagram('d.sb', 'block SpiDrv "SPI" at 1,1 size 4x2'),
+  ]), [['RTE', 'c.sb', 1, 'rte', 'a.sb', 1], ['SpiDrv', 'd.sb', 1, 'spi_drv', 'c.sb', 2]]);
+  // 同じ図の中の組も同じに扱う
+  assert.deepEqual(pairs([diagram('x.sb', 'block Hal "H" at 1,1 size 4x2\nblock HAL "H" at 8,1 size 4x2')]),
+    [['HAL', 'x.sb', 2, 'Hal', 'x.sb', 1]]);
+  // 完全に同じ ID・無関係な ID では出ない
+  assert.deepEqual(pairs([
+    diagram('a.sb', 'block Same_Id "A" at 1,1 size 4x2'),
+    diagram('b.sb', 'block Same_Id "B" at 1,1 size 4x2'),
+    diagram('c.sb', 'block unrelated "C" at 1,1 size 4x2'),
+  ]), []);
+});
 
 test('explainLine: キーワードの書き間違いを言い当てる', () => {
   assert.match(explainLine('blok b "B" at 8,1 size 4x2'), /「blok」.*block の書き間違い/);
@@ -101,6 +127,26 @@ test('findCrossings: 両端以外の block の上を通る接続を見つける(
   assert.match(d[0].msg, /接続「a -> c」の線が block「b」\(L2\)の上を横切る/);
   // 横にずらせば横切らない
   assert.deepEqual(check(text.replace('at 1,5', 'at 8,5'), 'straight'), []);
+});
+
+test('checkDiagram / checkIncluded: 直す相手の要素を pick に持つ(横切りは横切られた block、重なりは 2 つ、接続の診断は両端)', () => {
+  // エラー欄で行を押すと選ぶ要素(BLK-junior-20260929-2012-friction)。行の要素(接続)ではなく、動かす block を指す
+  const text = [
+    'block a "A" at 1,1 size 4x2', 'block b "B" at 1,5 size 4x2', 'block c "C" at 1,9 size 4x2',
+    'block d "D" at 1,5 size 4x2', 'a -> c "x"', 'a -> c', 'block __new_1 "新" at 20,1 size 4x2',
+  ].join('\n');
+  const d = check(text, 'straight');
+  const pick = re => d.filter(x => re.test(x.msg)).map(x => x.pick);
+  assert.deepEqual(pick(/の上を横切る/), [['b'], ['d'], ['b'], ['d']]);
+  assert.deepEqual(pick(/に重なっている/), [['d', 'b']]);
+  assert.deepEqual(pick(/2 本目/), [['a', 'c']]);
+  assert.deepEqual(pick(/仮の ID/), [['__new_1']]);
+  // include 先の行から出た診断も pick を持ったまま @include 行に寄せる
+  const files = { 'common.sb': 'block rte "RTE" at 1,5 size 4x2\nblock rte2 "R2" at 1,5 size 4x2\n' };
+  const exp = expandIncludes('@include "common.sb"\nblock x "X" at 10,1 size 4x2\n', q => files[q] ?? null, 'a.sb');
+  const p = parseDSL(exp.text);
+  const ov = checkIncluded(p, exp, connectionPaths(p)).find(x => /重なっている/.test(x.msg));
+  assert.deepEqual([ov.line, ov.pick], [1, ['rte2', 'rte']]);
 });
 
 test('findCrossings: owner 批評の 2 列 4 段・3 本で、既定(曲線)の経路が別の block を横切るのを見つける', () => {
@@ -671,4 +717,202 @@ test('badAttrValues: 数の属性(round / 接続の width / @canvas の width・
   assert.deepEqual(badAttrValues('block', ' round=0'), []);
   assert.deepEqual(badAttrValues('conn', ' width=2.5'), []);
   assert.deepEqual(badAttrValues('canvas', ' width=0960 height=640 grid=20'), []);
+});
+
+// 一括書き出しの zip 名(BLK-junior-20260929-0605-wish): 形式だけの固定名だと、別の図の組を続けて書き出すと前の zip を上書きする
+import { bulkZipName, pickedFolderName } from '../check-core.mjs';
+
+test('bulkZipName: 主図が 1 枚ならその図名、共通部は数えない。別の組を続けて書き出すと別の名前になる', () => {
+  const common = 'block rte "RTE" at 8,1 size 4x2';
+  const swc = { 'uart_swc.sb': '@include "shared/common.sb"\nblock UartDrv "UART" at 1,1 size 4x2', 'common.sb': common };
+  const flow = { 'uart_dataflow.sb': '@include "shared/common.sb"\nblock tx "TX" at 1,1 size 4x2', 'common.sb': common };
+  assert.equal(bulkZipName(swc, 'xlsx'), 'uart_swc-xlsx.zip');
+  assert.equal(bulkZipName(flow, 'xlsx'), 'uart_dataflow-xlsx.zip');
+  assert.notEqual(bulkZipName(swc, 'xlsx'), bulkZipName(flow, 'xlsx'));
+  assert.equal(bulkZipName(swc, 'png-transparent'), 'uart_swc-png-transparent.zip');
+  assert.equal(bulkZipName({ 'sets/a.stableblock': 'block a "A" at 1,1 size 2x2' }, 'svg'), 'a-svg.zip');   // フォルダのパスは名前に入れない
+  assert.equal(bulkZipName(swc, 'xlsx', 'uart'), 'uart_swc-xlsx.zip');                                     // 主図 1 枚なら図名が先
+});
+
+test('bulkZipName: 主図が 2 枚以上ならフォルダ名、フォルダで読んでいなければ図名から組を区別する名前', () => {
+  const two = { 'uart_swc.sb': 'block a "A" at 1,1 size 2x2', 'uart_dataflow.sb': 'block b "B" at 1,1 size 2x2' };
+  assert.equal(bulkZipName(two, 'xlsx', 'uart-set'), 'uart-set-xlsx.zip');
+  assert.equal(bulkZipName(two, 'xlsx'), 'uart_swc+uart_dataflow-xlsx.zip');
+  const many = { 'spi_swc.sb': '@include "shared/common.sb"', 'can_swc.sb': '@include "shared/common.sb"', 'adc_swc.sb': '', 'common.sb': '' };
+  assert.equal(bulkZipName(many, 'svg'), 'spi_swc_他2枚-svg.zip');
+  assert.notEqual(bulkZipName(many, 'svg'), bulkZipName({ 'can_swc.sb': '', 'adc_swc.sb': '', 'gpio_swc.sb': '' }, 'svg'));
+  assert.equal(bulkZipName({ 'a.sb': '@include "b.sb"', 'b.sb': '@include "a.sb"' }, 'mermaid'), 'a-mermaid.zip');   // 循環は先頭の図名
+  assert.equal(bulkZipName({}, 'svg'), 'diagrams-svg.zip');
+});
+
+test('pickedFolderName: 全部の図のパスの先頭のフォルダが同じならその名前、ばらばら・フォルダ無しなら空', () => {
+  assert.equal(pickedFolderName([{ path: 'uart-set/uart_swc.sb' }, { path: 'uart-set/shared/common.sb' }]), 'uart-set');
+  assert.equal(pickedFolderName([{ path: 'a/x.sb' }, { path: 'b/y.sb' }]), '');
+  assert.equal(pickedFolderName([{ path: 'x.sb' }]), '');
+  assert.equal(pickedFolderName([]), '');
+});
+
+// 図の改名(BLK-primary-20260929-1747-friction): ステータスバーの図名から表示中の図の名前を変える。@include している図の行も書き換える
+import { planFileRename } from '../check-core.mjs';
+
+test('planFileRename: 新規の図は名前だけ変わり、拡張子を打たなければ元の拡張子を付ける', () => {
+  assert.deepEqual(planFileRename({}, null, 'i2c_swc', 'diagram.sb'), { name: 'i2c_swc.sb', key: null, changes: [] });
+  assert.deepEqual(planFileRename({}, null, ' i2c_swc.sb ', 'diagram.sb'), { name: 'i2c_swc.sb', key: null, changes: [] });
+  assert.equal(planFileRename({ 'Adc.stableblock': '' }, 'Adc.stableblock', 'Dma').name, 'Dma.stableblock');
+  assert.deepEqual(planFileRename({}, null, 'diagram', 'diagram.sb'), { same: true });
+});
+
+test('planFileRename: 空・使えない文字・同じ名前の図が既にあれば理由を返して変えない', () => {
+  const files = { 'uart_swc.sb': 'A', 'spi_swc.sb': 'B' };
+  assert.equal(planFileRename(files, 'uart_swc.sb', '  ').error, '名前が空');
+  assert.match(planFileRename(files, 'uart_swc.sb', 'a/b').error, /使えない文字/);
+  assert.match(planFileRename(files, 'uart_swc.sb', 'x:y').error, /使えない文字/);
+  assert.equal(planFileRename(files, 'uart_swc.sb', 'spi_swc').error, '同じ名前の図「spi_swc.sb」が既に読み込まれている');
+  assert.match(planFileRename(files, 'uart_swc.sb', 'SPI_SWC.sb').error, /同じ名前の図/);   // Windows では大文字小文字だけの違いも同じファイル
+  assert.match(planFileRename(files, null, 'spi_swc', 'diagram.sb').error, /同じ名前の図/);     // 新規の図も読み込んだ図と同じ名前にしない
+  assert.equal(planFileRename(files, 'uart_swc.sb', 'UART_SWC').name, 'UART_SWC.sb');            // 自分の大文字小文字だけの改名はできる
+});
+
+test('planFileRename: 読み込んだ図はフォルダを保ってキーを変え、@include している図の行のファイル名だけを書き換える', () => {
+  const files = {
+    'sys/uart_swc.sb': '@canvas width=400 height=200\n@include "../shared/common.sb"\nblock u "U" at 1,1 size 2x2',
+    'sys/spi_swc.sb': '@include "../shared/common.sb"\r\nblock s "S" at 1,1 size 2x2\r\n',
+    'shared/common.sb': 'block rte "RTE" at 8,1 size 4x2',
+    'shared/other.sb': 'block o "O" at 1,1 size 2x2',
+  };
+  const plan = planFileRename(files, 'shared/common.sb', 'base_common');
+  assert.equal(plan.name, 'base_common.sb');
+  assert.equal(plan.key, 'shared/base_common.sb');
+  assert.deepEqual(plan.changes.map(c => [c.path, c.lines]), [['sys/uart_swc.sb', [2]], ['sys/spi_swc.sb', [1]]]);
+  assert.equal(plan.changes[0].text, '@canvas width=400 height=200\n@include "../shared/base_common.sb"\nblock u "U" at 1,1 size 2x2');
+  assert.equal(plan.changes[1].text, '@include "../shared/base_common.sb"\r\nblock s "S" at 1,1 size 2x2\r\n');   // CRLF はそのまま
+  // 書き換えた行は新しいキーを指す(改名後の files で include のエラーが出ない)
+  const next = { 'sys/uart_swc.sb': plan.changes[0].text, 'sys/spi_swc.sb': plan.changes[1].text, 'shared/base_common.sb': files['shared/common.sb'], 'shared/other.sb': '' };
+  assert.deepEqual(expandIncludes(next['sys/uart_swc.sb'], p => next[p] ?? null, 'sys/uart_swc.sb').missing, []);
+  // 「.sb 読込」でファイルを選んだ図(フォルダを持たない)は名前で当てた include の行も書き換える
+  const picked = { 'uart_swc.sb': '@include "shared/common.sb"', 'common.sb': 'block rte "RTE" at 8,1 size 4x2' };
+  const p2 = planFileRename(picked, 'common.sb', 'i2c_common');
+  assert.equal(p2.key, 'i2c_common.sb');
+  assert.deepEqual(p2.changes, [{ path: 'uart_swc.sb', lines: [1], text: '@include "shared/i2c_common.sb"' }]);
+  // 取り込まれていない図の改名は、ほかの図を変えない
+  assert.deepEqual(planFileRename(files, 'sys/uart_swc.sb', 'i2c_swc'), { name: 'i2c_swc.sb', key: 'sys/i2c_swc.sb', changes: [] });
+});
+
+import { decodeSbBytes, sbSaveText } from '../check-core.mjs';
+
+test('decodeSbBytes / sbSaveText: 先頭の BOM の有無を覚えて本文から外し、保存で戻すとバイト一致', () => {
+  const body = '# 図\r\nblock a "制御" at 1,1 size 8x3\r\n';
+  const withBom = new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(body)]);
+  const r = decodeSbBytes(withBom);
+  assert.equal(r.bom, true);
+  assert.equal(r.text, body);
+  assert.deepEqual([...new TextEncoder().encode(sbSaveText(r.text, r.bom))], [...withBom]);
+  const plain = decodeSbBytes(new TextEncoder().encode(body));
+  assert.equal(plain.bom, false);
+  assert.equal(sbSaveText(plain.text, plain.bom), body);
+  // BOM の後ろのもう 1 つの U+FEFF は本文の文字として残す(2 つとも落とさない)
+  const two = decodeSbBytes(new Uint8Array([0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF, 0x61]));
+  assert.equal(two.bom, true);
+  assert.equal(two.text, '\uFEFFa');
+  assert.deepEqual(decodeSbBytes(new Uint8Array([])), { text: '', bom: false });
+});
+
+import { replacedDiagram } from '../check-core.mjs';
+
+test('replacedDiagram: 読んだときの要素の ID が 1 つも残らず今は要素がある = 中身を全部入れ替えた', () => {
+  const loaded = '# 先輩の図\n@canvas width=660 height=240 grid=20\nblock UartDrv "UART" at 1,1 size 8x3\n\tgroup g "G" at 0,0 size 20x8\nUartDrv -> x\n';
+  assert.equal(replacedDiagram(loaded, '@canvas width=660 height=240 grid=20\nblock I2cDrv "I2C" at 1,1 size 8x3\n'), true);
+  assert.equal(replacedDiagram(loaded, loaded.replace('at 1,1', 'at 2,1')), false);                 // 直しただけ
+  assert.equal(replacedDiagram(loaded, loaded + 'block I2cDrv "I2C" at 1,5 size 8x3\n'), false);   // 足しただけ
+  assert.equal(replacedDiagram(loaded, '@canvas width=660 height=240 grid=20\n'), false);          // 白紙化の途中(まだ何も無い)
+  assert.equal(replacedDiagram('@canvas width=660 height=240 grid=20\n', 'block a "A" at 1,1 size 8x3\n'), false);   // 元が空の図
+  assert.equal(replacedDiagram(null, 'block a "A" at 1,1 size 8x3\n'), false);
+});
+
+// 共通部を分けたあとの差し替え: 取り込み中の行で取り込み先を替え、同じ共通部を取り込んでいる図すべてに当てる。
+// 「すべてに取り込む」の相手は表示中の図と同じ共通部を取り込んでいる図(BLK-primary-20260929-2108-friction)
+import { includeSwapCandidates, planIncludeSwap, includeAddTargets } from '../check-core.mjs';
+
+const SPLIT = () => ({
+  'spi_swc.sb': '# SPI\r\n@canvas width=960\r\n@include "shared/common.sb"\r\nblock SpiDrv "S" at 1,1 size 4x2\r\nSpiDrv -> rte\r\nrte -> hal\r\n',
+  'can_swc.sb': '# CAN\n@canvas width=960\n@include "shared/common.sb"\nblock CanDrv "C" at 1,1 size 4x2\nCanDrv -> rte\n',
+  'spi_dataflow.sb': '# SPI DF\n@canvas width=960\nblock SpiDrv "S" at 1,1 size 4x2\nblock rte "RTE" at 8,1 size 4x2\nSpiDrv -> rte\n',
+  'can_dataflow.sb': '# CAN DF\n@canvas width=960\nblock CanDrv "C" at 1,1 size 4x2\nblock candata "D" at 8,1 size 4x2\nCanDrv -> candata\n',
+  'common.sb': 'block rte "RTE" at 20,2 size 8x3\nblock os "OS" at 20,8 size 8x3\nblock hal "HAL" at 20,14 size 8x3\nrte -> os',
+  'rte.sb': 'block rte "RTE" at 20,2 size 8x3\nblock os "OS" at 20,8 size 8x3\nrte -> os',
+  'hal.sb': 'block hal "HAL" at 20,14 size 8x3',
+});
+
+test('includeCandidates: 候補の図を誰も取り込んでいなくても、隣の共通部の書き方のフォルダ(shared/)を共通部らしい図に付ける', () => {
+  const c = includeCandidates(SPLIT(), 'spi_swc.sb');
+  assert.equal(c.find(x => x.file === 'rte.sb').path, 'shared/rte.sb');
+  assert.equal(c.find(x => x.file === 'hal.sb').path, 'shared/hal.sb');
+  // 使う側の図(ほかの構成図・データフロー図)には付けない
+  assert.equal(c.find(x => x.file === 'can_swc.sb').path, 'can_swc.sb');
+  assert.equal(c.find(x => x.file === 'spi_dataflow.sb').path, 'spi_dataflow.sb');
+  assert.equal(c.find(x => x.file === 'can_dataflow.sb').path, 'can_dataflow.sb');
+});
+
+test('includeSwapCandidates: 取り込み中の行の替え先は今の取り込み先以外で、行のフォルダ部分のまま名前だけ替えたパス', () => {
+  const c = includeSwapCandidates(SPLIT(), 'spi_swc.sb', 3);
+  assert.deepEqual(c.slice(0, 2), [{ file: 'rte.sb', path: 'shared/rte.sb' }, { file: 'hal.sb', path: 'shared/hal.sb' }]);
+  assert.ok(!c.some(x => x.file === 'common.sb' || x.file === 'spi_swc.sb'));
+  assert.deepEqual(includeSwapCandidates(SPLIT(), 'spi_swc.sb', 4), []);   // @include 行でなければ無い
+});
+
+test('planIncludeSwap: 行をその場で替え(差分 1 行・改行コードそのまま)、all なら同じ共通部を取り込んでいる図すべてに当てる。使っていない図は変えない', () => {
+  const files = SPLIT();
+  const one = planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', false);
+  assert.equal(one.from, 'common.sb');
+  assert.deepEqual(one.changes.map(c => [c.path, c.lines]), [['spi_swc.sb', [3]]]);
+  assert.equal(one.changes[0].text, files['spi_swc.sb'].replace('shared/common.sb', 'shared/rte.sb'));
+  const all = planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', true);
+  assert.deepEqual(all.changes.map(c => c.path), ['spi_swc.sb', 'can_swc.sb']);
+  assert.equal(all.changes[1].text, files['can_swc.sb'].replace('shared/common.sb', 'shared/rte.sb'));
+  assert.deepEqual(all.skipped, []);
+  // 既に替え先を取り込んでいる図・替え先が取り込んでいる図(循環)は替えない
+  const f2 = { ...files, 'can_swc.sb': files['can_swc.sb'] + '@include "shared/rte.sb"\n' };
+  assert.deepEqual(planIncludeSwap(f2, 'spi_swc.sb', 3, 'rte.sb', true).skipped, ['can_swc.sb']);
+  // 同じ図・行でない行は何もしない
+  assert.deepEqual(planIncludeSwap(files, 'spi_swc.sb', 3, 'common.sb', true).changes, []);
+  assert.deepEqual(planIncludeSwap(files, 'spi_swc.sb', 5, 'rte.sb', true).changes, []);
+});
+
+test('includeAddTargets: 「すべてに取り込む」の相手は表示中の図と同じ共通部を取り込んでいる図。何も取り込んでいなければ全部', () => {
+  const files = SPLIT();
+  for (const c of planIncludeSwap(files, 'spi_swc.sb', 3, 'rte.sb', true).changes) files[c.path] = c.text;
+  // 足す候補の先頭は足りない hal を定義する hal.sb(rte・os を重ねて持ち込む common.sb より先)
+  assert.deepEqual(includeCandidates(files, 'spi_swc.sb')[0], { file: 'hal.sb', path: 'shared/hal.sb' });
+  assert.deepEqual(includeAddTargets(files, 'spi_swc.sb', 'hal.sb'), ['spi_swc.sb', 'can_swc.sb']);
+  assert.deepEqual(includeAddTargets(files, 'spi_dataflow.sb', 'hal.sb'), ['spi_swc.sb', 'can_swc.sb', 'spi_dataflow.sb', 'can_dataflow.sb', 'common.sb', 'rte.sb']);
+  // 足すと 2 行が元の位置に並ぶ(最後の @include の後)
+  assert.equal(addIncludeInDsl(files['spi_swc.sb'], 'shared/hal.sb').split('\r\n').slice(2, 4).join('|'), '@include "shared/rte.sb"|@include "shared/hal.sb"');
+});
+
+test('expandIncludes: 同じファイルが 2 経路から来ても(ダイヤモンド)最初の 1 回だけ展開し、自分自身との ID 重複・重なりにしない', () => {
+  const files = {
+    'shared12/base.sb': 'block clk "Clock" at 1,1 size 6x3\nblock rst "Reset" at 1,6 size 6x3\n',
+    'shared12/a.sb': '@include "base.sb"\nblock ua "Unit A" at 9,6 size 6x3\nclk -> ua\n',
+    'shared12/b.sb': '@include "base.sb"\nblock ub "Unit B" at 17,6 size 6x3\nclk -> ub\n',
+  };
+  const text = '@canvas width=520 height=260 grid=20\n@include "shared12/a.sb"\n@include "shared12/b.sb"\nua -> ub "sync"\n';
+  const exp = expandIncludes(text, p => files[p] ?? null, 'd.sb');
+  assert.equal(exp.missing.length, 0);
+  const p = parseDSL(exp.text);
+  assert.equal(p.blocks.length, 4);                                            // clk・rst・ua・ub(base.sb は 1 回)
+  assert.equal(exp.lines.filter(l => l.startsWith('block clk ')).length, 1);
+  const d = checkIncluded(p, exp, connectionPaths(p), {});
+  assert.deepEqual(d.filter(x => /重複|重なって/.test(x.msg)), []);
+  // 同じファイルを続けて 2 回書いても 1 回だけ。読めない include 先は 2 回書けば 2 回知らせる
+  assert.equal(expandIncludes('@include "shared12/base.sb"\n@include "shared12/base.sb"\n', p => files[p] ?? null, 'd.sb').lines.filter(l => l.startsWith('block ')).length, 2);
+  assert.equal(expandIncludes('@include "x.sb"\n@include "x.sb"\n', () => null, 'd.sb').missing.length, 2);
+});
+
+import { newLoadedKey } from '../check-core.mjs';
+
+test('newLoadedKey: 「新規」の図は表示中の図のフォルダの diagram.sb、同じ名前があれば diagram-2.sb …', () => {
+  assert.equal(newLoadedKey({ 'wdg_swc.sb': '', 'rte.sb': '' }), 'diagram.sb');
+  assert.equal(newLoadedKey({ 'primary/wdg_swc.sb': '', 'primary/shared/rte.sb': '' }, 'primary/'), 'primary/diagram.sb');
+  assert.equal(newLoadedKey({ 'diagram.sb': '', 'Diagram-2.sb': '' }), 'diagram-3.sb');
+  assert.equal(newLoadedKey({}), 'diagram.sb');
 });

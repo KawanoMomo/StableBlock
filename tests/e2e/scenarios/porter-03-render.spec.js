@@ -60,3 +60,197 @@ test('porter-03: 取れない lpos / round / width は既定で描かれ、そ�
   await page.locator('#editor').fill(original.toString('utf8').replace('round=big', 'round=8').replace('lpos=diagonal', 'lpos=top').replace('width=thick', 'width=2'));
   await expect(bar).toBeHidden();
 });
+
+// 接続のラベルを style= / lpos= / color= / width= の後ろ・間に書いた図(既存の設計書の書き方): 警告無しでラベルが描かれ、無変更で Export → バイト一致。
+// 接続パネルでラベルを直すと、書いた場所のまま変わる(先頭に 2 つ目を足さない)(BLK-porter-20260929-2029)
+test('porter-03: 属性の後ろに書いた接続のラベルも描かれ、無変更で Export → バイト一致、直すとその場所で変わる', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'trailing-label.sb');
+  const text = [
+    '@canvas grid=10 width=500 height=240',
+    'block x "X" at 2,2 size 6x3',
+    'block y "Y" at 12,2 size 6x3',
+    'block z "Z" at 2,12 size 6x3',
+    'x -> y width=2 style=dashed color=#EF4444 "先"',
+    'y -> z "後" color=#10B981 width=3',
+    'z -> x route=ortho lpos=bottom "戻り"  # 注 "memo"',
+  ].join('\n') + '\n';
+  fs.writeFileSync(SRC, text);
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(3);
+  for (const l of ['先', '後', '戻り']) await expect(svg.locator('text', { hasText: new RegExp(`^${l}$`) })).toHaveCount(1);
+  await expect(svg.locator('text', { hasText: 'memo' })).toHaveCount(0);   // 行末コメントの中の引用はラベルではない
+  await expect(page.locator('#error-bar')).toBeHidden();
+  await expect(page.locator('#status')).not.toContainText('Warn:');
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+
+  // x と y を選び、接続パネルのラベル欄で直す: 属性の後ろのラベルがその場所で変わる
+  await svg.locator('g[data-type="block"][data-id="x"]').click();
+  await svg.locator('g[data-type="block"][data-id="y"]').click({ modifiers: ['Shift'] });
+  const label = page.locator('#prop-content .conn-label');
+  await expect(label).toHaveValue('先');
+  await label.fill('先頭');
+  await expect.poll(() => page.locator('#editor').inputValue()).toContain('x -> y width=2 style=dashed color=#EF4444 "先頭"\n');
+  await expect(svg.locator('text', { hasText: /^先頭$/ })).toHaveCount(1);
+});
+
+// 接続ラベルの `\n`(README の「ラベル内改行」): block・note と同じく改行して描き、「\n」の文字を描かない。白地は 2 行を覆う。
+// 無変更で Export → バイト一致(本文の \n はそのまま)(BLK-porter-20260930-0109)
+test('porter-03: 接続ラベルの \\n は改行して描かれ、白地が 2 行を覆い、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'conn-label-newline.sb');
+  fs.writeFileSync(SRC, [
+    '@canvas width=400 height=160 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'a -> b "call\\nasync"',
+  ].join('\n') + '\n');
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  const lbl = svg.locator('g.conn-label');
+  await expect(lbl).toHaveCount(1);
+  await expect(lbl.locator('text')).toHaveText(['call', 'async']);
+  await expect(svg.locator('text', { hasText: '\\' })).toHaveCount(0);
+  await expect(page.locator('#error-bar')).toBeHidden();
+  await expect(page.locator('#status')).not.toContainText('Warn:');
+  // 実際の描画: 2 行目は 1 行目の下にあり、白地が両方の行を覆う
+  const t1 = await lbl.locator('text').nth(0).boundingBox();
+  const t2 = await lbl.locator('text').nth(1).boundingBox();
+  const bg = await lbl.locator('rect').boundingBox();
+  expect(t2.y).toBeGreaterThan(t1.y + t1.height / 2);
+  for (const t of [t1, t2]) {
+    expect(t.y).toBeGreaterThanOrEqual(bg.y - 1);
+    expect(t.y + t.height).toBeLessThanOrEqual(bg.y + bg.height + 1);
+    expect(t.x + t.width).toBeLessThanOrEqual(bg.x + bg.width + 1);
+  }
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+});
+
+// 原点より左上(座標が負)の group / block / note(部署の旧図にある配置): エラー行にせず描き、接続も描く。その行は警告欄に
+// 「原点より左・上に出ている」と出る。無変更で Export → バイト一致。ドラッグで動かすと座標 1 行だけが変わり、0 へ飛ばない(BLK-porter-20260930-0509)
+test('porter-03: 負の座標の group / block / note が描かれ、接続も描かれ、警告欄に行番号付きで出て、無変更で Export → バイト一致', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'negative-coordinates.sb');
+  fs.writeFileSync(SRC, [
+    '@canvas width=320 height=200 grid=20',
+    'group g "旧系統" at -6,-2 size 3x2',
+    'block a "A" at -2,1 size 5x3',
+    'block b "B" at 6,1 size 5x3',
+    'note n "移設予定" at 12,-1 size 3x1',
+    'a -> b "req"',
+  ].join('\n') + '\n');
+  const original = fs.readFileSync(SRC);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  await expect(svg.locator('g[data-type="group"][data-id="g"]')).toHaveCount(1);
+  await expect(svg.locator('g[data-type="block"]')).toHaveCount(2);
+  await expect(svg.locator('g[data-type="note"][data-id="n"]')).toHaveCount(1);
+  await expect(svg.locator('path[marker-end]')).toHaveCount(1);
+  await expect(svg.locator('g.conn-label')).toHaveText(['req']);
+  // 描く範囲が原点より左・上へ広がり、要素が画面の中にある(切れていない)
+  await expect(svg).toHaveAttribute('viewBox', '-120 -40 440 240');
+  const box = await svg.boundingBox();
+  for (const id of ['g', 'a', 'n']) {
+    const r = await svg.locator(`g[data-id="${id}"] rect`).first().boundingBox();
+    expect(r.x, id).toBeGreaterThanOrEqual(box.x - 1);
+    expect(r.y, id).toBeGreaterThanOrEqual(box.y - 1);
+  }
+  const bar = page.locator('#error-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar).toContainText('L2: group「g」は原点より左へ 6・上へ 2 グリッド出ている(座標が負)');
+  await expect(bar).toContainText('L3: block「a」は原点より左へ 2 グリッド出ている');
+  await expect(bar).toContainText('L5: note「n」は原点より上へ 1 グリッド出ている');
+  await expect(bar).not.toContainText('読めない');
+  await expect(bar).not.toContainText('ID の block / note が無い');
+  await expect(page.locator('#status')).not.toContainText('Error');
+
+  const { bytes } = await exportSb(page, dir);
+  expect(bytes.equals(original), '保存した .sb が元と違う').toBe(true);
+
+  // block a を右へ 1 グリッド強ドラッグ: a の行の座標だけが変わる(0 へ飛ばない)
+  const a = svg.locator('g[data-type="block"][data-id="a"] rect');
+  const ra = await a.boundingBox();
+  const zoom = ra.width / 100;   // 5 グリッド × 20px
+  await page.mouse.move(ra.x + ra.width / 2, ra.y + ra.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(ra.x + ra.width / 2 + 10 * zoom, ra.y + ra.height / 2, { steps: 3 });
+  await page.mouse.move(ra.x + ra.width / 2 + 22 * zoom, ra.y + ra.height / 2, { steps: 3 });
+  await page.mouse.up();
+  const after = (await page.locator('#editor').inputValue()).split('\n');
+  const before = original.toString('utf8').split('\n');
+  const changed = before.map((l, i) => (l !== after[i] ? i : -1)).filter(i => i >= 0);
+  expect(changed).toEqual([2]);
+  expect(after[2]).toBe('block a "A" at -1,1 size 5x3');
+
+  // ← で読み込んだときの位置(-2,1)まで戻せ、それより左へは出ない。本文は元とバイト一致に戻る(BLK-owner-20260930-0608-1)
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#editor')).toHaveValue(/block a "A" at -2,1 size 5x3/);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  expect(await page.locator('#editor').inputValue()).toBe(original.toString('utf8'));
+});
+
+// 原点より左に出ている group を動かすと、枠と中身が同じ量だけ動く。左へは読み込んだ位置で枠も中身も止まり、
+// 右へ動かした後は読み込んだ位置まで戻せる。0 以上で読んだ block は負にならない(BLK-owner-20260930-0608-1)
+test('porter-03: 負の座標の group は中身ごと同じ量だけ動き、読み込んだ位置までは戻せ、それより左へは出ない', async ({ page }, testInfo) => {
+  const dir = saveDir(testInfo);
+  const SRC = path.join(dir, 'negative-group.sb');
+  const text = [
+    '@canvas width=640 height=320 grid=20',
+    'group g "G" at -2,1 size 12x6',
+    'block k "K" at 3,2 size 4x2',
+    'block m "M" at 16,2 size 4x2',
+    'k -> m',
+  ].join('\n') + '\n';
+  fs.writeFileSync(SRC, text);
+  await bootPlain(page);
+  await importSb(page, SRC);
+  const svg = page.locator('#svg-wrap svg');
+  const editor = page.locator('#editor');
+  const lines = async () => (await editor.inputValue()).split('\n');
+  const dragGroup = async grids => {
+    const r = await svg.locator('g[data-type="group"][data-id="g"] rect').first().boundingBox();
+    const zoom = r.width / 240;   // 12 グリッド × 20px
+    const x0 = r.x + 30, y0 = r.y + 8;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + grids * 10 * zoom, y0, { steps: 3 });
+    await page.mouse.move(x0 + grids * 20 * zoom + 2 * zoom, y0, { steps: 3 });
+    await page.mouse.up();
+  };
+
+  // 見出しを掴んで左へ 3: 枠は読み込んだ位置(-2)より左へ出ないので、中身も動かない
+  await dragGroup(-3);
+  expect(await editor.inputValue()).toBe(text);
+  // 選んだまま ← を 5 回: 何も動かない(k だけが原点より左へ出ない)
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowLeft');
+  expect(await editor.inputValue()).toBe(text);
+
+  // 右へ 2: 枠と中身が同じ量だけ動き、変わるのは g と k の行だけ
+  await dragGroup(2);
+  let now = await lines();
+  expect(now[1]).toBe('group g "G" at 0,1 size 12x6');
+  expect(now[2]).toBe('block k "K" at 5,2 size 4x2');
+  expect(now.filter((l, i) => l !== text.split('\n')[i]).length).toBe(2);
+
+  // ← を 3 回: 2 回で読み込んだ位置へ戻り、3 回目は動かない。本文は元と一致
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowLeft');
+  expect(await editor.inputValue()).toBe(text);
+
+  // 0 以上で読んだ k だけを選んで ← を 5 回: 0 で止まり、負にならない
+  await svg.locator('g[data-type="block"][data-id="k"]').click();
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowLeft');
+  now = await lines();
+  expect(now[2]).toBe('block k "K" at 0,2 size 4x2');
+  expect(now[1]).toBe('group g "G" at -2,1 size 12x6');
+});

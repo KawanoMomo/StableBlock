@@ -65,3 +65,52 @@ test('junior-04: 共有部の block を選ぶと、この図から動かせな�
   await page.mouse.up();
   expect(await getEditorText(page)).not.toContain('block rte "RTE" at 20,2 ');
 });
+
+// 先輩の図と共通部を読み込んだまま「新規」で自分の図を起こすと、その図も一緒に開いている図の 1 枚になる。
+// 「一括 ▾」の見出しの枚数と zip に自分の図が入り、ステータスバーの図名の一覧から先輩の図と行き来できる(BLK-junior-20260930-0308)
+test('junior-04: 読み込んだ図のまま「新規」で起こして名前を付けた図は「一括 ▾」の枚数と zip に入り、図名の一覧から行き来できる', async ({ page }, testInfo) => {
+  const JSZip = require('jszip');
+  const WDT = path.join(FIXTURES, 'junior-wdt');
+  await bootPlain(page);
+  await importSb(page, [path.join(WDT, 'wdg_swc.sb'), path.join(WDT, 'shared', 'rte.sb'), path.join(WDT, 'shared', 'hal.sb')]);
+  const props = page.locator('#prop-content');
+  await page.getByRole('button', { name: '新規', exact: true }).click();
+  await expect(page.locator('#status-file')).toContainText('diagram.sb');
+  await expect(page.locator('#status-file')).toContainText('(4/4)');          // 一緒に開いている図の 4 枚目
+  await expect(page.locator('#status-file .status-dirty')).toHaveCount(1);     // まだ保存していない
+  await props.getByRole('button', { name: '取り込む', exact: true }).click();
+  await props.getByRole('button', { name: '取り込む', exact: true }).click();
+  await props.getByRole('button', { name: '+ グループ追加' }).click();
+  await page.keyboard.type('Watchdog');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  // 図名を付ける(ダブルクリック → 打って Enter)
+  await page.locator('#status-file').dblclick();
+  await page.locator('#status-file-name').fill('wdt_swc');
+  await page.locator('#status-file-name').press('Enter');
+  await expect(page.locator('#status-file')).toContainText('wdt_swc.sb');
+
+  // 一括 ▾: 見出しは 4 枚、zip に自分の図が入る
+  await page.locator('[data-term="export-all"]').click();
+  await expect(page.locator('#export-menu-head')).toHaveText('読み込んだ全部の図(4 枚)');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#export-menu [data-term="export-svg-all"]').click()]);
+  const file = path.join(saveDir(testInfo), dl.suggestedFilename());
+  await dl.saveAs(file);
+  const zip = await JSZip.loadAsync(fs.readFileSync(file));
+  const names = Object.keys(zip.files).map(n => n.split('/').pop()).sort();
+  expect(names).toEqual(['hal.svg', 'rte.svg', 'wdg_swc.svg', 'wdt_swc.svg']);
+  const mine = await zip.file(Object.keys(zip.files).find(n => n.endsWith('wdt_swc.svg'))).async('string');
+  expect(mine).toContain('Watchdog');
+  expect(mine).toContain('RTE');                                                // 共通部も解決して描く
+  await expect(page.locator('#export-report')).toContainText('4 枚');
+  await expect(page.locator('#bulk-missing')).toHaveCount(0);
+
+  // 図名の一覧から先輩の図を開き、自分の図へ戻れる(自分の図の中身はそのまま)
+  await page.locator('#status-file').click();
+  await page.locator('#search-hits .sh-file[data-path="wdg_swc.sb"]').click();
+  await expect(page.locator('#status-file')).toContainText('wdg_swc.sb');
+  await page.locator('#status-file').click();
+  await page.locator('#search-hits .sh-file[data-path="wdt_swc.sb"]').click();
+  await expect(page.locator('#status-file')).toContainText('wdt_swc.sb');
+  expect(await getEditorText(page)).toMatch(/^group Watchdog "Watchdog" /m);
+});

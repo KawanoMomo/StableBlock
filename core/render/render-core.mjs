@@ -5,12 +5,13 @@
 //
 // 画面の状態(view)は描画にだけ効き、本文は変えない:
 //   zoom(表示倍率)/ sel([{type,id}])/ highlight(未接続を薄く)/ search(検索語)/ showAnnotations(注釈の表示)/
-//   snapGuides([{x1,y1,x2,y2}])/ grid(背景の点)/ interactive(data-resize のハンドル・cursor)/ font
+//   snapGuides([{x1,y1,x2,y2}])/ grid(背景の点)/ interactive(data-resize のハンドル・cursor)/ font /
+//   marks({ items: [ID], conns: ['from->to'] }。見比べる画面の「変わった要素」の印: 要素に橙の破線枠、接続に橙の太線を重ねる)
 // 書き出し(exportSvg)はこれらを持ち込まない: 選択・ハンドル・スナップガイド・グリッド・薄め無し、注釈は本文どおり全部、
-// 大きさは @canvas の寸法(倍率 1)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
+// 大きさは @canvas の寸法(倍率 1。原点より左・上の要素があればその分だけ左・上へ広げる。core/label の drawArea)。同じ本文からは画面の状態に関わらずバイト一致の SVG になる。
 
 const RD_FONT = "'IBM Plex Sans','Noto Sans JP',sans-serif";
-const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2;
+const RD_DIM = 0.15, RD_SEARCH_DIM = 0.2, RD_MARK = '#F59E0B';
 
 function rdEsc(t) {
   return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -56,15 +57,36 @@ export function isAnnotationConnOf(parsed, c) {
   return !!(nm[c.from] || nm[c.to]);
 }
 
-// PNG の画素数: @canvas の寸法 × 固定の倍率 2(表示倍率・窓の大きさに依らない)
-export function exportPngSize(canvas) {
-  return { width: canvas.width * 2, height: canvas.height * 2 };
+// PNG の画素数: 描く範囲(core/label の drawArea。@canvas の寸法に、原点より左・上の要素の分を足したもの)× 固定の倍率 2
+// (表示倍率・窓の大きさに依らない)。{ width, height } を持つもの(drawArea の結果・@canvas)を受け取る
+export function exportPngSize(area) {
+  return { width: area.width * 2, height: area.height * 2 };
 }
 
-// 接続ラベル(置き場所 LL は core/label の placeLabels / labelLayout)。block より上の層に白地で描く
+// 描く範囲(px)。L(core/label)の drawArea。古い L で無ければ @canvas の寸法
+function rdArea(parsed, L) {
+  if (L && L.drawArea) return L.drawArea(parsed);
+  return { x: 0, y: 0, width: parsed.canvas.width, height: parsed.canvas.height };
+}
+
+// 接続ラベル(置き場所 LL は core/label の placeLabels / labelLayout)。block より上の層に白地で描く。
+// 本文の `\n` は block・note と同じく改行: 1 行ずつ <text> にし、行の塊の中心を LL.ty に置く(行の間隔 12px。白地は labelLayout が行の分だけ伸ばす)
 function rdLabelBox(c, LL) {
+  const lines = String(c.label).split('\\n');
   return `<rect x="${LL.bg.x}" y="${LL.bg.y}" width="${LL.bg.w}" height="${LL.bg.h}" rx="${LL.bg.rx}" fill="#FFFFFF" style="pointer-events:none"/>` +
-    `<text x="${LL.tx}" y="${LL.ty}" font-size="10" fill="${c.color}" text-anchor="${LL.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${rdEsc(c.label)}</text>`;
+    lines.map((line, li) => `<text x="${LL.tx}" y="${LL.ty + (li - (lines.length - 1) / 2) * 12}" font-size="10" fill="${c.color}" text-anchor="${LL.anchor}" dominant-baseline="central" font-weight="500" style="pointer-events:none">${rdEsc(line)}</text>`).join('');
+}
+
+// 「◎ 未接続」(H キー)の判定: 接続(注釈の破線も)の from / to に現れる ID の集合と、それに入らない block(接続が 1 本も無い)。
+// 画面の薄め(renderSvg の highlight)と図の検査(`npm run check` の info)が同じ関数を使う
+export function linkedIds(parsed) {
+  const ids = new Set();
+  (parsed.connections || []).forEach(c => { ids.add(c.from); ids.add(c.to); });
+  return ids;
+}
+export function unlinkedBlocks(parsed) {
+  const ids = linkedIds(parsed);
+  return (parsed.blocks || []).filter(b => !ids.has(b.id));
 }
 
 // 図を SVG 文字列にする。描画順: group → 通常の接続 → block → 接続ラベル → 注釈レイヤー → リサイズハンドル → スナップガイド
@@ -79,23 +101,25 @@ export function renderSvg(parsed, view, L, measure) {
   const grab = interactive ? ' style="cursor:grab"' : '';
   const route = c => L.connRoute(c, canvas);
   const opAttr = op => (op !== null ? ` opacity="${op}"` : '');
+  const mk = v.marks || null, mkItems = new Set(mk ? mk.items || [] : []), mkConns = new Set(mk ? mk.conns || [] : []);
+  const markConn = (c, pi) => (mkConns.has(`${c.from}->${c.to}`) ? `<path data-changed-conn="${rdEsc(`${c.from}->${c.to}`)}" d="${pi.d}" fill="none" stroke="${RD_MARK}" stroke-width="${Math.max(3, c.width + 2)}" opacity="0.7" style="pointer-events:none"/>` : '');
 
   let hlIds = null, hlGroups = null;
   if (v.highlight) {
-    hlIds = new Set();
-    connections.forEach(c => { hlIds.add(c.from); hlIds.add(c.to); });
+    hlIds = linkedIds(parsed);
     hlGroups = new Set();
     blocks.forEach(b => { if (hlIds.has(b.id)) groups.forEach(gr => { if (rdInside(b, gr)) hlGroups.add(gr.id); }); });
   }
   const normalConns = connections.filter(c => !isAnnotationConnOf(parsed, c));
   const annoConns = connections.filter(c => isAnnotationConnOf(parsed, c));
 
-  let s = `<svg width="${canvas.width * zoom}" height="${canvas.height * zoom}" viewBox="0 0 ${canvas.width} ${canvas.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:${font}">`;
+  const A = rdArea(parsed, L);
+  let s = `<svg width="${A.width * zoom}" height="${A.height * zoom}" viewBox="${A.x} ${A.y} ${A.width} ${A.height}" xmlns="http://www.w3.org/2000/svg" style="font-family:${font}">`;
   s += '<defs>';
   if (v.grid) s += `<pattern id="gd" width="${g}" height="${g}" patternUnits="userSpaceOnUse"><circle cx="${g / 2}" cy="${g / 2}" r="0.5" fill="#CBD5E1" opacity="0.5"/></pattern>`;
   connections.forEach((c, i) => { s += `<marker id="a${i}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,3.5 L0,7 Z" fill="${c.color}"/></marker>`; });
   s += '</defs>';
-  if (v.grid) s += '<rect width="100%" height="100%" fill="url(#gd)"/>';
+  if (v.grid) s += `<rect x="${A.x}" y="${A.y}" width="${A.width}" height="${A.height}" fill="url(#gd)"/>`;
 
   // Groups
   groups.forEach(gr => {
@@ -103,7 +127,11 @@ export function renderSvg(parsed, view, L, measure) {
     const op = hlIds && !hlGroups.has(gr.id) ? RD_DIM : q && !matchesSearchItem(gr, q) ? RD_SEARCH_DIM : null;
     s += `<g data-type="group" data-id="${gr.id}"${grab}${opAttr(op)}>`;
     s += `<rect x="${gr.x * g}" y="${gr.y * g}" width="${gr.w * g}" height="${gr.h * g}" fill="${gr.color}" stroke="${sl ? '#6366F1' : gr.borderColor}" stroke-width="${sl ? 3 : 1.5}" rx="8" opacity="0.85"${sl ? ' stroke-dasharray="8,4"' : ''}/>`;
-    s += `<text x="${gr.x * g + 8}" y="${gr.y * g + 14}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${rdEsc(gr.label)}</text></g>`;
+    // 本文の改行の印は block・note・接続と同じく改行(1 行ずつ <text>。Excel・Mermaid の書き出しと同じ行割り)
+    String(gr.label).split('\\n').forEach((line, li) => {
+      s += `<text x="${gr.x * g + 8}" y="${gr.y * g + 14 + li * 13}" font-size="11" font-weight="600" fill="${gr.borderColor}" opacity="0.9" style="pointer-events:none">${rdEsc(line)}</text>`;
+    });
+    s += '</g>';
   });
 
   // Normal connections
@@ -117,6 +145,7 @@ export function renderSvg(parsed, view, L, measure) {
     const pi = L.connPathInfo(p.fp, p.tp, p.fs, p.ts, route(c));
     s += `<g${opAttr(op)}>`;
     s += `<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}"${dash} marker-end="url(#a${ci})"${c.bidir ? ` marker-start="url(#a${ci})"` : ''}/>`;
+    s += markConn(c, pi);
     if (c.label) labelItems.push({ conn: c, mid: pi.mid, op });
     s += '</g>';
   });
@@ -151,7 +180,8 @@ export function renderSvg(parsed, view, L, measure) {
       const pi = L.connPathInfo(p.fp, p.tp, p.fs, p.ts, route(c));
       s += '<g>';
       s += `<path d="${pi.d}" fill="none" stroke="${c.color}" stroke-width="${c.width}" stroke-dasharray="6,3" marker-end="url(#a${ci})"${c.bidir ? ` marker-start="url(#a${ci})"` : ''}/>`;
-      if (c.label) s += rdLabelBox(c, L.labelLayout(pi.mid, c.lpos, measure(c.label)));
+      s += markConn(c, pi);
+      if (c.label) s += rdLabelBox(c, L.labelLayout(pi.mid, c.lpos, L.labelTextWidth(c.label, measure), L.labelLines(c.label).length));
       s += '</g>';
     });
     notes.forEach(n => {
@@ -168,6 +198,12 @@ export function renderSvg(parsed, view, L, measure) {
       s += '</g>';
     });
   }
+
+  // 見比べる画面の「変わった要素」の印(group / block / note の外側に橙の破線枠)
+  if (mkItems.size) [...groups, ...blocks, ...(showAnno ? notes : [])].forEach(it => {
+    if (!mkItems.has(it.id)) return;
+    s += `<rect data-changed="${rdEsc(it.id)}" x="${it.x * g - 4}" y="${it.y * g - 4}" width="${it.w * g + 8}" height="${it.h * g + 8}" fill="none" stroke="${RD_MARK}" stroke-width="2.5" stroke-dasharray="6,3" rx="8" style="pointer-events:none"/>`;
+  });
 
   // 選択中の要素のリサイズハンドル
   if (interactive) sel.forEach(si => {
@@ -194,7 +230,7 @@ export function renderSvg(parsed, view, L, measure) {
 }
 
 // 書き出し用の SVG: 本文だけで決まる(画面の選択・ハンドル・スナップガイド・グリッド・検索や「未接続を薄く」の薄め・
-// 注釈の表示切替・表示倍率を持ち込まない)。大きさは @canvas の寸法
+// 注釈の表示切替・表示倍率を持ち込まない)。大きさは描く範囲(@canvas の寸法と、原点より左・上の要素)
 export function exportSvg(parsed, L, measure, font) {
   return renderSvg(parsed, { zoom: 1, grid: false, interactive: false, showAnnotations: true, font }, L, measure);
 }

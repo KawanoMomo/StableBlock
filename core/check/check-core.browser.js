@@ -5,7 +5,7 @@
 // DOM API と import は使用禁止 — node --test で検証する純粋関数のみ。経路の点列は呼び出し側が
 // core/label/label-core.mjs の computePorts / pathPoints で作って渡す(描画と同じ計算)。
 //
-// 返す診断: { line, level: 'error' | 'warn', msg }。line は parse した本文の行番号(1 始まり)。
+// 返す診断: { line, level: 'error' | 'warn', msg, refs?, pick? }。line は parse した本文の行番号(1 始まり)。pick は直す相手の要素の ID(GUI で行を押すと選ぶ)。
 
 const KEYWORDS = ['block', 'group', 'note', '@canvas', '@include'];
 const BOX_FORM = { block: 'block ID "ラベル" at X,Y size WxH', group: 'group ID "ラベル" at X,Y size WxH', note: 'note ID "テキスト" at X,Y size WxH' };
@@ -28,8 +28,8 @@ const ATTR_VALUES = {
 
 // 属性を書く部分(block / note は size の後、接続はラベルの後、@canvas は行全体)。parser と同じ切り方
 const REST_RE = {
-  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
-  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+[\d.]+,[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  block: /^block\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+-?[\d.]+,-?[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
+  note: /^note\s+\S+\s+"(?:\\"|[^"])*"\s+at\s+-?[\d.]+,-?[\d.]+\s+size\s+[\d.]+x[\d.]+(.*)/,
   conn: /^\S+\s+(?:-->|->)\s+\S+\s*(?:"(?:\\"|[^"])*")?\s*(.*)/,
   canvas: /^@canvas(.*)/,
 };
@@ -92,7 +92,7 @@ function explainLine(raw) {
     const rest = s.slice(head.length).trim();
     if (!/^\S+/.test(rest) || /^"/.test(rest)) missing.push('ID');
     if (!/"[^"]*"/.test(s)) missing.push(kw === 'note' ? '"テキスト"(二重引用符で囲む)' : '"ラベル"(二重引用符で囲む)');
-    if (!/\bat\s+[\d.]+,[\d.]+/.test(s)) missing.push('at X,Y(座標は半角数字をカンマで区切る)');
+    if (!/\bat\s+-?[\d.]+,-?[\d.]+/.test(s)) missing.push('at X,Y(座標は半角数字をカンマで区切る)');
     if (!/\bsize\s+[\d.]+x[\d.]+/.test(s)) missing.push('size WxH(幅と高さを小文字の x で区切る)');
     if (head !== kw) return `「${head}」は小文字で ${kw} と書く。書式: ${BOX_FORM[kw]}`;
     if (missing.length) return `${kw} の ${missing.join('・')} が読めない。書式: ${BOX_FORM[kw]}`;
@@ -157,6 +157,18 @@ function findOutside(canvas, items) {
   return out;
 }
 
+// 原点より左・上(座標が負)にある block / group / note と、出ている量(グリッド)。読んで描く(描く範囲を左・上へ広げる。
+// core/label の drawArea)が、既存の図から持ち込んだ配置であることをその行で知らせる
+function findNegative(items) {
+  const out = [];
+  for (const it of items || []) {
+    if (!it) continue;
+    const left = it.x < 0 ? -it.x : 0, top = it.y < 0 ? -it.y : 0;
+    if (left || top) out.push({ item: it, left, top });
+  }
+  return out;
+}
+
 // 線分 p-q が矩形 r(px, {x,y,w,h})の内部を通るか(Liang-Barsky)
 function segmentHitsRect(p, q, r) {
   const dx = q.x - p.x, dy = q.y - p.y;
@@ -197,6 +209,7 @@ const connText = c => `${c.from} ${c.bidir ? '-->' : '->'} ${c.to}`;
 // 図全体の診断。lines: parse した本文の行配列(無ければ parser のメッセージをそのまま使う)。paths: findCrossings と同じ形(無ければ横切りは見ない)。labelIssues: label-core の labelIssues(無ければラベルは見ない)。
 // where: 本文の行番号 n を診断の文中でどう書くか(省略時は L{n}。@include を展開した本文では checkIncluded が元の場所で書く)。
 // 相手のある診断(重なり・またぎ・横切り・2 本目・ラベル・キャンバスの外)は refs に相手の行(本文の行番号)を持つ(どの図とどの図の間の診断かを includeImpact が見る)
+// 直す相手の要素が決まる診断は pick にその ID を持つ(GUI のエラー欄で行を押すと選ぶ要素。横切りは横切られた block、重なりは重なった 2 つ)
 function checkDiagram(parsed, lines, paths, labelIssues, where) {
   const ref = where || (n => `L${n}`);
   const out = [];
@@ -228,39 +241,43 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
       continue;
     }
     const grp = [c.from, c.to].filter(id => !has(id) && parsed.groupMap[id]);
-    if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない` });
+    if (grp.length) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」: ${grp.join('と')}は group。group への接続は描かれない`, pick: [c.from, c.to] });
     // 同じ向きの 2 本目だけを警告する。行き(a -> b)と戻り(b -> a)は別の線(BLK-owner-20260928-2255-2)。双方向(-->)は両方の向きを持つ
     const dirs = [c.from + '\u0000' + c.to].concat(c.bidir ? [c.to + '\u0000' + c.from] : []);
     const dup = dirs.find(k => seen[k]);
-    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]] });
+    if (dup) out.push({ line: c.line, level: 'warn', msg: `接続「${connText(c)}」は ${ref(seen[dup])} と同じ向きの 2 本目`, refs: [seen[dup]], pick: [c.from, c.to] });
     else dirs.forEach(k => { seen[k] = c.line; });
   }
   for (const { a, b } of findOverlaps(parsed.blocks || [])) {
     const [p, q] = a.line <= b.line ? [a, b] : [b, a];
-    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line] });
+    out.push({ line: q.line, level: 'warn', msg: `block「${q.id}」が block「${p.id}」(${ref(p.line)})に重なっている`, refs: [p.line], pick: [q.id, p.id] });
   }
   for (const { item, group } of findStraddles(parsed.blocks || [], parsed.groups || [])) {
-    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line] });
+    out.push({ line: item.line, level: 'warn', msg: `${(parsed.groups || []).includes(item) ? 'group' : 'block'}「${item.id}」が group「${group.id}」(${ref(group.line)})の枠をまたいでいる`, refs: [group.line], pick: [item.id] });
   }
   // 追加した要素の仮の ID(`__new_N`)が残っている: ラベルが日本語だけだと ID は自動で付かない。保存・レビューの前に名前を付ける
   for (const [kind, list] of [['block', parsed.blocks], ['group', parsed.groups], ['note', parsed.notes]]) {
     for (const it of list || []) {
       if (!String(it.id).startsWith('__new_')) continue;
       const label = String(it.label || '').replace(/\\n/g, ' ');
-      out.push({ line: it.line, level: 'warn', msg: `${kind}「${it.id}」(「${label.length > 20 ? label.slice(0, 20) + '…' : label}」)はまだ仮の ID。英数字と _ で名前を付ける(プロパティ欄の ID)` });
+      out.push({ line: it.line, level: 'warn', msg: `${kind}「${it.id}」(「${label.length > 20 ? label.slice(0, 20) + '…' : label}」)はまだ仮の ID。英数字と _ で名前を付ける(プロパティ欄の ID)`, pick: [it.id] });
     }
   }
   if (parsed.canvas) {
     const kind = it => (parsed.groups || []).includes(it) ? 'group' : (parsed.notes || []).includes(it) ? 'note' : 'block';
     for (const { item, right, bottom } of findOutside(parsed.canvas, [...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
       const by = [right ? `右へ ${right}` : '', bottom ? `下へ ${bottom}` : ''].filter(Boolean).join('・');
-      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」がキャンバス(${parsed.canvas.width}×${parsed.canvas.height})の外に${by} グリッドはみ出している。書き出しでは切れる`, pick: [item.id], ...(canvasAt.length ? { refs: [canvasAt[canvasAt.length - 1]] } : {}) });
+    }
+    for (const { item, left, top } of findNegative([...(parsed.blocks || []), ...(parsed.groups || []), ...(parsed.notes || [])])) {
+      const by = [left ? `左へ ${left}` : '', top ? `上へ ${top}` : ''].filter(Boolean).join('・');
+      out.push({ line: item.line, level: 'warn', msg: `${kind(item)}「${item.id}」は原点より${by} グリッド出ている(座標が負)。本文はそのまま、画面と書き出しの範囲をその分広げて描く`, pick: [item.id] });
     }
   }
   if (paths) {
     const g = parsed.canvas.grid;
     for (const { conn, block } of findCrossings(paths, parsed.blocks || [], g)) {
-      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line] });
+      out.push({ line: conn.line, level: 'warn', msg: `接続「${connText(conn)}」の線が block「${block.id}」(${ref(block.line)})の上を横切る`, refs: [block.line], pick: [block.id] });
     }
   }
   for (const { conn, kind, item } of labelIssues || []) {
@@ -269,10 +286,34 @@ function checkDiagram(parsed, lines, paths, labelIssues, where) {
       : kind === 'title' ? `${head}が group「${item.id}」(${ref(item.line)})の見出しに重なる`
       : kind === 'note' ? `${head}が note「${item.id}」(${ref(item.line)})の下に隠れる`
       : `${head}が接続「${connText(item)}」(${ref(item.line)})のラベルに重なる`;
-    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line] });
+    out.push({ line: conn.line, level: 'warn', msg: `${msg}(lpos= で置き場所を変えられる)`, refs: [item.line], pick: [conn.from, conn.to] });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
+}
+
+// 一緒に検査した図(同じ図の中も)で、大文字小文字・区切り(_ -)だけが違う block ID(同じ部品の表記揺れの疑い)。
+// diagrams: [{ file, blocks }](blocks は parseDSL の結果。line は 1 始まり)。同じ部品の書き方のうち最も多いもの(同数なら先に
+// 現れたもの)を基準にし、それと違う書き方の定義ごとに { a: 違う方, b: 基準の最初の定義 } を 1 件返す(組の総当たりにしない)
+function findIdSpellingVariants(diagrams) {
+  const normalize = id => String(id).replace(/[_-]/g, '').toLowerCase();
+  const groups = new Map();
+  for (const { file, blocks } of diagrams || []) for (const block of blocks || []) {
+    const key = normalize(block.id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ id: block.id, file, line: block.line });
+  }
+  const out = [];
+  for (const items of groups.values()) {
+    const count = new Map();
+    for (const it of items) count.set(it.id, (count.get(it.id) || 0) + 1);
+    if (count.size < 2) continue;
+    let base = items[0].id;
+    for (const [id, n] of count) if (n > count.get(base)) base = id;
+    const ref = items.find(it => it.id === base);
+    for (const it of items) if (it.id !== base) out.push({ a: it, b: ref });
+  }
+  return out;
 }
 
 // ── @include ──────────────────────────────────────────────
@@ -298,13 +339,14 @@ function resolveIncludePath(from, rel) {
   return normPath(f.slice(0, f.lastIndexOf('/') + 1) + r);
 }
 
-// 本文 text の @include を展開する。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
+// 本文 text の @include を展開する(同じファイルは最初の 1 回だけ。2 経路から来ても重ねない)。read(path) は include 先の本文(読めなければ null)。file は本文のパス(相対パスの起点)。
 // 返り値: text / lines(展開後)、origin[i] = { file, line, at }(展開後の i+1 行目がどのファイルの何行目か。at は本文の何行目から来たか)、
 // missing = [{ at, file, line, path, resolved, cycle }](読めない @include。その行は展開後に残さない)。include の無い本文はそのまま返る。
 // 画布(@canvas)は本文のものが正: 本文に @canvas があれば include 先の @canvas 行は展開しない(共有部の画布の大きさ・線の形で本文の画布を上書きしない)
 function expandIncludes(text, read, file = '') {
   const lines = [], origin = [], missing = [];
   const ownCanvas = String(text).replace(/^\uFEFF/, '').split('\n').some(l => /^@canvas\b/.test(l.trim()));
+  const done = new Set();   // 展開済みの include 先。同じファイルが別の経路(ダイヤモンド)から来ても 2 回目は展開しない(C の #pragma once・PlantUML の !include_once と同じ)
   const walk = (src, f, at, chain) => {
     String(src).replace(/^\uFEFF/, '').split('\n').forEach((line, i) => {
       const top = at === undefined ? i + 1 : at;
@@ -313,8 +355,9 @@ function expandIncludes(text, read, file = '') {
       if (m) {
         const p = resolveIncludePath(f, m[1]);
         const cycle = chain.includes(p);
+        if (!cycle && done.has(p)) return;
         const sub = cycle ? null : read(p);
-        if (sub !== null && sub !== undefined) { walk(sub, p, top, [...chain, p]); return; }
+        if (sub !== null && sub !== undefined) { done.add(p); walk(sub, p, top, [...chain, p]); return; }
         missing.push({ at: top, file: f, line: i + 1, path: m[1], resolved: p, cycle });
         return;
       }
@@ -345,7 +388,7 @@ function checkIncluded(parsed, exp, paths, opts = {}) {
     let msg = d.msg;
     if (unread && /という ID の block \/ note が無い$/.test(msg)) msg += unread;
     if (r.file !== exp.file && opts.inline !== false) msg += `(${name(r.file)} L${r.line})`;
-    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
+    out.push({ line: r.at, level: d.level, msg, file: r.file, fileLine: r.line, ...(d.pick ? { pick: d.pick } : {}), ...(d.refs ? { refs: d.refs.map(n => { const o = org(n); return { file: o.file, line: o.line, at: o.at }; }) } : {}) });
   }
   const rank = { error: 0, warn: 1 };
   return out.sort((x, y) => rank[x.level] - rank[y.level] || x.line - y.line);
@@ -510,26 +553,131 @@ function relativeIncludePath(from, to) {
 // 自分自身・既に取り込んでいる図・自分を(include 先をたどって)取り込んでいる図は出さない(循環を作らない)。
 // path は、同じフォルダのほかの図がその図を既に include している書き方があればそれ(「.sb 読込」で選んだ図はフォルダを持たないので、
 // 本文どおりの `shared/common.sb` を使う)。無ければ self から見た相対パス
-function includeCandidates(files, self) {
-  const has = includedKeys(files, self);
+// skipLine(省略可)は self のその @include 行を無いものとして数える(取り込み先を替える候補。並び・パスは今の本文で決める)
+function includeCandidates(files, self, skipLine) {
+  const base = skipLine ? { ...files, [self]: removeIncludeInDsl(files[self], skipLine) } : files;
+  const has = includedKeys(base, self);
   const dir = f => String(f).split('/').slice(0, -1).join('/');
   const out = [];
   for (const k of Object.keys(files)) {
-    if (k === self || has.has(k) || includedKeys(files, k).has(self)) continue;
+    if (k === self || has.has(k) || includedKeys(base, k).has(self)) continue;
     let path = null;
     for (const f of Object.keys(files)) {
       if (f === k || dir(f) !== dir(self)) continue;
       const hit = includeLines(files[f]).find(x => loadedKeyOf(files, f, x.path) === k);
       if (hit) { path = hit.path; break; }
     }
+    // 候補の図そのものを取り込んでいる図が無くても、候補と同じフォルダの図(隣の共通部)を取り込んでいる書き方があれば、
+    // そのフォルダ部分を付ける(`shared/common.sb` を取り込んでいれば rte.sb は `shared/rte.sb`)。そのパスで候補の図に当たるときだけ
+    if (!path) path = siblingIncludePath(files, self, k);
     out.push({ file: k, path: path || relativeIncludePath(self, k) });
   }
-  // 先に出す順(選ばずに押せば共通部が入る): ほかの図が既に取り込んでいる図 → 自分の接続が指していて自分に無い ID を定義している図 → 残り
+  // 先に出す順(選ばずに押せば共通部が入る): ほかの図が既に取り込んでいる図 → 自分の接続が指していて自分に無い ID を定義している図
+  // (共通部らしく、自分と取り込み済みの図が既に持つ ID を定義していない図が先) → 残り
   const shared = new Set(Object.keys(files).flatMap(f => includeLines(files[f]).map(x => loadedKeyOf(files, f, x.path))));
   const own = definedIds(files[self]);
   const need = new Set([...connectedIds(files[self])].filter(id => !own.has(id)));
-  const rank = c => (shared.has(c.file) ? 0 : [...definedIds(files[c.file])].some(id => need.has(id)) ? 1 : 2);
-  return [0, 1, 2].flatMap(r => out.filter(c => rank(c) === r));
+  const have = new Set([...own, ...[...has].flatMap(k => [...definedIds(files[k])])]);
+  const fits = k => commonLike(files, self, k) && ![...definedIds(files[k])].some(id => have.has(id));
+  const rank = c => (shared.has(c.file) ? 0 : [...definedIds(files[c.file])].some(id => need.has(id)) ? (fits(c.file) ? 1 : 2) : 3);
+  return [0, 1, 2, 3].flatMap(r => out.filter(c => rank(c) === r));
+}
+
+// 図 k が共通部らしいか: k 自身は何も取り込まず、self と同じフォルダの図のどれかが接続で指していて自分では定義していない ID を k が定義し、
+// 何かを取り込んでいる図(部品を使う側)と同じ ID を k が定義していない。「.sb 読込」で選んだ図はフォルダを持たないので、
+// 構成図・データフロー図(使う側)と共通部を本文で見分ける
+function commonLike(files, self, k) {
+  if (includeLines(files[k]).length) return false;
+  const dir = f => String(f).split('/').slice(0, -1).join('/');
+  const mine = definedIds(files[k]);
+  if (!mine.size) return false;
+  const others = Object.keys(files).filter(f => f !== k);
+  if (others.some(f => includeLines(files[f]).length && [...definedIds(files[f])].some(id => mine.has(id)))) return false;
+  return others.some(f => {
+    if (dir(f) !== dir(self)) return false;
+    const own = definedIds(files[f]);
+    return [...connectedIds(files[f])].some(id => !own.has(id) && mine.has(id));
+  });
+}
+
+// 図 self から図 k を取り込むパスを、k と同じフォルダの図を self と同じフォルダの図が取り込んでいる書き方から作る(k が共通部らしいときだけ)。無ければ null
+function siblingIncludePath(files, self, k) {
+  const dir = f => String(f).split('/').slice(0, -1).join('/');
+  const base = String(k).split('/').pop();
+  if (!commonLike(files, self, k)) return null;
+  for (const f of Object.keys(files)) {
+    if (dir(f) !== dir(self)) continue;
+    for (const x of includeLines(files[f])) {
+      const t = loadedKeyOf(files, f, x.path);
+      if (!t || t === k || dir(t) !== dir(k)) continue;
+      const p = [...x.path.split('/').slice(0, -1), base].join('/');
+      if (loadedKeyOf(files, self, p) === k) return p;
+    }
+  }
+  return null;
+}
+
+// ─── 取り込み先を替える(ツール欄の「共通部(@include)」の取り込み中の行) ───
+// 図 f の @include 行 x(includeLines の 1 件)の取り込み先を図 to に替えたときに書くパス。x を消した f に to を足せない
+// (f 自身・既に取り込んでいる・to が f を取り込んでいて循環になる)なら null。
+// 元の取り込み先と同じフォルダの図なら、行に書いてあるフォルダ部分のまま名前だけ替える(`shared/common.sb` → `shared/rte.sb`)
+function swapPathFor(files, f, x, to) {
+  const c = includeCandidates(files, f, x.line).find(c => c.file === to);
+  if (!c) return null;
+  const dir = k => String(k).split('/').slice(0, -1).join('/');
+  const old = loadedKeyOf(files, f, x.path);
+  if (old && dir(old) === dir(to) && commonLike(files, f, to)) {
+    const p = [...x.path.split('/').slice(0, -1), String(to).split('/').pop()].join('/');
+    if (loadedKeyOf(files, f, p) === to) return p;
+  }
+  return c.path;
+}
+
+// 図 self の line 行目(1 始まり)の @include の取り込み先にできる、一緒に読み込んだ図: [{ file, path }](includeCandidates の順。今の取り込み先は出さない)
+function includeSwapCandidates(files, self, line) {
+  const x = includeLines(files[self]).find(i => i.line === line);
+  if (!x) return [];
+  const old = loadedKeyOf(files, self, x.path);
+  return includeCandidates(files, self, line).filter(c => c.file !== old).map(c => ({ file: c.file, path: swapPathFor(files, self, x, c.file) || c.path }));
+}
+
+// 図 self の line 行目の @include の取り込み先を図 to に替える計画。行はその場で書き換える(差分 1 行・位置は元の行・改行コードとインデントはそのまま)。
+// all なら、同じ図(元の取り込み先)を取り込んでいる一緒に読み込んだ図すべての、その図を指す @include 行も替える。
+// 替えられない図(to 自身・既に to を取り込んでいる・循環になる)は skipped。元の取り込み先が読めない行は self だけを替える。
+// 返り値: { from(元の取り込み先のキー。読めなければ null), changes: [{ path, lines: [行], text }](self が先、あとは files の順), skipped: [キー] }
+const NL = '\n';
+function planIncludeSwap(files, self, line, to, all) {
+  const x = includeLines(files[self]).find(i => i.line === line);
+  const from = x ? loadedKeyOf(files, self, x.path) : null;
+  const changes = [], skipped = [];
+  if (!x || to === from) return { from, changes, skipped };
+  const targets = all && from ? [self, ...Object.keys(files).filter(f => f !== self && f !== from && includeLines(files[f]).some(i => loadedKeyOf(files, f, i.path) === from))] : [self];
+  for (const f of targets) {
+    const hits = f === self ? [x] : includeLines(files[f]).filter(i => loadedKeyOf(files, f, i.path) === from);
+    const text = files[f];
+    const ls = String(text).split(NL);
+    const done = [];
+    for (const h of hits) {
+      const p = swapPathFor({ ...files, [f]: ls.join(NL) }, f, h, to);
+      if (!p) continue;
+      ls[h.line - 1] = ls[h.line - 1].replace(/"[^"]+"/, `"${p}"`);
+      done.push(h.line);
+    }
+    if (done.length) changes.push({ path: f, lines: done, text: ls.join(NL) });
+    else skipped.push(f);
+  }
+  return { from, changes, skipped };
+}
+
+// 図 self を取り込み先に足す「すべてに取り込む」の相手: self が取り込んでいる図(直接)のどれかを取り込んでいる、一緒に読み込んだ図(self を含む。files の順)。
+// self が何も取り込んでいなければ、読み込んだ図すべて。to(足す図)を足せない図は含めない
+function includeAddTargets(files, self, to) {
+  const mine = new Set(includeLines(files[self]).map(i => loadedKeyOf(files, self, i.path)).filter(Boolean));
+  return Object.keys(files).filter(k => {
+    if (k === to) return false;
+    if (mine.size && !includeLines(files[k]).some(i => mine.has(loadedKeyOf(files, k, i.path)))) return false;
+    return includeCandidates(files, k).some(c => c.file === to);
+  });
 }
 
 // 本文(include は展開しない)で定義している ID と、接続の端に書いている ID
@@ -569,10 +717,81 @@ function removeIncludeInDsl(dsl, line) {
   return lines.join('\n');
 }
 
+// ─── 図の改名(HTML 版のステータスバーの図名をダブルクリック) ───
+// 図 oldKey(一緒に読み込んだ図のキー。新規の図のように読み込んでいなければ null)の名前を input に変える計画。
+// 名前は .sb 保存と全部の書き出しの名前になる。拡張子を打たなければ元の拡張子(無ければ .sb)を付け、フォルダは元の図のまま。
+// 改名した図を @include している一緒に読み込んだ図は、その @include 行のファイル名の部分だけを新しい名前に書き換える(書いてあるフォルダはそのまま)。
+// 返り値: { error }(名前が空・使えない文字・同じ名前の図が既にある)、{ same: true }(変わらない)、
+// { name, key, changes: [{ path, lines: [行], text(書き換え後の本文) }] }(key は新しいキー。oldKey が null なら null)
+function planFileRename(files, oldKey, input, current = 'diagram.sb') {
+  const raw = String(input == null ? '' : input).trim();
+  const oldName = oldKey ? String(oldKey).split('/').pop() : String(current || 'diagram.sb');
+  if (!raw) return { error: '名前が空' };
+  if (/[\/:*?"<>|]/.test(raw) || /[\u0000-\u001f]/.test(raw)) return { error: '名前に使えない文字(\ / : * ? " < > |)がある' };
+  const ext = (oldName.match(/\.(sb|stableblock|txt)$/i) || ['.sb'])[0];
+  const name = /\.(sb|stableblock|txt)$/i.test(raw) ? raw : raw + ext;
+  if (/^\.(sb|stableblock|txt)$/i.test(name) || /^\.+$/.test(raw)) return { error: '名前が空' };
+  if (name === oldName) return { same: true };
+  const keys = Object.keys(files || {});
+  const dup = keys.find(k => k !== oldKey && k.split('/').pop().toLowerCase() === name.toLowerCase());
+  if (dup) return { error: `同じ名前の図「${dup}」が既に読み込まれている` };
+  if (!oldKey) return { name, key: null, changes: [] };
+  const dir = String(oldKey).split('/').slice(0, -1);
+  const key = [...dir, name].join('/');
+  const changes = [];
+  for (const f of keys) {
+    if (f === oldKey) continue;
+    const hit = includeLines(files[f]).filter(x => loadedKeyOf(files, f, x.path) === oldKey);
+    if (!hit.length) continue;
+    const lines = String(files[f]).split('\n');
+    for (const { line, path } of hit) {
+      const to = [...String(path).split('/').slice(0, -1), name].join('/');
+      lines[line - 1] = lines[line - 1].replace(`"${path}"`, `"${to}"`);
+    }
+    changes.push({ path: f, lines: hit.map(x => x.line), text: lines.join('\n') });
+  }
+  return { name, key, changes };
+}
+
+// 「新規」の図を一緒に読み込んだ図の 1 枚にするときのキー: dir(表示中の図のフォルダ。末尾 / 付き、無ければ '')の diagram.sb。
+// 同じ名前(大文字小文字を区別しない)が既にあれば diagram-2.sb、diagram-3.sb …
+function newLoadedKey(files, dir = '') {
+  const used = new Set(Object.keys(files || {}).map(k => String(k).toLowerCase()));
+  for (let i = 1; ; i++) {
+    const key = `${dir}diagram${i === 1 ? '' : '-' + i}.sb`;
+    if (!used.has(key.toLowerCase())) return key;
+  }
+}
+
 // 書き出しのファイル名: 図のパス(または .sb 保存の名前)から .sb / .stableblock / .txt を除き、suffix(透過 PNG の _transparent など)と拡張子 ext を付ける。
 // 一括の zip の中身も 1 枚の書き出し(HTML 版のツールバー・VSCode 拡張の保存ダイアログの既定名)もこれで名付ける。新規の図は diagram.sb なので diagram.{ext}
 function bulkFileName(path, ext, suffix = '') {
   return String(path).replace(/\.(sb|stableblock|txt)$/i, '') + (suffix || '') + '.' + ext;
+}
+
+// 一括書き出しの zip の名前: 図の名前から付ける(形式だけの固定名だと、別の図の組を続けて書き出したとき同じ名前になり前の zip を上書きする)。
+// files は一緒に読み込んだ図 { パス: 本文 }、fmt は形式(svg / png / png-transparent / xlsx / mermaid)、folder は「フォルダを選ぶ」・フォルダのドロップで
+// 読んだときのフォルダ名(ファイルを選んだなら '')。主図(ほかの読んだ図から @include されていない図。pickMainDiagram と同じ当て方)が
+// 1 枚ならその図名、2 枚以上ならフォルダ名、フォルダでなければ主図が 2 枚は「a+b」、3 枚以上は「先頭の図名_他{n-1}枚」。全部が取り込み合う(循環)なら先頭の図名
+function bulkZipName(files, fmt, folder = '') {
+  const keys = Object.keys(files || {});
+  const base = p => String(p).split('/').pop().replace(/\.(sb|stableblock|txt)$/i, '');
+  const refs = includeRefs(keys.map(k => ({ path: k, text: files[k] })));
+  const mains = keys.filter(k => !refs.has(k) && !refs.has(String(k).split('/').pop()));
+  let name;
+  if (mains.length === 1) name = base(mains[0]);
+  else if (mains.length >= 2 && folder) name = String(folder);
+  else if (mains.length === 2) name = `${base(mains[0])}+${base(mains[1])}`;
+  else if (mains.length > 2) name = `${base(mains[0])}_他${mains.length - 1}枚`;
+  else name = keys.length ? base(keys[0]) : (folder || 'diagrams');
+  return `${name}-${fmt}.zip`;
+}
+
+// 選んだ・落としたフォルダの名前: 全部の図のパスの先頭のフォルダが同じならその名前(trimCommonDir で外す前のパスに当てる)。無ければ ''
+function pickedFolderName(list) {
+  const firsts = (list || []).map(d => String(d.path).split('/'));
+  if (!firsts.length || firsts.some(s => s.length < 2)) return '';
+  return firsts.every(s => s[0] === firsts[0][0]) ? firsts[0][0] : '';
 }
 
 // 一括書き出しの知らせ: 図ごとの知らせ([{ path, dropped }])を、どの図の知らせかを頭に付けて 1 つに並べる
@@ -580,7 +799,30 @@ function bulkDrops(list) {
   return (list || []).flatMap(({ path, dropped }) => (dropped || []).map(d => `${path}: ${d}`));
 }
 
+// 読み込んだ図の本文 loaded と今の本文 now: 読んだときの要素(block / group / note)の ID が今は 1 つも無く、今は要素がある =
+// 中身を全部入れ替えた(白紙化して別の図を起こした)。そのまま保存・書き出すと元の図の名前で出て、元のファイルを上書きしかねない
+function replacedDiagram(loaded, now) {
+  const ids = t => new Set([...String(t ?? '').matchAll(/^[ \t]*(?:block|group|note)[ \t]+(\S+)/gm)].map(m => m[1]));
+  const a = ids(loaded), b = ids(now);
+  if (!a.size || !b.size) return false;
+  for (const id of a) if (b.has(id)) return false;
+  return true;
+}
+
 // ─── 「.sb 読込 ▾」: ファイルを選ぶ・フォルダを選ぶ・ドロップ ───
+// 読み込んだファイルのバイト列(Uint8Array)を UTF-8 で読み、先頭の BOM(EF BB BF)の有無を返す。text には BOM を含めない
+// (BOM の後ろにもう 1 つ U+FEFF があれば本文の文字として残す)。BOM 付きで読んだ図は「.sb 保存」で sbSaveText が BOM を戻す
+function decodeSbBytes(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+  const bom = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF;
+  return { text: new TextDecoder('utf-8', { ignoreBOM: true }).decode(bom ? b.subarray(3) : b), bom };
+}
+
+// 保存する本文: BOM 付きで読んだ図(bom)は先頭に BOM を付ける。開いて何もせず保存すれば元のファイルと 1 バイトも変わらない
+function sbSaveText(text, bom) {
+  return (bom ? '\uFEFF' : '') + String(text ?? '');
+}
+
 // 読み込める図か: .sb / .stableblock(じかに選んだ・落としたファイルは .txt も)。フォルダの中は隠しフォルダ(.git など)の下を読まない
 function sbLoadable(path, inFolder) {
   const p = String(path).split('\\').join('/');
@@ -607,10 +849,16 @@ function trimCommonDir(list) {
 // 全部が取り込まれている(循環)なら読めた最初の図、読めた図が無ければ -1。include 先はパスでも名前(最後の / の後)でも当てる(loadedReader と同じ)
 function pickMainDiagram(list) {
   const ok = d => d.text !== null && d.text !== undefined;
-  const refs = new Set();
-  (list || []).forEach(d => { if (ok(d)) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  const refs = includeRefs(list);
   const i = list.findIndex(d => ok(d) && !refs.has(d.path) && !refs.has(String(d.path).split('/').pop()));
   return i >= 0 ? i : list.findIndex(ok);
+}
+
+// 読んだ図 [{ path, text }] の @include 先(解決したパスと名前(最後の / の後)の両方)。読めなかった図(text が null)は見ない
+function includeRefs(list) {
+  const refs = new Set();
+  (list || []).forEach(d => { if (d.text !== null && d.text !== undefined) expandIncludes(d.text, p => { refs.add(p); refs.add(p.split('/').pop()); return null; }, d.path); });
+  return refs;
 }
 
 // 「一括 ▾」の形式の並び: 前回選んだ形式 last を先頭に、残りは元の順(last が無い・知らない形式なら元のまま)
@@ -618,4 +866,4 @@ function bulkFormatOrder(fmts, last) {
   return fmts.includes(last) ? [last, ...fmts.filter(f => f !== last)] : [...fmts];
 }
 
-;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, segmentHitsRect, findCrossings, checkDiagram, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, addIncludeInDsl, removeIncludeInDsl, bulkFileName, bulkDrops, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };
+;window.StableBlockCheck = { badAttrValues, badAttrValuesInLine, explainLine, findOverlaps, findStraddles, findOutside, findNegative, segmentHitsRect, findCrossings, checkDiagram, findIdSpellingVariants, resolveIncludePath, expandIncludes, checkIncluded, includeOrigin, includedItemNote, includedItemRows, includeDrops, loadedReader, expandLoaded, includersOf, addedDiagnostics, includeImpact, includeLines, loadedKeyOf, relativeIncludePath, includeCandidates, includeSwapCandidates, planIncludeSwap, includeAddTargets, addIncludeInDsl, removeIncludeInDsl, planFileRename, newLoadedKey, bulkFileName, bulkZipName, pickedFolderName, bulkDrops, replacedDiagram, decodeSbBytes, sbSaveText, sbLoadable, folderSbEntries, trimCommonDir, pickMainDiagram, bulkFormatOrder };

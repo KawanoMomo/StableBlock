@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   extendPoint, bezierControls, bezierMidpoint, orthoPoints, polylineMidpoint,
-  parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl,
+  parseLpos, labelLayout, setConnLabelInDsl, chainConnectInDsl, connTrailingLabel,
   connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, pathPoints, computePorts,
   connLinesAmong, remapConnLine,
-  hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
+  hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl,
   setConnPropInDsl, removeConnPropInDsl, removeConnInDsl,
 } from '../label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
@@ -535,6 +535,19 @@ test('quoteLabel / unquoteLabel: " は \\" で書き、ほかの \\(\\n の印�
   assert.equal(unquoteLabel('A\\nB'), 'A\\nB');
   assert.equal(quoteLabel('C:\\'), '"C:\\"');
   assert.equal(unquoteLabel(undefined), '');
+  assert.equal(quoteLabel('通知\nMail'), '"通知\\nMail"');       // 欄から来た本物の改行は行を割らず改行の印に
+  assert.equal(quoteLabel('a\r\nb'), '"a\\nb"');
+});
+
+import { labelFieldText, labelFromField } from '../label-core.mjs';
+test('labelFieldText / labelFromField: 本文の改行の印は欄では本物の改行、欄の改行(Shift+Enter)は本文の印 1 つ(block・group・note・接続で同じ)', () => {
+  assert.equal(labelFieldText('通知\\nMail'), '通知\nMail');
+  assert.equal(labelFieldText('A'), 'A');
+  assert.equal(labelFieldText(undefined), '');
+  assert.equal(labelFromField('通知\nMail'), '通知\\nMail');
+  assert.equal(labelFromField('call\r\nasync'), 'call\\nasync');
+  assert.equal(labelFromField('A'), 'A');
+  for (const lb of ['A', '要求\\n(非同期)', 'x\\ny\\nz', 'say \\"hi\\"']) assert.equal(labelFromField(labelFieldText(lb)), lb);   // 往復で本文は変わらない
 });
 
 test('renameIdInDsl / searchIdsInFiles: 引用符を含むラベルの行も定義行として扱う', () => {
@@ -617,4 +630,87 @@ test('fixPlaceholderIdsInDsl: 仮の ID が無ければ本文は 1 バイトも�
   assert.equal(r.dsl, dsl);
   assert.deepEqual(r.renamed, []);
   assert.deepEqual(r.left, []);
+});
+
+// ID 欄で仮の ID の要素に名前を付けると、既定のラベルも同じ表記になる(BLK-junior-20260929-1747-friction)
+test('renameIdInDsl defaultLabel: 仮の ID の要素のラベルが既定(New Block / New Group / Annotation)なら新 ID にし、ほかは変えない', () => {
+  const dsl = [
+    'block __new_1 "New Block" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4',
+    'group __new_2 "New Group" at 0,0 size 20x8 color=#F1F5F9 border=#94A3B8',
+    'note __new_3 "Annotation" at 10,1 size 8x2 color=#FEF3C7 text=#92400E',
+    'block __new_4 "UART ドライバ" at 1,5 size 8x3',
+    'block Old "New Block" at 1,9 size 8x3',
+    '__new_1 -> Old',
+  ].join('\n');
+  const a = renameIdInDsl(dsl, '__new_1', 'I2c_Hw', undefined, { defaultLabel: true }).split('\n');
+  assert.equal(a[0], 'block I2c_Hw "I2c_Hw" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4');
+  assert.equal(a[5], 'I2c_Hw -> Old');
+  assert.deepEqual(a.filter((l, i) => l !== dsl.split('\n')[i]).length, 2);                    // 定義行と接続行だけ
+  assert.equal(renameIdInDsl(dsl, '__new_2', 'Bus', undefined, { defaultLabel: true }).split('\n')[1], 'group Bus "Bus" at 0,0 size 20x8 color=#F1F5F9 border=#94A3B8');
+  assert.equal(renameIdInDsl(dsl, '__new_3', 'memo1', undefined, { defaultLabel: true }).split('\n')[2], 'note memo1 "memo1" at 10,1 size 8x2 color=#FEF3C7 text=#92400E');
+  // 利用者が変えたラベル・既に ID のある要素の改名・オプション無し(ID補正など)ではラベルを変えない
+  assert.equal(renameIdInDsl(dsl, '__new_4', 'UartDrv', undefined, { defaultLabel: true }).split('\n')[3], 'block UartDrv "UART ドライバ" at 1,5 size 8x3');
+  assert.equal(renameIdInDsl(dsl, 'Old', 'Renamed', undefined, { defaultLabel: true }).split('\n')[4], 'block Renamed "New Block" at 1,9 size 8x3');
+  assert.equal(renameIdInDsl(dsl, '__new_1', 'I2c_Hw').split('\n')[0], 'block I2c_Hw "New Block" at 1,1 size 8x3 color=#3B82F6 text=#FFFFFF round=4');
+});
+
+test('linkSources: id へ入る接続の元(本文の順・重複なし)。双方向は逆の書き順でも元', () => {
+  const conns = [{ from: 'ecu', to: 'can' }, { from: 'gw', to: 'can' }, { from: 'ecu', to: 'can' }, { from: 'can', to: 'x' }, { from: 'can', to: 'y', bidir: true }];
+  assert.deepEqual(linkSources(conns, 'can'), ['ecu', 'gw', 'y']);
+  assert.deepEqual(linkSources(conns, 'ecu'), []);
+  assert.deepEqual(linkSources([], 'a'), []);
+});
+
+test('connTrailingLabel / setConnLabelInDsl: 属性の後ろ・間に書いたラベルを読み、その場所のまま直す・消す(BLK-porter-20260929-2029)', () => {
+  const t = connTrailingLabel(' style=dashed "後ろ"');
+  assert.deepEqual([t.label, t.s, t.e, t.rest], ['後ろ', 14, 18, ' style=dashed     ']);
+  assert.equal(connTrailingLabel('width=2 "間 \\"q\\"" color=#EF4444').label, '間 \\"q\\"');
+  assert.equal(connTrailingLabel('lpos=top # "コメント"'), null);             // 行末コメントの中の引用はラベルではない
+  assert.equal(connTrailingLabel('color=#f00 "Step #1" # c').label, 'Step #1');   // ラベルの中の # はコメントではない
+  assert.equal(connTrailingLabel('color=#f00'), null);
+  assert.equal(connTrailingLabel('x"y"'), null);                              // 語の途中の引用は読まない
+  const dsl = 'block a "A" at 1,1 size 2x2\nblock b "B" at 5,1 size 2x2\na -> b style=dashed "後ろ" color=#f00';
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', '新'), dsl.replace('"後ろ"', '"新"'));
+  assert.equal(setConnLabelInDsl(dsl, 'a', 'b', ''), dsl.replace(' "後ろ"', ''));
+  assert.equal(setConnLabelInDsl('a -> b lpos=top # "c"', 'a', 'b', 'L'), 'a -> b "L" lpos=top # "c"');
+});
+
+// 接続ラベルの `\n` は block・note と同じく改行(BLK-porter-20260930-0109)
+import { labelLines, labelTextWidth } from '../label-core.mjs';
+test('接続ラベルの \\n: 行に分け、幅は行ごとの最大、白地は行の分だけ縦に伸びる(top / bottom は線の側の端を保つ)', () => {
+  assert.deepEqual(labelLines('call\\nasync'), ['call', 'async']);
+  assert.deepEqual(labelLines('one'), ['one']);
+  assert.equal(labelTextWidth('call\\nasync'), estimateTextWidth('async', 10));
+  assert.equal(labelTextWidth('ab', t => t.length * 7), 14);
+  const r = labelLayout({ x: 100, y: 50 }, 'right', 30, 2);
+  assert.equal(r.ty, 50);
+  assert.deepEqual(r.bg, { x: 106, y: 37, w: 38, h: 26, rx: 2 });
+  const t = labelLayout({ x: 100, y: 50 }, 'top', 30, 2);
+  assert.equal(t.bg.y + t.bg.h, 47);   // 1 行のときの下端(33 + 14)のまま上へ伸びる
+  assert.equal(t.bg.h, 26);
+  const b = labelLayout({ x: 100, y: 50 }, 'bottom', 30, 3);
+  assert.equal(b.bg.y, 53);            // 1 行のときの上端のまま下へ伸びる
+  assert.equal(b.bg.h, 38);
+  assert.deepEqual(labelLayout({ x: 100, y: 50 }, 'right', 30, 1), labelLayout({ x: 100, y: 50 }, 'right', 30));
+});
+
+test('placeLabels: 複数行の接続ラベルは行の分の高さ・行ごとの最大の幅の白地で置く', () => {
+  const p = parseDSL([
+    '@canvas width=400 height=160 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'a -> b "call\\nasync"',
+  ].join('\n'));
+  const [LL] = placeLabels([{ conn: p.connections[0], mid: { x: 180, y: 50 } }], p);
+  assert.equal(LL.bg.h, 26);
+  assert.equal(LL.bg.w, estimateTextWidth('async', 10) + 8);   // 「call\nasync」全体の幅ではない
+});
+
+import { nextPlaceholderN } from '../label-core.mjs';
+test('nextPlaceholderN: 図に残った __new_N と重ならない番号を返す', () => {
+  assert.equal(nextPlaceholderN([], 1), 1);
+  assert.equal(nextPlaceholderN(['a', '__new_2'], 1), 1);
+  assert.equal(nextPlaceholderN(['__new_1', '__new_2', '__new_4'], 1), 3);
+  assert.equal(nextPlaceholderN(new Set(['__new_5']), 5), 6);
+  assert.equal(nextPlaceholderN(['__new_1'], 0), 2);
 });

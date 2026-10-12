@@ -53,15 +53,32 @@ function hasLpos(rest) {
   return /(^|\s)lpos=/.test(rest || '');
 }
 
+// 接続ラベルの行。本文の `\n`(文字どおりのバックスラッシュと n)は block・note と同じく改行の印
+function labelLines(label) {
+  return String(label == null ? '' : label).split('\\n');
+}
+
+// 接続ラベルの文字幅(px): 行ごとに測った最大。measure は 1 行の幅(省略時は estimateTextWidth の 10px)
+function labelTextWidth(label, measure) {
+  const m = measure || (t => estimateTextWidth(t, 10));
+  return Math.max(0, ...labelLines(label).map(l => m(l)));
+}
+
+// 接続ラベルの行の間隔(px)。文字 10px の 1.2 倍(Excel の書き出しの段落と同じ)
+const LABEL_LINE_H = 12;
+
 // 配置定数はスペック§3/§4 の QAログ決定値。テキストは全位置 dominant-baseline=central 前提。
-function labelLayout(mid, lpos, textW) {
+// lines はラベルの行数(labelLines の長さ。省略時 1)。複数行は白地を行の分だけ縦に伸ばし、ty は行の塊の中心。
+// top / bottom は線の側の端(1 行のときの白地の下端 / 上端)を保ったまま線から離れる向きに伸ばす
+function labelLayout(mid, lpos, textW, lines = 1) {
   const OFFSET = 10, PAD_X = 4, PAD_Y = 2, FONT_H = 10;
+  const extra = (Math.max(1, lines) - 1) * LABEL_LINE_H;
   let tx = mid.x, ty = mid.y, anchor = 'middle';
   if (lpos === 'right') { tx = mid.x + OFFSET; anchor = 'start'; }
   else if (lpos === 'left') { tx = mid.x - OFFSET; anchor = 'end'; }
-  else if (lpos === 'top') { ty = mid.y - OFFSET; }
-  else if (lpos === 'bottom') { ty = mid.y + OFFSET; }
-  const w = textW + PAD_X * 2, h = FONT_H + PAD_Y * 2;
+  else if (lpos === 'top') { ty = mid.y - OFFSET - extra / 2; }
+  else if (lpos === 'bottom') { ty = mid.y + OFFSET + extra / 2; }
+  const w = textW + PAD_X * 2, h = FONT_H + PAD_Y * 2 + extra;
   const x = anchor === 'start' ? tx - PAD_X
     : anchor === 'end' ? tx - textW - PAD_X
     : tx - textW / 2 - PAD_X;
@@ -75,17 +92,47 @@ function unquoteLabel(raw) {
   return String(raw == null ? '' : raw).replace(/\\"/g, '"');
 }
 function quoteLabel(label) {
-  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"') + '"';
+  return '"' + String(label == null ? '' : label).replace(/"/g, '\\"').replace(/\r\n?|\n/g, '\\n') + '"';   // 欄から来た本物の改行は改行の印に(行を割らない)
+}
+
+// ─── ラベルの欄(その場編集・プロパティ欄・接続パネル)と本文の行き来。本文の改行の印(バックスラッシュと n の 2 文字)は欄では本物の改行に見せ、
+// 欄の改行(Shift+Enter)は本文では印 1 つに戻す。block・group・note・接続で同じ(画面の改行と欄の改行が同じ位置に見える)
+function labelFieldText(label) {
+  return String(label == null ? '' : label).split('\\n').join('\n');
+}
+function labelFromField(text) {
+  return String(text == null ? '' : text).replace(/\r\n?|\n/g, '\\n');
+}
+
+// 接続行で to の直後にラベルが無いとき、属性の後ろ・間に書いたラベル(`a -> b style=dashed "後ろ"`)を探す(BLK-porter-20260929-2029)。
+// rest: to(と先頭のラベル)の後ろの部分。空白で区切られた最初の "..." をラベルと読む(行末コメント `# ...` の中の引用は読まない)。
+// 返す: { label(引用の中身。\" は未解除), s, e(rest の中の引用符を含む位置), rest(ラベルを空白で潰した属性部分。属性はこれから読む) }。無ければ null。
+// HTML 版・VSCode 拡張・core の parseDSL が同じ規則で読む(本文の並びは書き換えない)
+function connTrailingLabel(rest) {
+  const r = String(rest == null ? '' : rest);
+  const m = /(^|\s)"((?:\\"|[^"])*)"(?=\s|$)/.exec(r);
+  if (!m) return null;
+  const s = m.index + m[1].length, e = s + m[2].length + 2;
+  const cm = /(?:^|\s)#/.exec(r);
+  if (cm && cm.index + cm[0].length - 1 < s) return null;
+  return { label: m[2], s, e, rest: r.slice(0, s) + ' '.repeat(e - s) + r.slice(e) };
 }
 
 // 接続行のラベルを置換/挿入/除去する。replace の第2引数は $ 特殊展開を避けるため必ず関数。ラベル中の " は \" で書く
-// 同じ 2 つの間に向き違いの接続があれば from → to の行を直す(無ければ逆の書き順の行。connLineIndex)
+// 同じ 2 つの間に向き違いの接続があれば from → to の行を直す(無ければ逆の書き順の行。connLineIndex)。
+// 属性の後ろに書いたラベル(connTrailingLabel)はその場所のまま直す・消す(先頭に 2 つ目を足さない)
 function setConnLabelInDsl(dsl, from, to, label) {
   const clean = String(label);
   return editConnLine(dsl, from, to, line => {
     const hasLabel = /^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/.test(line);
     if (hasLabel && clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+\s*)"(?:\\"|[^"])*"/, (_, head) => head + quoteLabel(clean));
     if (hasLabel) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)\s*"(?:\\"|[^"])*"/, (_, head) => head);
+    const hm = line.match(/^\s*\S+\s+(?:-->|->)\s+\S+/), t = hm && connTrailingLabel(line.slice(hm[0].length));
+    if (t) {
+      const s = hm[0].length + t.s, e = hm[0].length + t.e;
+      if (clean) return line.slice(0, s) + quoteLabel(clean) + line.slice(e);
+      return line.slice(0, s).replace(/\s+$/, '') + line.slice(e);
+    }
     if (clean) return line.replace(/^(\s*\S+\s+(?:-->|->)\s+\S+)/, (_, head) => head + ' ' + quoteLabel(clean));
     return line;
   });
@@ -98,6 +145,16 @@ function setConnLabelInDsl(dsl, from, to, label) {
 // connections(parse 済み)に from → to の向きの接続があるか(双方向は逆の書き順でも持つ)
 function hasConnDir(connections, from, to) {
   return (connections || []).some(c => (c.from === from && c.to === to) || (c.bidir && c.from === to && c.to === from));
+}
+
+// id へ入る接続の元(本文の順、重複なし)。双方向は逆の書き順でも元に数える。「つないで追加」の兄弟(Ctrl+Enter)が同じ元から結ぶ相手
+function linkSources(connections, id) {
+  const out = [];
+  for (const c of connections || []) {
+    const from = c.to === id ? c.from : (c.bidir && c.from === id ? c.to : null);
+    if (from && from !== id && !out.includes(from)) out.push(from);
+  }
+  return out;
 }
 
 // 2 つの間の接続を向きを問わず全部(本文の順)
@@ -223,6 +280,15 @@ function isPlaceholderId(id) {
   return typeof id === 'string' && id.startsWith('__new_');
 }
 
+// 仮の ID `__new_N` の次の番号。from 以上で、used(ID の Set か配列)に `__new_N` がまだ無い最小の N を返す。
+// 読み込んだ図・前の作業から残った `__new_1` と、新しく足す要素の ID が重ならないようにする(重なると ID 補正・改名が別の要素に掛かる)
+function nextPlaceholderN(used, from = 1) {
+  const has = used instanceof Set ? id => used.has(id) : id => (used || []).includes(id);
+  let n = Math.max(1, from | 0);
+  while (has(`__new_${n}`)) n++;
+  return n;
+}
+
 // used(Set か配列)に無い ID を返す。重なれば `_2`, `_3` … を付ける
 function uniqueId(base, used) {
   const has = used instanceof Set ? id => used.has(id) : id => used.includes(id);
@@ -232,9 +298,14 @@ function uniqueId(base, used) {
   return `${base}_${n}`;
 }
 
+// 「+ ブロック追加」「+ グループ追加」「+ 注釈追加」が付ける既定のラベル(HTML 版・VSCode 拡張)
+const DEFAULT_LABELS = ['New Block', 'New Group', 'Annotation'];
+
 // oldId を newId に改名する。書き換えるのは定義行(line: 1 始まり。省略時は最初の定義)と、接続行の from / to だけ。
 // ラベル・属性・コメントの中の同じ文字列には触れない(ラベル全体が旧 ID と同じ文字列のときだけ新 ID に揃える)。同じ ID の定義が他に残るとき(重複 ID)は接続行を書き換えない。
-function renameIdInDsl(dsl, oldId, newId, line) {
+// opts.defaultLabel(プロパティ欄の ID 欄で名前を付けたとき): 仮の ID(`__new_`)の要素のラベルが既定(DEFAULT_LABELS)のままなら、ラベルも新 ID と同じ表記にする
+// (ID 欄から名付けた人だけ同じ名前をラベル欄にもう一度打たずに済む。利用者が変えたラベル・既に ID のある要素の改名ではラベルを変えない)
+function renameIdInDsl(dsl, oldId, newId, line, opts = {}) {
   const lines = dsl.split('\n');
   const defRe = /^(\s*(?:block|group|note)\s+)(\S+)(\s)/;
   let target = -1;
@@ -248,7 +319,9 @@ function renameIdInDsl(dsl, oldId, newId, line) {
   if (target < 0) return dsl;
   lines[target] = lines[target].replace(defRe, (_, head, _id, sp) => head + newId + sp);
   // ラベルが ID と同じ文字列(ID をそのまま表示名にしている)なら、表示名も新しい ID に揃える(ID と表示名の食い違いを作らない)
-  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"((?:\\"|[^"])*)"/, (all, head, label) => (unquoteLabel(label) === oldId ? `${head}"${newId}"` : all));
+  const adopt = !!(opts && opts.defaultLabel) && isPlaceholderId(oldId);
+  lines[target] = lines[target].replace(/^(\s*(?:block|group|note)\s+\S+\s+)"((?:\\"|[^"])*)"/, (all, head, label) =>
+    (unquoteLabel(label) === oldId || (adopt && DEFAULT_LABELS.includes(unquoteLabel(label))) ? `${head}"${newId}"` : all));
   if (others === 0) {
     const connRe = /^(\s*)(\S+)(\s+)(-->|->)(\s+)(\S+)/;
     for (let i = 0; i < lines.length; i++) {
@@ -501,6 +574,20 @@ function connPathInfo(fp, tp, fs, ts, mode) {
   return { d: `M${fp.x},${fp.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${tp.x},${tp.y}`, mid: bezierMidpoint(fp, c1, c2, tp) };
 }
 
+// 描く範囲(px): 原点(0,0)から `@canvas` の width × height。原点より左・上(座標が負)の group / block / note があれば、
+// その端まで左・上へ広げる(右・下は広げない。はみ出しは core/check の findOutside が知らせる)。本文は書き換えない。
+// 画面・SVG / PNG の書き出し・ラベルの置き場所がこの範囲を使う(Excel は core/excel が同じ量だけずらして置く)
+function drawArea(parsed) {
+  const c = (parsed && parsed.canvas) || {}, g = c.grid || 20;
+  let x = 0, y = 0;
+  for (const list of [parsed.groups, parsed.blocks, parsed.notes]) for (const it of list || []) {
+    if (!it) continue;
+    if (it.x * g < x) x = it.x * g;
+    if (it.y * g < y) y = it.y * g;
+  }
+  return { x, y, width: (c.width || 0) - x, height: (c.height || 0) - y };
+}
+
 // 図全体の既定の線の形(本文の `@canvas ... route=straight`)。書いていなければ・知らない値なら曲線
 function canvasRoute(canvas) {
   const r = canvas && canvas.route;
@@ -588,12 +675,12 @@ function labelObstacles(parsed) {
 
 const LABEL_AUTO_ORDER = ['right', 'top', 'left', 'bottom', 'center'];
 
-// 1 本のラベルの置き場所。auto なら候補のうち obstacles に最も掛からない位置(同じなら候補順の先)、auto でなければ lpos のまま
-function placeLabel(mid, lpos, textW, obstacles, auto, bounds) {
+// 1 本のラベルの置き場所(lines はラベルの行数)。auto なら候補のうち obstacles に最も掛からない位置(同じなら候補順の先)、auto でなければ lpos のまま
+function placeLabel(mid, lpos, textW, obstacles, auto, bounds, lines = 1) {
   const cands = auto ? [lpos || 'right', ...LABEL_AUTO_ORDER.filter(p => p !== (lpos || 'right'))] : [lpos || 'right'];
   let best = null;
   for (const p of cands) {
-    const L = labelLayout(mid, p, textW);
+    const L = labelLayout(mid, p, textW, lines);
     let cost = 0;
     for (const o of obstacles || []) cost += sbRectOverlap(L.bg, o) * (o.weight || 1);
     if (bounds) cost += (L.bg.w * L.bg.h - sbRectOverlap(L.bg, bounds)) * 30;
@@ -608,16 +695,17 @@ function isAutoLpos(c) {
   return c.lposAuto === true || (c.lposAuto === undefined && !c.lpos);
 }
 
-// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は文字幅(px)
+// ラベル付き接続の置き場所を本文の順に決める。items: [{ conn, mid(px), anno? }](描画と同じ中点。anno の注釈線は置かない)。measure(text) は 1 行の文字幅(px。`\n` で分けた行ごとに測る)
 // 戻り値: [{ conn, mid, tx, ty, anchor, bg, lpos }]。先に置いたラベルにも掛からないように置く
 function placeLabels(items, parsed, measure) {
   const obstacles = labelObstacles(parsed);
-  const bounds = { x: 0, y: 0, w: parsed.canvas.width, h: parsed.canvas.height };
+  const area = drawArea(parsed);
+  const bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
   const width = measure || (t => estimateTextWidth(t, 10));
   const out = [];
   for (const { conn, mid, anno } of items) {
     if (anno || !conn.label || !mid) continue;
-    const L = placeLabel(mid, conn.lpos, width(conn.label), obstacles, isAutoLpos(conn), bounds);
+    const L = placeLabel(mid, conn.lpos, labelTextWidth(conn.label, width), obstacles, isAutoLpos(conn), bounds, labelLines(conn.label).length);
     out.push({ conn, mid, tx: L.tx, ty: L.ty, anchor: L.anchor, bg: L.bg, lpos: L.lpos });
     obstacles.push({ ...L.bg, weight: 10, kind: 'label', item: conn });
   }
@@ -669,4 +757,4 @@ function remapConnLine(line, map) {
   return `${m[1]}${map[m[2]]}${m[3]}${m[4]}${m[5]}${map[m[6]]}${m[7]}`;
 }
 
-;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLayout, unquoteLabel, quoteLabel, setConnLabelInDsl, hasConnDir, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };
+;window.StableBlockLabel = { extendPoint, bezierControls, bezierMidpoint, orthoPoints, parseLpos, hasLpos, labelLines, labelTextWidth, labelLayout, unquoteLabel, quoteLabel, labelFieldText, labelFromField, connTrailingLabel, setConnLabelInDsl, hasConnDir, linkSources, connsBetween, connLineIndex, canFlipConn, flipConnInDsl, toggleBidirInDsl, setConnPropInDsl, removeConnPropInDsl, removeConnInDsl, chainConnectInDsl, polylineMidpoint, isValidId, labelToId, idFieldOpen, isPlaceholderId, nextPlaceholderN, uniqueId, renameIdInDsl, fixPlaceholderIdsInDsl, findIdInDsl, idSpansInLine, renameIdAcrossDsl, searchIdsInFiles, searchFileNames, planRename, relabelIdInDsl, planRelabel, getSide, portPos, computePorts, pathPoints, connPathInfo, drawArea, canvasRoute, connRoute, nextCanvasRoute, connectionPaths, estimateTextWidth, blockTextBoxes, labelObstacles, placeLabel, placeLabels, labelIssues, connLinesAmong, remapConnLine };

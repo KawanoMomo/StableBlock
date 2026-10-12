@@ -15,6 +15,50 @@ export function contentExtent(items) {
   return { right, bottom };
 }
 
+// GUI で動かした後の座標(グリッド)。原点より左・上(負)へは出さない。ただし元から原点より左・上にある要素
+// (既存の図から持ち込んだ配置)は元の位置までは置ける(動かしただけで 0 へ飛ばさない)
+export function keepPos(v, from) {
+  return Math.max(Math.min(0, from === undefined ? 0 : from), v);
+}
+
+// GUI で動かせる下限(グリッド)の控え。本文(読み込み・本文欄の書換・元に戻す)に一度でも出た原点より左・上の位置を
+// 要素ごとに覚える({ 'block:a': { x, y } }。負の軸だけ。0 以上の要素は載せない)。GUI で動かしてもこの下限より左・上へは
+// 行かないので、控えは「読み込んだときの位置」のまま残り、右・下へ動かした後でもそこまでは戻せる。floors は書き換えずに新しい控えを返す
+export function noteFloors(floors, parsed) {
+  let out = floors || {};
+  const kinds = [['block', parsed && parsed.blocks], ['group', parsed && parsed.groups], ['note', parsed && parsed.notes]];
+  for (const [type, list] of kinds) {
+    for (const it of list || []) {
+      if (!it || !(it.x < 0 || it.y < 0)) continue;
+      const k = type + ':' + it.id, f = out[k] || { x: 0, y: 0 };
+      const x = Math.min(f.x, it.x), y = Math.min(f.y, it.y);
+      if (x === f.x && y === f.y && out[k]) continue;
+      if (out === floors) out = { ...floors };
+      out[k] = { x, y };
+    }
+  }
+  return out;
+}
+
+// 要素の下限(グリッド)。控えに無い要素は原点(0,0)。今の位置がそれより左・上なら今の位置(本文で書いた位置からは押し戻さない)
+export function posFloor(floors, type, id, x, y) {
+  const f = (floors && floors[type + ':' + id]) || { x: 0, y: 0 };
+  return { x: Math.min(0, f.x, x === undefined ? 0 : x), y: Math.min(0, f.y, y === undefined ? 0 : y) };
+}
+
+// 一緒に動かす要素(group とその中身、複数選択)を dx,dy(グリッド)動かすときの、全員に共通の量。どれかが下限より左・上へ
+// 出るなら、全員がその手前で止まる(枠だけ・中身だけが動かない)。items: [{ type, id, x, y }](動かし始めの位置)
+export function clampShift(items, dx, dy, floors) {
+  let mx = dx, my = dy;
+  for (const it of items || []) {
+    if (!it) continue;
+    const f = posFloor(floors, it.type, it.id, it.x, it.y);
+    mx = Math.max(mx, f.x - it.x);
+    my = Math.max(my, f.y - it.y);
+  }
+  return { dx: mx, dy: my };
+}
+
 // 要素が全部収まるキャンバス寸法(px)。広げるだけで縮めない。広げるときは右・下に margin グリッドの余白を残す。
 export function grownCanvasSize(canvas, items, margin = 1) {
   const g = canvas.grid || 20;
@@ -138,15 +182,26 @@ function overlaps(a, b, gap) {
 
 // w x h の要素を、既存の要素と gap グリッド以上離して置ける位置を読み順(上の行から、左から)で探す。
 // 横は cols(グリッド)に収まる範囲で探し、収まる所が無ければ既存の要素の下に置く。
+// opts.minW(「+ グループ追加」): その行に w の幅で置ける所が無ければ、幅を minW まで詰めて置ける所をその行で探す
+// (返り値に詰めた幅 w が付く)。既存の図の脇が空いているのに、図の下端より下へ送らないため。
 export function findFreeSlot(items, w, h, opts = {}) {
   const x0 = opts.x0 ?? 1, y0 = opts.y0 ?? 1, gap = opts.gap ?? 1;
   const list = (items || []).filter(Boolean);
   const cols = Math.max(opts.cols ?? 48, x0 + w);
+  const minW = Math.min(w, opts.minW ?? w);
   const { bottom } = contentExtent(list);
+  const fits = r => !list.some(it => overlaps(r, it, gap));
   for (let y = y0; y <= bottom + gap; y++) {
     for (let x = x0; x + w <= cols; x++) {
-      const r = { x, y, w, h };
-      if (!list.some(it => overlaps(r, it, gap))) return { x, y };
+      if (fits({ x, y, w, h })) return { x, y };
+    }
+    if (minW < w) {
+      for (let x = x0; x + minW <= cols; x++) {
+        if (!fits({ x, y, w: minW, h })) continue;
+        let nw = minW;
+        while (nw < w && x + nw + 1 <= cols && fits({ x, y, w: nw + 1, h })) nw++;
+        return { x, y, w: nw };
+      }
     }
   }
   return { x: x0, y: Math.max(y0, bottom + gap) };
@@ -173,6 +228,87 @@ export function placeNext(items, w, h, opts = {}) {
   return { x: x0, y: lastY };
 }
 
+// 「つないで追加」(block を 1 つ選んで Tab / Ctrl+Enter)の置き場所。1 つの規則で決める:
+// side 'right'(Tab: ref から出る線の先): ref の右に lane グリッド空けた列で、ref の上端から下へ。同じ元から続けて足すと右の列に縦に並ぶ。
+// side 'below'(Ctrl+Enter: ref と同じ元から出る兄弟): ref と同じ列で、ref の下から下へ。
+// その列で w x h を既存の要素と gap 以上離して置ける最初の位置({ x, y })。列は横へずらさない(並びが崩れない)。
+// ref を囲む group(祖先)は避けない: 新しい block はその中に入り、はみ出す分は呼び出し側が group を広げる(fitParents)。
+export function placeBeside(items, ref, w, h, side, opts = {}) {
+  const gap = opts.gap ?? 1, lane = opts.lane ?? 2;
+  const list = (items || []).filter(it => it && !(it.type === 'group' && it.id !== ref.id && inside(ref, it)));
+  const x = side === 'right' ? ref.x + ref.w + lane : ref.x;
+  const y0 = side === 'right' ? ref.y : ref.y + ref.h + gap;
+  const { bottom } = contentExtent(list);
+  const last = Math.max(bottom + gap, y0);
+  for (let y = y0; y <= last; y++) {
+    const r = { x, y, w, h };
+    if (!list.some(it => overlaps(r, it, gap))) return { x, y };
+  }
+  return { x, y: last };
+}
+
+// 「つないで追加」の置き場所と、ref を囲む group gr の広がり(placeBeside + growGroupFor)を 1 つで決める。
+// 右の列(side 'right')に置くと gr が広がって fixed(動かせない要素の id。@include の共通部など)を押し出すなら、
+// ref の下('below')に置き直す(線は同じ。group は下へ広がる)。下でも押し出すなら右のまま。返り値 { x, y, changes }
+// opts.grow === false(寸法を固定した図、grow=off)は gr を広げない: gr の内側(枠から 1 内側)に収まる側(side、だめなら 'below')に置く。
+// どちらも収まらなければ、gr の中身だけを避けた同じ列(side、だめなら 'below')に gr からはみ出して置き overflow: true(gr の子ではない。
+// gr の W・H を広げれば子になる。呼び出し側が gr の名前とともに知らせる)。はみ出す先が gr の外の要素に掛かるなら hits(掛かる要素の ID)を付け、
+// x, y は従来どおりどの要素にも掛からない所(gr の外)を返す(呼び出し側は足さずに理由を出す)。changes は空
+export function placeBesideFit(items, ref, w, h, side, opts = {}) {
+  const gr = opts.group || null, boxes = opts.boxes || items, fixed = opts.fixed || new Set();
+  if (gr && opts.grow === false) {
+    const fits = p => p.x >= gr.x + 1 && p.y >= gr.y + 1 && p.x + w <= gr.x + gr.w - 1 && p.y + h <= gr.y + gr.h - 1;
+    const sides = side === 'below' ? ['below'] : [side, 'below'];
+    const ps = sides.map(s => placeBeside(items, ref, w, h, s));
+    const p = ps.find(fits);
+    if (p) return { x: p.x, y: p.y, changes: [] };
+    const inGr = (items || []).filter(it => it && overlapArea(it, gr) > 0);
+    return overflowIn(items, gr, sides.map(s => placeBeside(inGr, ref, w, h, s)), w, h, ps[0]);
+  }
+  const at = s => {
+    const p = placeBeside(items, ref, w, h, s);
+    const changes = gr ? growGroupFor(boxes, gr, { x: p.x, y: p.y, w, h }) : [];
+    return { x: p.x, y: p.y, changes, pushesFixed: changes.some(c => c.id !== gr.id && fixed.has(c.id)) };
+  };
+  let r = at(side);
+  if (r.pushesFixed && side === 'right') { const b = at('below'); if (!b.pushesFixed) r = b; }
+  return { x: r.x, y: r.y, changes: r.changes };
+}
+
+// grow=off で gr に入り切らない新しい要素(w x h)の置き場所: 候補 ps のうち gr の外の要素(gr と gr を含む祖先は除く)に掛からない最初のもの
+// (gr の内側に収まっていれば overflow は付けない)。どれも掛かれば fallback に置き hits を付ける
+function overflowIn(items, gr, ps, w, h, fallback) {
+  const others = (items || []).filter(it => it && it.id !== gr.id && !inside(gr, it));
+  const hitsAt = p => others.filter(it => overlapArea({ x: p.x, y: p.y, w, h }, it) > 0).map(it => it.id);
+  const p = ps.find(q => !hitsAt(q).length);
+  if (p) return inside({ x: p.x, y: p.y, w, h }, gr) ? { x: p.x, y: p.y, changes: [] } : { x: p.x, y: p.y, changes: [], overflow: true };
+  return { x: fallback.x, y: fallback.y, changes: [], overflow: true, hits: [...new Set(hitsAt(ps[0]))] };
+}
+
+// grow=off で group に入り切らなかったときに画面に出す文(HTML 版・VSCode 拡張で同じ)。group / item は表示名(ラベル、無ければ ID)。
+// item があれば「はみ出して置いた」、hits(掛かる要素の ID)があれば「足さなかった」
+export function groupFitNotice({ group, item, hits } = {}) {
+  const g = `group「${group}」`;
+  if (item) return `「${item}」は ${g}に入り切らず、枠の外にはみ出しています(${g}の中ではありません)。寸法を固定した図なので group は広げていません。W・H を広げると中に入ります`;
+  const hs = `「${(hits || []).join('」「')}」`;
+  return `${g}に空きが無く、はみ出して置くと${hs}に重なるので足していません。W・H を広げるか${hs}を動かしてから足してください`;
+}
+
+// 新しい子 child(items にまだ無い矩形)を group gr の中に入れる: gr を child が margin 以上内側に来るまで広げ、広がった gr が
+// 新しく掛かる要素を押し出し・親も広げる(placeInGroupFit と同じ後始末)。返り値は動いた・広がった要素(呼び出し側が本文の行に書く)
+export function growGroupFor(items, gr, child, margin = 1) {
+  const ng = growToContain(gr, child, ['l', 't', 'r', 'b'], margin);
+  if (ng.x === gr.x && ng.y === gr.y && ng.w === gr.w && ng.h === gr.h) return [];
+  const boxes = (items || []).filter(i => i && i.type !== 'note');
+  const parents = parentMap(boxes);
+  const cur = boxes.map(i => (i.id === gr.id ? { ...i, ...ng } : i));
+  const sides = [];
+  if (ng.x < gr.x) sides.push('l'); if (ng.y < gr.y) sides.push('t');
+  if (ng.x + ng.w > gr.x + gr.w) sides.push('r'); if (ng.y + ng.h > gr.y + gr.h) sides.push('b');
+  const ch = fitParents(cur, parents, [{ id: gr.id, sides }], margin, [{ id: gr.id, from: { x: gr.x, y: gr.y, w: gr.w, h: gr.h } }]);
+  return [{ type: 'group', id: gr.id, x: ng.x, y: ng.y, w: ng.w, h: ng.h }, ...ch.filter(c => c.id !== gr.id)];
+}
+
 // キャンバス(px)を表示欄(px)に収める倍率。max を超えて拡大しない。
 export function fitZoom(canvasW, canvasH, areaW, areaH, opts = {}) {
   const min = opts.min ?? 0.1, max = opts.max ?? 1;
@@ -187,6 +323,13 @@ export function stepZoom(zoom, dir, opts = {}) {
   const next = dir > 0 ? Math.floor(zoom / step + 1e-9) * step + step : Math.ceil(zoom / step - 1e-9) * step - step;
   if (dir < 0) return Math.max(Math.min(min, zoom), next);
   return Math.max(min, Math.min(max, next));
+}
+
+// 中ボタン(ホイールの押し込み)のドラッグで表示領域を動かす: 押した時のスクロール位置 start({ left, top }、px)から、マウスの移動量
+// (dx, dy、px)だけ逆向きにずらした位置(図はマウスについて動く)。0〜max({ left, top }、スクロールできる最大)で止める。
+export function panScroll(start, dx, dy, max) {
+  const clamp = (v, m) => Math.max(0, Math.min(m, v));
+  return { left: clamp(start.left - dx, max.left), top: clamp(start.top - dy, max.top) };
 }
 
 // ── 欄の幅(HTML 版の DSL | プレビュー | ツール欄、拡張のプレビュー | サイド欄) ──
@@ -467,8 +610,18 @@ export function placeInGroup(items, gr, w, h, prev) {
 // 隙間を保って押し出し(group なら中身ごと)、gr や押し出した要素が親の枠をまたげば親も広げる。「+ ブロック追加」を group 内で
 // 続けても、広がった group がほかの group に重ならない。items: block / group / note(note は置き場所で避けるだけで、押さない)。
 // 返り値 { x, y, changes }。changes は広がった gr を含む、動いた・広がった要素(fitParents と同じ形。呼び出し側が本文の行に書く)
-export function placeInGroupFit(items, gr, w, h, prev, margin = 1) {
+// opts.grow === false(寸法を固定した図、grow=off)は gr を広げず何も押し出さない: gr の内側の空きに置く。空きが無ければ、gr が広がるときと
+// 同じ場所(gr の中身だけを避けた gr の列の次の行)に gr からはみ出して置き overflow: true(gr の子ではない。gr の W・H を広げれば子になる。
+// 呼び出し側が gr の名前とともに知らせる)。はみ出す先が gr の外の要素に掛かるなら hits(掛かる要素の ID)を付け、x, y は gr の列のまま
+// どの要素にも掛からない所(gr の外)を返す(足す操作は足さずに理由を出す)。changes は空
+export function placeInGroupFit(items, gr, w, h, prev, margin = 1, opts = {}) {
   const list = (items || []).filter(Boolean);
+  if (opts.grow === false) {
+    const pn = obs => placeNext(obs, w, h, { prev, x0: gr.x + 1, y0: gr.y + 2, cols: gr.x + gr.w - 1 });
+    const p = pn(list.filter(x => x.id !== gr.id && overlapArea(x, gr) > 0 && !inside(gr, x)));
+    if (inside({ x: p.x, y: p.y, w, h }, gr)) return { x: p.x, y: p.y, changes: [] };
+    return overflowIn(list, gr, [p], w, h, pn(list.filter(x => x.id !== gr.id && !inside(gr, x))));
+  }
   const p = placeInGroup(list, gr, w, h, prev), ng = p.group;
   if (ng.w === gr.w && ng.h === gr.h) return { x: p.x, y: p.y, changes: [] };
   const boxes = list.filter(i => i.type !== 'note');

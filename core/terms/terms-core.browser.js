@@ -40,7 +40,9 @@ const SB_TERMS_TABLE = {
   'export-mermaid-all': { ja: ['Mermaid', '読み込んだ全部の図を Mermaid(.mmd)で書き出し、1 つの zip で保存する'] },
   // ツール欄(何も選んでいないとき)の「共通部(@include)」
   'add-include': { ja: ['取り込む', '選んだ図を @include で取り込む(本文に @include の 1 行を足す)'] },
-  'add-include-all': { ja: ['すべてに取り込む', '一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)'] },
+  'add-include-all': { ja: ['全図に取り込む', '一緒に読み込んだ図のうち取り込める図すべての本文に @include の 1 行を足す(「.sb 保存」で変わった図を全部書き出す)'] },
+  // 表示中の図が何かを取り込んでいるときは、同じ共通部を取り込んでいる図だけに足す(共通部を使っていない図は変えない)
+  'add-include-same': { ja: ['同じ共通部の図へ', 'この図と同じ共通部を取り込んでいる、一緒に読み込んだ図すべての本文に @include の 1 行を足す(共通部を使っていない図は変えない。「.sb 保存」で変わった図を全部書き出す)'] },
   'remove-include': { ja: ['外す', 'この @include 行を本文から消す(取り込んでいた要素は図から消える)'] },
   'new-sb': { ja: ['新規', '空の図(@canvas の 1 行だけ)から始める。前の図は ↩ で戻せる'] },
   'save-sb': { ja: ['.sb 保存', '.sb ファイルに保存する(読み込んだ図は同じファイル名で)'] },
@@ -54,6 +56,8 @@ const SB_TERMS_TABLE = {
   'add-group': { ja: ['+ グループ追加', 'グループを空き位置に追加する'], en: ['+ Group', 'Add a group at a free spot'] },
   'add-note': { ja: ['+ 注釈追加', '注釈を空き位置に追加する'], en: ['+ Note', 'Add a note at a free spot'] },
   'add-block-in-group': { ja: ['+ 中にブロック', 'このグループの中、最後のブロックの右隣に同じ大きさ・色で追加する'], en: ['+ Block in Group', 'Add a block inside this group, right of its last block (same size and color)'] },
+  'add-block-sel': { ja: ['+ ブロック追加', 'このブロックが group の中ならその group の中に、無ければ図の空きに、同じ大きさ・色で追加する'], en: ['+ Block', 'Add a block in the same group as this block (or at a free spot), same size and color'] },
+  'add-group-in-group': { ja: ['+ 中にグループ', 'このグループの中に、子のグループを空き位置に追加する(入れ子)'], en: ['+ Group in Group', 'Add a child group inside this group at a free spot (nested)'] },
 };
 
 const SB_STYLE_NAMES = {

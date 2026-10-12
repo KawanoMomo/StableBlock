@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, paneWidths,
-  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit,
+  contentExtent, grownCanvasSize, setCanvasInDsl, setCanvasRouteInDsl, setCanvasGrowInDsl, canvasGrows, growCanvasInDsl, findFreeSlot, placeNext, fitZoom, stepZoom, panScroll, paneWidths,
+  parentMap, moveSides, edgeSides, growToContain, fitParents, groupRectFor, groupPlanFor, lastChildBlock, placeInGroup, placeInGroupFit, placeBeside, placeBesideFit, growGroupFor,
 } from '../layout-core.mjs';
 
 const CV = { width: 400, height: 300, grid: 20 };
@@ -79,6 +79,18 @@ test('findFreeSlot: group の上には置かない(group の外の空きに置�
   assert.deepEqual(findFreeSlot(items, 8, 3, { cols: 48 }), { x: 1, y: 15 });
 });
 
+test('findFreeSlot minW: 行に既定の幅で置けなければ幅を詰めて同じ行の空きに置き、図の下端より下へ送らない', () => {
+  // 共通部の RTE(20,2)・OS(36,8)・HAL(20,14) だけの図: 20x8 は左の空き(x 1..18)に入らず、以前は 1,18(図の下端)へ送られた
+  const items = [{ x: 20, y: 2, w: 8, h: 3 }, { x: 36, y: 8, w: 8, h: 3 }, { x: 20, y: 14, w: 8, h: 3 }];
+  assert.deepEqual(findFreeSlot(items, 20, 8, { cols: 48 }), { x: 1, y: 18 });
+  assert.deepEqual(findFreeSlot(items, 20, 8, { cols: 48, minW: 12 }), { x: 1, y: 1, w: 18 });
+  // 既定の幅で置ける行ならそのまま(w は付かない)
+  assert.deepEqual(findFreeSlot([], 20, 8, { cols: 48, minW: 12 }), { x: 1, y: 1 });
+  assert.deepEqual(findFreeSlot([{ x: 1, y: 1, w: 8, h: 3 }], 20, 8, { cols: 48, minW: 12 }), { x: 10, y: 1 });
+  // minW も入らない隙間(幅 8)は飛ばす
+  assert.deepEqual(findFreeSlot([{ x: 10, y: 1, w: 38, h: 3 }], 20, 8, { cols: 48, minW: 12 }), { x: 1, y: 5 });
+});
+
 test('findFreeSlot: 横に収まらない幅でも下に置ける', () => {
   assert.deepEqual(findFreeSlot([{ x: 1, y: 1, w: 8, h: 3 }], 60, 3, { cols: 48 }), { x: 1, y: 5 });
 });
@@ -99,6 +111,16 @@ test('stepZoom: 0.25 刻み、端数からは刻みに戻る', () => {
   assert.equal(stepZoom(0.25, -1), 0.25);
   assert.equal(stepZoom(0.1, -1), 0.1);   // 全体表示で 0.25 未満になっていても − で大きくならない
   assert.equal(stepZoom(0.1, 1), 0.25);
+});
+
+// 中ボタン(ホイールの押し込み)のドラッグで表示領域を動かす(BLK-human-20261006-1955-4-wish)
+test('panScroll: 押した時のスクロール位置からマウスの移動量だけ逆向きにずらし、0〜最大で止める', () => {
+  const max = { left: 500, top: 300 };
+  assert.deepEqual(panScroll({ left: 200, top: 100 }, 50, 30, max), { left: 150, top: 70 });     // 右下へ引くと図も右下へ(表示は左上へ)
+  assert.deepEqual(panScroll({ left: 200, top: 100 }, -80, -40, max), { left: 280, top: 140 });
+  assert.deepEqual(panScroll({ left: 20, top: 10 }, 100, 100, max), { left: 0, top: 0 });
+  assert.deepEqual(panScroll({ left: 480, top: 290 }, -100, -100, max), { left: 500, top: 300 });
+  assert.deepEqual(panScroll({ left: 0, top: 0 }, -10, -10, { left: 0, top: 0 }), { left: 0, top: 0 });   // スクロールできない表示は動かない
 });
 
 test('paneWidths: 境界のドラッグで左右の欄の幅を変え、プレビューに最小幅を残す', () => {
@@ -597,3 +619,100 @@ test('groupPlanFor: 親の無い図で間に挟まった block も囲まない�
   assert.equal(none.rect, null);
   assert.match(none.reason, /u/);
 });
+
+test('placeBeside: Tab(right)は右に 2 グリッド空けた列の上端、同じ元から続けると同じ列の下へ縦に並ぶ', () => {
+  const a = { type: 'block', id: 'a', x: 1, y: 1, w: 8, h: 3 };
+  assert.deepEqual(placeBeside([a], a, 8, 3, 'right'), { x: 11, y: 1 });
+  const c1 = { type: 'block', id: 'c1', x: 11, y: 1, w: 8, h: 3 };
+  assert.deepEqual(placeBeside([a, c1], a, 8, 3, 'right'), { x: 11, y: 5 });
+});
+
+test('placeBeside: Ctrl+Enter(below)は同じ列の下、塞がっていれば更に下(列は横へずらさない)', () => {
+  const a = { type: 'block', id: 'a', x: 11, y: 1, w: 8, h: 3 }, b = { type: 'block', id: 'b', x: 11, y: 5, w: 8, h: 3 };
+  assert.deepEqual(placeBeside([a], a, 8, 3, 'below'), { x: 11, y: 5 });
+  assert.deepEqual(placeBeside([a, b], a, 8, 3, 'below'), { x: 11, y: 9 });
+  const wide = { type: 'block', id: 'w', x: 1, y: 9, w: 30, h: 2 };
+  assert.deepEqual(placeBeside([a, b, wide], a, 8, 3, 'below'), { x: 11, y: 12 });
+});
+
+test('placeBeside: ref を囲む group は避けず(中に置く)、ほかの group は避ける', () => {
+  const g = { type: 'group', id: 'g', x: 0, y: 0, w: 12, h: 6 }, a = { type: 'block', id: 'a', x: 1, y: 2, w: 8, h: 3 };
+  const other = { type: 'group', id: 'o', x: 11, y: 0, w: 10, h: 8 };
+  assert.deepEqual(placeBeside([g, a], a, 8, 3, 'right'), { x: 11, y: 2 });
+  assert.deepEqual(placeBeside([g, a, other], a, 8, 3, 'right'), { x: 11, y: 9 });
+});
+
+test('growGroupFor: 右の列に置いた子が group の外なら group を右へ広げ、広がって掛かる隣の block を押し出す', () => {
+  const g = { type: 'group', id: 'g', x: 0, y: 0, w: 10, h: 6 }, a = { type: 'block', id: 'a', x: 1, y: 2, w: 8, h: 3 };
+  const nb = { type: 'block', id: 'nb', x: 22, y: 2, w: 4, h: 2 };
+  const ch = growGroupFor([g, a, nb], g, { x: 11, y: 2, w: 8, h: 3 });
+  assert.deepEqual(ch[0], { type: 'group', id: 'g', x: 0, y: 0, w: 20, h: 6 });
+  assert.ok(!ch.some(c => c.id === 'nb'));   // 掛からない要素は動かない
+  const near = { type: 'block', id: 'near', x: 15, y: 1, w: 4, h: 2 };
+  const ch2 = growGroupFor([g, a, near], g, { x: 11, y: 8, w: 8, h: 3 });
+  assert.deepEqual(ch2[0], { type: 'group', id: 'g', x: 0, y: 0, w: 20, h: 12 });
+  assert.ok(ch2.some(c => c.id === 'near' && c.x >= 20));
+  assert.deepEqual(growGroupFor([g, a], g, { x: 1, y: 2, w: 8, h: 3 }), []);   // 収まっていれば何もしない
+});
+
+// 「はみ出したら自動で広げる」を外した図(grow=off)では group に足しても group を広げず、ほかの要素も動かさない(BLK-human-20261006-1955-1)
+test('placeInGroupFit / placeBesideFit: grow: false なら group の寸法もほかの要素も変えず、空きが無ければ group の下へはみ出して置く', () => {
+  const g1 = G('G1', 1, 1, 20, 8), g2 = G('G2', 1, 10, 20, 8), x = B('X', 3, 13, 8);
+  // 空きがあれば grow: true と同じ場所(group の内側)に置く
+  assert.deepEqual(placeInGroupFit([g1, g2, x], g1, 8, 3, null, 1, { grow: false }), { x: 2, y: 3, changes: [] });
+  // 埋まった group: 広げず、下のほかの要素にも掛からない所へ置く(はみ出しは警告で知らせ、人が直す)
+  const full = [B('a', 2, 3, 8), B('b', 11, 3, 8)];
+  const r = placeInGroupFit([g1, g2, x, ...full], g1, 8, 3, full[1], 1, { grow: false });
+  assert.deepEqual(r.changes, []);
+  const nb = { x: r.x, y: r.y, w: 8, h: 3 };
+  for (const o of [g2, x, ...full]) assert.ok(nb.x + nb.w <= o.x || o.x + o.w <= nb.x || nb.y + nb.h <= o.y || o.y + o.h <= nb.y, `${o.id} に重なる ${JSON.stringify(nb)}`);
+  assert.ok(nb.x >= g1.x && nb.x + nb.w <= g1.x + g1.w);             // 列は group の内側のまま
+  // つないで追加: 右の列が group に収まらなければ下に置き、下も収まらなければ右のまま。どちらも group は広げない
+  const m = B('m', 2, 3, 8), g = G('W', 1, 1, 18, 10);
+  const b = placeBesideFit([g, m], m, 8, 3, 'right', { group: g, grow: false });
+  assert.deepEqual(b, { x: 2, y: 7, changes: [] });
+  const tight = G('T', 1, 1, 18, 6);
+  assert.deepEqual(placeBesideFit([tight, m], m, 8, 3, 'right', { group: tight, grow: false }), { x: 12, y: 3, changes: [], overflow: true });
+});
+
+// grow=off で入り切らないときは黙って group の外へ移さない: group の列にはみ出して置き overflow(W・H を広げれば子になる)。
+// はみ出す先が別の要素に掛かるなら hits(足す操作は足さずに理由を出す)(BLK-owner-20261007-0726-1)
+test('placeInGroupFit / placeBesideFit: grow: false で入り切らなければ group からはみ出して置き overflow、掛かる要素があれば hits', () => {
+  const A = G('A', 1, 1, 20, 8), Bg = G('B', 22, 1, 20, 8), C = G('C', 1, 10, 20, 8);
+  const a0 = B('a0', 2, 3, 8), a1 = B('a1', 11, 3, 8);
+  const r = placeInGroupFit([A, Bg, C, a0, a1], A, 8, 3, a1, 1, { grow: false });
+  assert.deepEqual(r, { x: 2, y: 7, changes: [], overflow: true });
+  // 利用者が A の H を 1 回広げれば、足した block は A の子になる(C の位置は変えない)
+  assert.equal(parentMap([{ ...A, h: 10 }, Bg, C, a0, a1, B('a2', r.x, r.y, 8)]).a2, 'A');
+  // 子 group: 2 個目は B の下にはみ出す(B の外の要素には掛からない)
+  const g1 = G('g1', 23, 3, 12, 6);
+  assert.deepEqual(placeInGroupFit([A, Bg, C, g1], Bg, 12, 6, null, 1, { grow: false }), { x: 23, y: 10, changes: [], overflow: true });
+  assert.deepEqual(placeInGroupFit([A, Bg, C], Bg, 12, 6, null, 1, { grow: false }), { x: 23, y: 3, changes: [] });   // 入れば今までどおり
+  // はみ出す先に C が掛かる(隙間 0)なら hits。x, y は誰にも掛からない所
+  const C9 = G('C', 1, 9, 20, 8);
+  const h = placeInGroupFit([A, C9, a0, a1], A, 8, 3, a1, 1, { grow: false });
+  assert.deepEqual(h.hits, ['C']);
+  assert.equal(h.overflow, true);
+  assert.ok(![A, C9, a0, a1].some(o => o.id !== 'A' && overlapsBox({ x: h.x, y: h.y, w: 8, h: 3 }, o)));
+  // つないで追加: 下にはみ出して置く。group の外の要素に掛かれば hits
+  assert.deepEqual(placeBesideFit([A, C, a0, a1], a0, 8, 3, 'below', { group: A, grow: false }), { x: 2, y: 7, changes: [], overflow: true });
+  assert.deepEqual(placeBesideFit([A, C9, a0, a1], a0, 8, 3, 'below', { group: A, grow: false }).hits, ['C']);
+});
+
+test('placeBesideFit: 右へ広がる group が動かせない共通部(fixed)に掛かるなら ref の下に置く。掛からなければ右のまま', () => {
+  const g = { type: 'group', id: 'W', x: 1, y: 1, w: 18, h: 8 }, m = { type: 'block', id: 'WdtMgr', x: 2, y: 3, w: 8, h: 3 };
+  const rte = { type: 'block', id: 'rte', x: 20, y: 2, w: 8, h: 3 }, hal = { type: 'block', id: 'hal', x: 20, y: 14, w: 8, h: 3 };
+  const items = [g, m, rte, hal];
+  // 共通部でなければ今までどおり右の列に置き、広がった group が rte を押し出す
+  const r = placeBesideFit(items, m, 8, 3, 'right', { group: g });
+  assert.deepEqual([r.x, r.y], [12, 6]);
+  assert.ok(r.changes.some(c => c.id === 'rte'));
+  // rte が @include の共通部(動かせない)なら下に置き、group は下へだけ広がる
+  const f = placeBesideFit(items, m, 8, 3, 'right', { group: g, fixed: new Set(['rte', 'hal']) });
+  assert.deepEqual([f.x, f.y], [2, 7]);
+  assert.deepEqual(f.changes, [{ type: 'group', id: 'W', x: 1, y: 1, w: 18, h: 10 }]);
+  // group の外(gr なし)は placeBeside と同じで changes は空
+  assert.deepEqual(placeBesideFit([rte], rte, 8, 3, 'right', { fixed: new Set(['rte']) }), { x: 30, y: 2, changes: [] });
+});
+
+function overlapsBox(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }

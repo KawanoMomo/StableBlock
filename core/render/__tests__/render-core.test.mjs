@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as L from '../../label/label-core.mjs';
 import { parseDSL } from '../../dsl/dsl-core.mjs';
-import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch } from '../render-core.mjs';
+import { renderSvg, exportSvg, exportPngSize, matchesSearchItem, searchMatches, nextMatch, linkedIds, unlinkedBlocks } from '../render-core.mjs';
 import { buildRenderCoreBrowser } from '../../excel/build-browser.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -31,6 +31,13 @@ const parsed = parseDSL(SRC);
 test('render-core.browser.js is up to date (drift detection)', () => {
   assert.equal(norm(read('core/render/render-core.browser.js')), norm(buildRenderCoreBrowser(norm(read('core/render/render-core.mjs')))),
     'Run `npm run build:browser` to regenerate render-core.browser.js');
+});
+
+test('unlinkedBlocks: 接続が 1 本も無い block だけ(注釈の破線も接続に数える)。画面の「◎ 未接続」が薄くするのと同じ', () => {
+  assert.deepEqual(unlinkedBlocks(parsed).map(b => b.id), ['solo']);
+  assert.deepEqual([...linkedIds(parsed)].sort(), ['logic', 'lone', 'memo', 'ui']);
+  const s = renderSvg(parsed, { highlight: true, interactive: false }, L, measure);
+  assert.deepEqual([...s.matchAll(/<g data-type="block" data-id="([^"]+)" opacity="0.15"/g)].map(m => m[1]), ['solo']);
 });
 
 test('書き出しの SVG は @canvas の寸法で、選択枠・ハンドル・グリッド・薄めを含まない', () => {
@@ -132,4 +139,48 @@ test('renderSvg: note は style= を書けば solid / dashed / bold で描き分
   assert.match(rect('n2'), /stroke-dasharray="6,3"/);
   assert.match(rect('n3'), /stroke-width="2.5"/);
   assert.doesNotMatch(rect('n3'), /stroke-dasharray/);
+});
+
+test('marks(見比べる画面の印): 変わった要素に橙の破線枠、変わった接続に橙の太線。書き出し・印の無い画面には出ない', () => {
+  const s = renderSvg(parsed, { interactive: false, marks: { items: ['logic', 'memo', 'g1'], conns: ['ui->logic', 'memo->lone'] } }, L, measure);
+  assert.deepEqual([...s.matchAll(/<rect data-changed="([^"]+)"/g)].map(m => m[1]), ['g1', 'logic', 'memo']);
+  assert.deepEqual([...s.matchAll(/data-changed-conn="([^"]+)"/g)].map(m => m[1]), ['ui-&gt;logic', 'memo-&gt;lone']);
+  assert.doesNotMatch(renderSvg(parsed, { interactive: false }, L, measure), /data-changed/);
+  assert.doesNotMatch(exportSvg(parsed, L, measure), /data-changed/);
+  // 注釈を隠しているときは note の印も出さない
+  assert.doesNotMatch(renderSvg(parsed, { interactive: false, showAnnotations: false, marks: { items: ['memo'], conns: [] } }, L, measure), /data-changed/);
+});
+
+// 接続ラベルの `\n` は block・note と同じく改行: 1 行ずつ <text>、白地は行の分の高さ(BLK-porter-20260930-0109)
+test('接続ラベルの \\n は改行して描き、「\\n」の文字を描かない(block 同士の線と注釈線)', () => {
+  const p = parseDSL([
+    '@canvas width=400 height=200 grid=20',
+    'block a "A" at 1,1 size 5x3',
+    'block b "B" at 12,1 size 5x3',
+    'note n "N" at 1,6 size 5x2',
+    'a -> b "call\\nasync"',
+    'n -> b "要求\\n(非同期)"',
+  ].join('\n'));
+  const svg = exportSvg(p, L, measure);
+  assert.doesNotMatch(svg, /\\n/);
+  for (const t of ['>call<', '>async<', '>要求<', '>(非同期)<']) assert.ok(svg.includes(t), t);
+  const g = svg.match(/<g class="conn-label"[^>]*>(.*?)<\/g>/)[1];
+  const ys = [...g.matchAll(/<text x="[^"]+" y="([^"]+)"/g)].map(m => +m[1]);
+  assert.equal(ys.length, 2);
+  assert.equal(ys[1] - ys[0], 12);
+  assert.equal(+g.match(/<rect [^>]*height="([^"]+)"/)[1], 26);
+  // 1 行のラベルは 1 つの <text> のまま
+  assert.equal((exportSvg(parsed, L, measure).match(/<g class="conn-label"[^>]*>.*?<\/g>/)[0].match(/<text /g) || []).length, 1);
+});
+
+// group の名前の `\n` も block・note・接続と同じく改行(Shift+Enter で打った 2 行が画面・SVG で 2 行。Excel・Mermaid と同じ行割り)(BLK-owner-20260930-0208-2)
+test('group の名前の \\n は改行して描き、「\\n」の文字を描かない', () => {
+  const p = parseDSL(['@canvas width=400 height=200 grid=20', 'group g "Can\\nStack" at 1,1 size 10x6'].join('\n'));
+  const svg = exportSvg(p, L, measure);
+  assert.doesNotMatch(svg, /\\n/);
+  const g = svg.match(/<g data-type="group"[^>]*>(.*?)<\/g>/)[1];
+  const ys = [...g.matchAll(/<text x="[^"]+" y="([^"]+)"[^>]*>([^<]*)</g)].map(m => [+m[1], m[2]]);
+  assert.deepEqual(ys.map(x => x[1]), ['Can', 'Stack']);
+  assert.equal(ys[1][0] - ys[0][0], 13);
+  assert.equal((exportSvg(parsed, L, measure).match(/<g data-type="group"[^>]*>.*?<\/g>/)[0].match(/<text /g) || []).length, 1);   // 1 行は 1 つのまま
 });

@@ -2,13 +2,16 @@
 // 複数の .sb を開かずに検査する: `npm run check -- <file.sb|dir> ...`(dir はその下の .sb を全部)
 // 画面のエラー表示と同じ診断(読めない行の理由・存在しない ID への接続・block の重なり・線の横切り・ラベルの重なり)を
 // `ファイル:行: error|warn: 内容` で出す。@include は読み込んだ先のファイルと行で示す。error があれば終了コード 1。
+// 接続が 1 本も無い block は info で出す(error / warn の数・終了コードに数えない。他の図に include される共通部そのものは除く)。
+// 一緒に検査した図をまたいで大文字小文字・区切り(_ -)だけが違う block ID は、違う方の行に基準の図と行を添えて warn で出す。
 // --refs <ID>: ID を定義・参照している図と行を一覧する。--rename <旧> <新>: 全図で ID を改名する(core/label の planRename)。
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDSL } from '../dsl/dsl-core.mjs';
 import { connectionPaths, placeLabels, labelIssues, findIdInDsl, planRename } from '../label/label-core.mjs';
-import { expandIncludes, checkIncluded } from './check-core.mjs';
+import { expandIncludes, checkIncluded, findIdSpellingVariants } from './check-core.mjs';
+import { unlinkedBlocks } from '../render/render-core.mjs';
 
 // @include を展開する(core の expandIncludes に fs の読み込みを渡す)。include 先は include 元のファイルからの相対パス
 export function expandFile(file) {
@@ -24,6 +27,23 @@ export function checkFile(file, mode = 'curved') {
   const name = p => relative(process.cwd(), p) || p;
   return checkIncluded(parsed, exp, paths, { name, inline: false, hint: '(ファイルが無い)', labelIssues: labelIssues(placeLabels(paths, parsed), parsed) })
     .map(d => ({ ...d, file: resolve(d.file), line: d.fileLine }));
+}
+
+// 接続が 1 本も無い block(画面の「◎ 未接続」が薄くするものと同じ判定)を info で返す。include 先で定義された block は
+// 定義の図と行で示す(file が検査した図と違えば呼び出し側が「(… から include)」を添える)。error / warn には数えない
+export function unlinkedInfo(file) {
+  const exp = expandFile(file);
+  return unlinkedBlocks(parseDSL(exp.text)).map(b => {
+    const o = exp.origin[b.line - 1] || { file: exp.file, line: b.line };
+    return { file: resolve(o.file), line: o.line, level: 'info', msg: `block「${b.id}」への接続が無い` };
+  });
+}
+
+// 一緒に検査した図のどれかに @include されている図(共通部)。共通部そのものの未接続は include した図の側で示す
+export function includedByOthers(files) {
+  const out = new Set();
+  for (const f of files) for (const o of expandFile(f).origin) if (resolve(o.file) !== resolve(f)) out.add(resolve(o.file));
+  return out;
 }
 
 function collect(p) {
@@ -96,13 +116,22 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exit(0);
   }
   if (!args.length) { console.error(USAGE); process.exit(2); }
-  let errors = 0, warns = 0;
-  for (const f of args.flatMap(collect)) {
-    for (const d of checkFile(f)) {
+  let errors = 0, warns = 0, infos = 0;
+  const files = args.flatMap(collect);
+  const shared = includedByOthers(files);
+  for (const f of files) {
+    for (const d of [...checkFile(f), ...(shared.has(resolve(f)) ? [] : unlinkedInfo(f))]) {
       console.log(`${relative(process.cwd(), d.file) || d.file}:${d.line}: ${d.level}: ${d.msg}${resolve(d.file) !== resolve(f) ? `(${relative(process.cwd(), f)} から include)` : ''}`);
-      if (d.level === 'error') errors++; else warns++;
+      if (d.level === 'error') errors++; else if (d.level === 'info') infos++; else warns++;
     }
   }
-  console.log(`error ${errors} / warn ${warns}`);
+  const diagrams = files.map(file => ({ file, blocks: parseDSL(readFileSync(file, 'utf8')).blocks }));
+  for (const { a, b } of findIdSpellingVariants(diagrams)) {
+    const aFile = relative(process.cwd(), a.file) || a.file;
+    const bFile = relative(process.cwd(), b.file) || b.file;
+    console.log(`${aFile}:${a.line}: warn: block ID "${a.id}" は ${bFile}:${b.line} の "${b.id}" と大文字小文字・区切りだけが違う(同じ部品の表記揺れ?)`);
+    warns++;
+  }
+  console.log(`error ${errors} / warn ${warns}${infos ? ` / info ${infos}` : ''}`);
   process.exit(errors ? 1 : 0);
 }

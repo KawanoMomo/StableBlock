@@ -93,6 +93,47 @@ export function fieldKeyAction(key, shift) {
   }
 }
 
+// ── つないで追加(マインドマップ・draw.io の「複製してつなぐ」と同じ): block を 1 つ選んだ図の上で ──
+// Tab: 選んだ block から線を引いた先に新しい block(右の列)。Ctrl+Enter(⌘+Enter): 選んだ block と同じ元から線を引いた兄弟(下)。
+// 欄で打っている間・Shift / Alt 付き・block 以外や複数選択では取らない(Shift+Tab と欄の Tab はブラウザのまま)。返り値: 'child' | 'sibling' | null
+export function linkAddKey(key, sel, mods = {}) {
+  if (!sel || sel.length !== 1 || sel[0].type !== 'block' || mods.shift || mods.alt) return null;
+  if (key === 'Tab' && !mods.ctrl && !mods.meta) return 'child';
+  if (key === 'Enter' && (mods.ctrl || mods.meta)) return 'sibling';
+  return null;
+}
+
+// ── ラベルの欄(その場編集・プロパティ欄・接続パネル)で押した Enter ──
+// Shift+Enter は改行(本文は改行の印 1 つ。block・group・note・接続で同じ。draw.io と同じ)、Enter は確定、Ctrl+Enter(⌘+Enter)は確定して次の兄弟へ。
+// Alt 付き・Shift と Ctrl の同時押しは取らない。返り値: 'newline' | 'commit' | 'ctrl' | null
+export function labelEnterKey(key, mods = {}) {
+  if (key !== 'Enter' || mods.alt) return null;
+  const ctrl = !!(mods.ctrl || mods.meta);
+  if (mods.shift) return ctrl ? null : 'newline';
+  return ctrl ? 'ctrl' : 'commit';
+}
+
+// ── ラベルのその場編集中の Tab ──
+// Tab / Ctrl+Enter で足したばかりの block、「+ ブロック追加」・group の「+ 中にブロック」で足してまだ名前の無い block の名前を打っている間
+// (link = 'child' | 'sibling')は、確定して同じ向きに次の block を足す(Tab → 名前 → Tab → 名前 → Enter で鎖。XMind・MindManager と同じ)。
+// 既存の要素をダブルクリック・F2・文字打ちで始めた編集は読み順の次(Shift+Tab は前)の要素へ移る。
+// 移る先が無いとき(opts.hasNext / hasPrev が false)、block の Tab はプロパティ欄の案内どおり右につないで足し('child')、
+// それ以外は読み順の反対の端へ回る('first' | 'last')。続けて打った文字が今のラベルの後ろに黙って連なる形にしない。
+// 返り値: 'child' | 'sibling' | 'next' | 'prev' | 'first' | 'last'
+export function inlineTabAction(link, shift, opts = {}) {
+  if (shift) return opts.hasPrev === false ? 'last' : 'prev';
+  if (link === 'child' || link === 'sibling') return link;
+  if (opts.hasNext !== false) return 'next';
+  return opts.type === 'block' ? 'child' : 'first';
+}
+
+// その場編集を始めるときの Tab の向き: つないで追加(linkAdd)が渡した向きがあればそれ。無ければ、ツール欄の「+ ブロック追加」・group の
+// 「+ 中にブロック」で直前に足した block(freshId)がまだ仮の ID(名前が無い)なら 'child'。それ以外(既存の要素の名付け直し)は null
+export function inlineEditLink(pending, type, id, freshId, placeholder) {
+  if (pending === 'child' || pending === 'sibling') return pending;
+  return type === 'block' && id != null && id === freshId && !!placeholder ? 'child' : null;
+}
+
 // ── 図の上で打った 1 キーの行き先(欄で打っている間・Ctrl / ⌘ / Alt 付きは図のショートカットに取らない) ──
 // 1 つ選んでいるときの文字(IME の変換中 'Process' を含む)は、その文字からラベルのその場編集に入る(Excel・draw.io・Visio と同じ)。
 // 表示だけの切替(H 未接続を薄く・N 注釈・F 全体表示)は 1 つ選んでいないときに効く。本文を書き換える L(線の形)は何も選んでいないときだけ。
